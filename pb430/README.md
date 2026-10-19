@@ -1,5 +1,7 @@
 # Packard Bell PB430
 
+Download the [v0.1.0 release](https://github.com/calculatetech/bAIos/releases/tag/v0.1.0) with 50 MHz and 60 MHz VGA images. See [release notes and programmer checksums](docs/releases/v0.1.0.md).
+
 The user reports a **24% average benchmark improvement** over the stock BIOS. The separate RAM throughput result improved from **13.6 to 17.3 MB/sec**, with effective read/write access times of **242/121 ns**. These are physical observations, not emulator measurements. The complete winning settings and benchmark set are not yet recorded.
 
 The combined ACCPROF timing test improved measured throughput from 14.0 to 15.7 MiB/s. Choose **Chipset > RAM Timing > Memory Timing > Fast** to use that combination. Choose **Manual** next to retain it and unlock individual RAM timings. Normal uses the original read/write timings and normal refresh. Profiles do not change bank layout, cache size or CPU clock. The [timing table](docs/register-map.md#timing-options-at-a-glance) explains the available fields and the evidence behind them.

@@ -2,7 +2,7 @@
 
 This repository starts with a source snapshot. It excludes private development history, personal files, local agent configuration, and build output.
 
-The MIT license covers original bAIos source and documentation. It does not grant rights to vendor firmware, manuals, operating systems, or third-party tools. Those inputs are not distributed here. Supply copies that you have permission to use.
+The MIT license covers original bAIos source and documentation. It does not grant rights to vendor firmware, manuals, operating systems, or third-party tools. Those inputs are not tracked in Git. Downloadable flash images include retained VGA firmware under its original terms. Supply copies that you have permission to use.
 
 Port documentation records hardware observations and reverse-engineering results. References to local ROMs, disassemblies, PDFs, and historical build results describe private research inputs. Those paths will not exist in a fresh clone. The input manifest records file names, sizes, and hashes without distributing their contents.
 

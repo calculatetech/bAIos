@@ -49,4 +49,4 @@ See [porting instructions](docs/porting.md) before starting a port. Keep proven 
 
 ## License
 
-Original bAIos source and documentation are available under the [MIT license](LICENSE). Vendor firmware, manuals, and external test software retain their own terms and are not part of this distribution.
+Original bAIos source and documentation are available under the [MIT license](LICENSE). Vendor firmware, manuals, and external test software retain their own terms. They are not tracked in Git. Downloadable flash images include retained VGA firmware, which is outside the bAIos MIT license.
