@@ -13,7 +13,7 @@ Status legend:
 
 ## Active
 
-**BAIOS-008: Publish a sanitized public source repository.** Remove private paths and third-party distribution inputs, supply MIT licensing and build instructions, validate the source snapshot, and publish with CI and protected main. Publication is pending GitHub repository-administration access.
+No task is active.
 
 ## Planned next
 
@@ -42,3 +42,5 @@ No task is declined.
 - **BAIOS-001: Move shared tools and dependencies to repository-root owners.** Moved common emulator resources, dependencies, and helper implementations to root owners. Preserved port overrides, existing commands, original references, and approved Presario ROM bytes. Validation and final review passed.
 
 - **BAIOS-002: Organize repository ownership and build cleanup.** Keep build output clean, keep port-specific files with their ports, and organize shared references at repository root. Preserve current ROMs, original inputs, pending review artifacts and current observations. Maintain shared cleanup safety and port retention policies. Keep repository-wide work in this roadmap and port work in its port roadmap.
+
+- **BAIOS-008: Publish a sanitized public source repository.** Published original source under MIT with private history, personal paths, vendor ROMs and manuals excluded. Public CI passes. Main requires the source check and blocks force pushes and deletion, including administrators. Native review passed.
