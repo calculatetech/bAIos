@@ -1,0 +1,4 @@
+; Actual sidebar -> chipset group -> Manual -> explicitly enable ADS -> Save.
+    db 0x50,0x50,0x50,0x50,28,28,0x4D,0x50,0x50,0x50,0x50,0x4D,0x44,28,0
+setup_test_time_key equ 255
+setup_test_popup_key equ 255

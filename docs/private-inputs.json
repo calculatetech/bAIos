@@ -1,0 +1,82 @@
+[
+  {
+    "path": "m919/reference/3-6-96.BIN",
+    "size": 131072,
+    "sha256": "42a204906d53cf31da4fbee790c26f692f52fdf3d438362a11a07e7d5d6c1886"
+  },
+  {
+    "path": "m919/reference/9190506.BIN",
+    "size": 131072,
+    "sha256": "263077f3f8973a3a2be5f9fc8a2428d72182b8bc41fa7292405c828fd5e1e686"
+  },
+  {
+    "path": "m919/reference/9190914S.ROM",
+    "size": 131072,
+    "sha256": "aa34fcc7ffec6011bf55f273f28d396242d41e7d318364a4de997a450aab4e13"
+  },
+  {
+    "path": "m919/reference/9191016s.rom",
+    "size": 131072,
+    "sha256": "a4769633dac24933d41703210fb0a89808630bef3bd33c0d87253ed4bcc86d8f"
+  },
+  {
+    "path": "pb430/reference/acc386.BIN",
+    "size": 65536,
+    "sha256": "0a6be5271310c4b72ff54fc47a6fc524b81bfdf3bc3aab97bb3063192b08fdd1"
+  },
+  {
+    "path": "pb430/reference/gd542x-141-vga60.rom",
+    "size": 32768,
+    "sha256": "a055782154f63644da7f04038f0a163b8925f136172a55aca35960150da1b2a8"
+  },
+  {
+    "path": "pb430/reference/pb430-m27c1001.bin",
+    "size": 131072,
+    "sha256": "c0874e34b6439de784036c35dbb95d8b8a33ed855d1c402ea7763a1be6fc574a"
+  },
+  {
+    "path": "presario-800/reference/86box/machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin",
+    "size": 131072,
+    "sha256": "b6babb545ef6d3a8f7445c1408a34457c4280f690c47ddc6e40b58c9a05539d0"
+  },
+  {
+    "path": "presario-800/reference/86box/video/cirruslogic/5428.bin",
+    "size": 32768,
+    "sha256": "995843ea654b210c08a6c3adc7634d98525688f64dcad29516ffd4a415b63138"
+  },
+  {
+    "path": "presario-800/reference/COMPAQ_PROLINEA_MT_05-02-94-ramtmg94-refslow-dma-max.bin",
+    "size": 131072,
+    "sha256": "1883b74d1cfeac29d167ffa5d43fd69eda71c64389853f39835ec18909bd8e11"
+  },
+  {
+    "path": "presario-800/reference/COMPAQ_PROLINEA_MT_05-02-94.BIN",
+    "size": 131072,
+    "sha256": "29d75dc55a229c3c13d08c51729e01f455309fdf0b4fa60c522f2cc896bac8a7"
+  },
+  {
+    "path": "presario-800/reference/baios-presario800-vga141-bus07.bin",
+    "size": 131072,
+    "sha256": "98716a7cefc742047806c70a8cbea04a89648c5bf84859fa1cea269d791633b7"
+  },
+  {
+    "path": "presario-800/reference/bios93.10.27.bin",
+    "size": 131072,
+    "sha256": "347b00de5b25bb445b58fcb84902f555cadfd6187978867f8a25d338f4165c20"
+  },
+  {
+    "path": "presario-800/reference/bios93.9.29.bin",
+    "size": 131072,
+    "sha256": "a057e44f48978ac0a82e5c078e3bb51128d51d463ac9722355cba3c5774e29ca"
+  },
+  {
+    "path": "presario-800/reference/gd5428_1-41.bin",
+    "size": 32768,
+    "sha256": "72873e0bb9efda71d0b5819ce7b4201d8771c75473cd1170dcc6d2dfb794e0b6"
+  },
+  {
+    "path": "presario-800/reference/mrbiosvlsi401-compaq94-compaq-ramdetect-vga-setup-stack-fix.bin",
+    "size": 131072,
+    "sha256": "ae3bd9dde545c4bc69b889fa4d5cec0aa36be85af8a37efb34363ca4bf8fdf97"
+  }
+]
