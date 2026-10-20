@@ -39,6 +39,7 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
         input_case=None,fault_pattern=0x55AA55AA):
     """Bounded RAM owner proof. Reset/terminal halt are observed, not replaced."""
     raw = Path(rom).read_bytes()
+    post_row = state.get('BOARD_POST_RAM_ROW', 5)
     listing = Listing(Path(rom).with_suffix('.lst'))
     code = layout['code_segment'] << 4
     start = listing.symbol('chipset_visible_ram_test')
@@ -242,7 +243,7 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
         if not legacy:
             assert bytes(u.mem_read(base+state['P_RAM_FLAGS'], 1)) == bytes((2 if input_case else 4,))
             text = b'Skipped' if input_case else b'Passed'
-            cells = bytes(u.mem_read(0xB8000+5*160+34*2,len(text)*2))
+            cells = bytes(u.mem_read(0xB8000+post_row*160+34*2,len(text)*2))
             assert cells[::2] == text and cells[1::2] == b'\x07'*len(text)
         if input_case:
             assert input_sent and irq_entries == [9,0x15,9,0x15], irq_entries
@@ -273,7 +274,7 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
             'caller_CR0':caller_cr0,'caller_flags':caller_flags,'caller_gates':caller_gates,
             'input_case':input_case,'IRQ_entries':irq_entries,
             'terminal':terminal or ['returned'], 'services':len(services),
-            'progress_cells':bytes(u.mem_read(0xB8000+5*160+24*2,16)).hex() if not legacy else None,
+            'progress_cells':bytes(u.mem_read(0xB8000+post_row*160+24*2,16)).hex() if not legacy else None,
             'decode':decoded if decode else None,
             'seconds':seconds, 'rom_sha256':hashlib.sha256(raw).hexdigest(),
             'measurement':'Unicorn host execution; not physical POST time'}

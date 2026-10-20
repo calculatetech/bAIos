@@ -347,6 +347,7 @@ startup:
     mov word [0x485],16
     pb_stage 0x30
     call cache_initialize
+    call cache_test
     call cache_initial_policy
     call shadow_system_bios
     pb_stage 0x40

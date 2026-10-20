@@ -31,6 +31,8 @@ Codes are hexadecimal bytes written to port 80. The most recent code identifies 
 | 12 | SRAM presence probe begins |
 | 1F | SRAM probe and saved RAM restored; unambiguous size qualified |
 | 16 | SRAM probe and saved RAM restored; size unknown, L2 remains off |
+| 1D | Short SRAM check begins; temporary mode has not been entered |
+| 1E / 1A | Short SRAM check passed / failed; normal controller mode restored |
 | 34 | Initial system-shadow owner begins |
 | 35 | Full system image staged; map changes execute at 3000 |
 | 36 | New system mapping copied; executing F000 again |

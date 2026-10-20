@@ -25,11 +25,11 @@ post_ui_begin:
     call post_ui_cache
     cmp byte [fs:P_RAM_FLAGS], 0
     je .drives
-    ui_text 5, 3, u_post_ram, 0x0B
-    ui_text 5, 30, u_kb, 7
+    ui_text BOARD_POST_RAM_ROW, 3, u_post_ram, 0x0B
+    ui_text BOARD_POST_RAM_ROW, 30, u_kb, 7
     memory_installed_kib eax
     add eax, 1024
-    mov di, 5*160+24*2
+    mov di, BOARD_POST_RAM_ROW*160+24*2
     call post_count
     call post_ram_status
     cmp byte [fs:P_PHASE], 2
@@ -187,10 +187,10 @@ post_ram_start:
     pop ds
     mov ax, 0xB800
     mov es, ax
-    ui_text 5, 3, u_post_ram, 0x0B
-    ui_text 5, 30, u_kb, 7
+    ui_text BOARD_POST_RAM_ROW, 3, u_post_ram, 0x0B
+    ui_text BOARD_POST_RAM_ROW, 30, u_kb, 7
     xor eax, eax
-    mov di, 5*160+24*2
+    mov di, BOARD_POST_RAM_ROW*160+24*2
     call post_count
     call post_ram_status
     pop es
@@ -220,7 +220,7 @@ post_ram_finish:
     jne .status
     memory_installed_kib eax
     add eax, 1024
-    mov di, 5*160+24*2
+    mov di, BOARD_POST_RAM_ROW*160+24*2
     call post_count
 .status:
 %endif
@@ -233,8 +233,8 @@ post_ram_finish:
 
 ; Called only once the visible RAM owner has returned or during its redraw.
 post_ui_banks:
-    ui_text 6, 3, u_summary_banks, 0x0B
-    mov di, 6*160+24*2
+    ui_text BOARD_POST_RAM_ROW+1, 3, u_summary_banks, 0x0B
+    mov di, (BOARD_POST_RAM_ROW+1)*160+24*2
     jmp post_memory_banks
 
 post_ui_roms:
@@ -265,7 +265,7 @@ post_ui_roms:
     ret
 
 post_ram_status:
-    mov di, 5*160+34*2
+    mov di, BOARD_POST_RAM_ROW*160+34*2
     call post_clear_value
     mov si, u_post_blank
     test byte [fs:P_RAM_FLAGS], 2

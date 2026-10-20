@@ -24,8 +24,8 @@ def machine(l1=0, cache_kib=512, cls=timing.ACC):
         if m.registers[0x1A] & 0x18 == 0x10 and sram:
             for i, byte in enumerate(value.to_bytes(size, 'little')):
                 sram[(address-0x20000+i) % len(sram)] = byte
-    m.cpu.hook_add(UC_HOOK_MEM_READ, read, begin=0x20000, end=0x7FFFF)
-    m.cpu.hook_add(UC_HOOK_MEM_WRITE, write, begin=0x20000, end=0x7FFFF)
+    m.cpu.hook_add(UC_HOOK_MEM_READ, read, begin=0x10000, end=0x90003)
+    m.cpu.hook_add(UC_HOOK_MEM_WRITE, write, begin=0x10000, end=0x90003)
     m.stop_address = 0xF0000 + m.listing.symbol('.wait', 'boot_retry')
     m.cold_boot()
     return m

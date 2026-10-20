@@ -2,13 +2,14 @@
 import importlib
 import json
 import struct
+import sys
 from pathlib import Path
 from unicorn import UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
 from unicorn import x86_const as x
 
 timing = importlib.import_module('test-timing-setup')
 PORT = Path(__file__).resolve().parents[1]
-IMAGE = PORT / 'build/baios-pb430.bin'
+IMAGE = Path(sys.argv[1]) if len(sys.argv) > 1 else PORT / 'build/baios-pb430.bin'
 
 
 def machine(fast_boot=1):
@@ -44,8 +45,30 @@ def until(m, name, stop):
     m.code_observer = None
 
 
-def run():
+def startup_markers():
     rows = []
+    for schema,marker in ((0xC2,0),(0xC2,0xAB),(0xC2,0xA5),
+                          (0xD2,0x5A),(0xD2,0xDA),(0xD2,0x1A)):
+        m = machine()
+        m.cmos[0x69],m.cmos[0x36] = schema,marker
+        timing.restore(m)
+        before = bytes(m.cmos)
+        start = m.listing.symbol('.write_timing_reset_ready', 'startup')
+        end = m.listing.symbol('.ras_reset_ready', 'startup')
+        m.cpu.emu_start(0xF0000+start,0xF0000+end,count=10000)
+        expected = bytearray(before)
+        if marker == 0xAB:
+            expected[0x36] = 0
+        assert bytes(m.cmos) == expected
+        assert m.cpu.reg_read(x.UC_X86_REG_ESP) == 0x23456789
+        rows.append({'schema':schema,'marker':marker,'result':expected[0x36],
+                     'settings_preserved':True})
+    print('PASS interrupted POST keeps settings; committed recovery stays pending', flush=True)
+    return rows
+
+
+def run():
+    rows = startup_markers()
     # Observe one continuous production POST, including the summary and RTC work.
     chip = bytearray(timing.DEFAULT)
     chip[6] = chip[14] = 1
@@ -79,15 +102,16 @@ def run():
             m.code_observer = None
             m.stop_address = 0xF0000 + m.listing.symbol('setup_post_gate')
             m.cold_boot()
-            assert m.cmos[0x69] == 0xD2 and m.cmos[0x36] == 0x1A
-            assert bytes(m.cpu.mem_read(m.base+0x60, 24)) == timing.DEFAULT[:2] + b'\0' + timing.DEFAULT[3:]
+            assert m.cmos[0x69] == 0xC2
+            assert m.cpu.mem_read(m.base+0x62,1) == b'\x01'
+            assert m.cpu.mem_read(m.base+0x6E,1) == b'\x01'
             m.open([1, 28])
-            assert m.cmos[0x69] == 0xD2 and m.cmos[0x36] == 0x1A
+            assert m.cmos[0x69] == 0xC2
         else:
             assert seen == list(names) + ['finished'], seen
             assert m.cmos[0x36] == 0 and m.posts[-1] == 0xE4
-        rows.append({'production_summary_trial_and_hard_reset': interrupted})
-    print('PASS production summary/RTC finish and interrupted-summary recovery', flush=True)
+        rows.append({'production_summary_and_interrupted_power_cycle': interrupted})
+    print('PASS production summary/RTC finish and interrupted POST keeps settings', flush=True)
 
     # Fail only the selected-timing DRAM read; firmware owns every retry stage.
     m = timing.model(IMAGE, chip)
@@ -161,7 +185,7 @@ def run():
     m.call('chipset_visible_ram_test')
     assert reads and writes and not conflicts
     assert not high_writes and m.cpu.mem_read(0x10000, 0x800) == before
-    assert m.text(5, 24, 5) == '16384'
+    assert m.text(6, 24, 5) == '16384'
     assert m.cmos[0x36] == 0xAB and m.cmos[0x37] == 0xA7
     m.call('chipset_timing_trial_finish')
     assert m.cmos[0x36] == 0 and m.cmos[0x37] == 0xA7
@@ -192,16 +216,20 @@ def run():
     rows.append({'direct_read_fault_restores_data_and_timings_retries_once': True})
     print('PASS RAM fault recovery and second-failure guard', flush=True)
 
-    # Normal reset consumes an unfinished trial before any memory/cache setup.
+    # Normal reset clears an unfinished trial without replacing saved settings.
     m = machine()
     timing.restore(m)
     start = m.listing.symbol('.write_timing_reset_ready', 'startup')
     end = m.listing.symbol('.ras_reset_ready', 'startup')
     m.cpu.emu_start(0xF0000 + start, 0xF0000 + end, count=10000)
-    assert m.cmos[0x69] == 0xD2 and m.cmos[0x36] == 0x5A
+    assert m.cmos[0x69] == 0xC2 and m.cmos[0x36] == 0
     assert m.cpu.reg_read(x.UC_X86_REG_ESP) == 0x23456789
     m.call('settings_load')
-    assert m.cpu.mem_read(m.base + 0x60, 24) == timing.DEFAULT[:2] + b'\0' + timing.DEFAULT[3:]
+    assert m.cpu.mem_read(m.base+0x62,1) == b'\x01'
+    assert m.cpu.mem_read(m.base+0x6E,1) == b'\x01'
+    # A detected comparison failure still commits the existing recovery guard.
+    m.cmos[0x69],m.cmos[0x36] = 0xD2,0x5A
+    m.call('settings_load')
     m.call('chipset_post_recovery_notice')
     assert m.cmos[0x36] == 0x1A
     m.call('chipset_timing_trial_finish')
@@ -214,7 +242,7 @@ def run():
     m.cpu.mem_write(m.base + 0x260, timing.DEFAULT)
     m.call('settings_save')
     assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1 and m.cmos[0x36] == 0
-    rows.append({'hard_reset_pending_trial_safe_defaults_and_save_guard': True})
+    rows.append({'interrupted_trial_keeps_settings_and_explicit_failure_keeps_save_guard': True})
     print('PASS pending trial recovery and verified-save guard', flush=True)
 
     # L2 is off, so two MiB no longer needs a third MiB for eviction reads.
@@ -260,17 +288,19 @@ def run():
     m.continue_reset = True
     m.stop_address = 0xF0000 + m.listing.symbol('setup_post_gate')
     m.cold_boot()
-    assert m.cmos[0x69] == 0xD2 and m.cmos[0x36] == 0x1A
-    assert m.cpu.mem_read(m.base + 0x62, 1) == b'\0'
+    assert m.cmos[0x69] == 0xC2
+    assert m.cpu.mem_read(m.base + 0x62, 1) == b'\x01'
+    assert m.cpu.mem_read(m.base + 0x6E, 1) == b'\x01'
     m.open([1, 28])
-    assert m.cmos[0x69] == 0xD2 and m.cmos[0x36] == 0x1A
-    rows.append({'hard_reset_reaches_and_opens_existing_setup': True})
-    print('PASS full hard reset and Setup access after unfinished trial', flush=True)
+    assert m.cmos[0x69] == 0xC2
+    rows.append({'power_cycle_keeps_timings_and_setup_access': True})
+    print('PASS full power cycle and Setup access after unfinished trial', flush=True)
     return rows
 
 
 if __name__ == '__main__':
     rows = run()
     output = PORT / 'build/diagnostics/timing-recovery-checks.json'
+    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(rows, indent=2) + '\n')
     print(f'{len(rows)} timing recovery groups passed')

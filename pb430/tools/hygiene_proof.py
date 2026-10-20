@@ -12,7 +12,7 @@ def run():
     for folder in (port/'tools',root/'shared/tools',build):folder.mkdir(parents=True,exist_ok=True)
     shutil.copyfile(PORT/'tools/clean-build.ps1',port/'tools/clean-build.ps1')
     shutil.copyfile(PORT.parent/'shared/tools/build-cleanup.ps1',root/'shared/tools/build-cleanup.ps1')
-    for name in ('task-checkout','deps','diagnostics','final-display','obsolete-vm','test-results/complete/vm','test-results/complete/roms','test-results/failed/vm'):
+    for name in ('task-checkout','deps','diagnostics','final-display','final-cache','obsolete-vm','test-results/complete/vm','test-results/complete/roms','test-results/failed/vm'):
         target=build/name;target.mkdir(parents=True,exist_ok=True);(target/'input.bin').write_bytes(b'fixture')
     current=build/'baios-pb430.bin';current.write_bytes((PORT/'build/baios-pb430.bin').read_bytes())
     saved=hashlib.sha256(current.read_bytes()).hexdigest()
@@ -27,8 +27,9 @@ def run():
     assert (build/'obsolete-vm').exists() and (build/'test-results/complete/vm').exists()
     command()
     assert not (build/'obsolete-vm').exists() and not (build/'test-results/complete/vm').exists()
-    for name in ('task-checkout','deps','diagnostics','final-display','test-results/failed/vm','test-results/complete/cells.bin'):
+    for name in ('task-checkout','deps','diagnostics','final-display','final-cache','test-results/failed/vm','test-results/complete/cells.bin'):
         assert (build/name).exists(),name
+    assert (build/'final-cache/input.bin').read_bytes()==b'fixture'
     assert hashlib.sha256(current.read_bytes()).hexdigest()==saved
     # A consumed diagnosis marker reopens disposal; no source/current capture is removed.
     (build/'test-results/failed/.retain-diagnosis').unlink();command();assert not (build/'test-results/failed/vm').exists()

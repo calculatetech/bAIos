@@ -7,7 +7,7 @@ $build = Join-Path $portRoot 'build'
 Initialize-BuildCleanup $build $PSCmdlet
 if (-not (Test-Path -LiteralPath $build)) { return }
 $keep = @('task-checkout','deps','baios-pb430.bin','baios-pb430-system.bin','baios-pb430.lst',
-          'configuration.inc','rom-checksums.json','diagnostics','final-display','test-results','vga60','stock-vga','interleave','cache-burst')
+          'configuration.inc','rom-checksums.json','diagnostics','final-display','final-cache','test-results','vga60','stock-vga','interleave','cache-burst')
 foreach ($item in Get-ChildItem -LiteralPath $build -Force | Where-Object Name -NotIn $keep) {
     Remove-Generated $item.FullName
 }

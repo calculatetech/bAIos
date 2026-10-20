@@ -54,3 +54,9 @@ Board callbacks own A20 transitions, controller command capabilities, disk ports
 Keep original include paths as forwarding files when existing consumers need them. Before changing a shared body, inspect every port caller and run its relevant checks. Source relocation must preserve complete assembled Presario ROM bytes, including diagnostic builds.
 
 Shared manual conversion and verification live in `tools/convert-docs.ps1` and `tools/verify-docs.ps1` here. Root commands select generic references; port wrappers add their board documents. Shared `tools/build-cleanup.ps1` owns process, path, reparse and preview safety. Each port owns artifact retention; root `../tools/clean-build.ps1` dispatches maintained port commands.
+
+`src/pc/cache-test.inc` owns the short direct-SRAM workload: two complementary word-pattern write/read passes and retained unique address witnesses across the detected span. The board adapter supplies safe SRAM access, capacity, scratch ownership, reference controller transitions and result publication. PB430 is the first consumer; this does not establish a shared phase or reset driver for all ports.
+
+`src/pc/ram-test-state.inc` owns normal-startup marker classification. An unfinished test does not create a detected-memory-error notice. Explicit pending notices remain pending. Adapters retain their reset gates and RTC access; PB430 only clears its unfinished marker at that entry, while Presario retains its existing broader startup placement.
+
+`BOARD_POST_RAM_ROW` selects the live RAM counter and status row. Its default preserves existing layouts. PB430 selects row6, leaving a blank row after L2 and placing the bank list on row7.

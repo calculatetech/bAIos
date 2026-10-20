@@ -1,4 +1,4 @@
-; Saved L1 choice and effective L2 state use the established POST positions.
+; Report saved cache choices in POST order; activation completes later.
 post_ui_cache:
     pushad
     push ds
@@ -18,16 +18,13 @@ post_ui_cache:
     mov di,3*160+24*2
     mov bh,7
     call setup_text
-    cmp byte [fs:P_PHASE],5
-    jb .done
-    ui_text 14,3,u_l2,0x0B
-    mov di,14*160+24*2
+    ui_text 4,3,u_l2,0x0B
+    mov di,4*160+24*2
     call post_clear_value
     call post_cache_name
-    mov di,14*160+24*2
+    mov di,4*160+24*2
     mov bh,7
     call setup_text
-.done:
     pop es
     pop ds
     popad
@@ -36,8 +33,12 @@ post_summary_cache:
     call post_cache_name
     mov di,4*160+20*2
     mov bh,7
-    jmp setup_text
+    call setup_text
+    ret
 post_cache_name:
+    mov si,acc_cache_failed
+    cmp byte [fs:HW_CACHE_CHECKED],2
+    je .done
     mov si,u_disabled
     cmp byte [fs:HW_CACHE_PRESENT],0
     je .done
@@ -48,20 +49,22 @@ post_cache_name:
     dec bx
     shl bx,1
     mov si,[cs:acc_cache_off+bx]
-    cmp byte [fs:HW_CACHE_ENABLED],1
-    jne .done
+    cmp byte [fs:C_CHIP+2],0
+    je .done
     mov si,[cs:acc_cache_on+bx]
 .done:
     ret
+%macro pb430_cache_labels 0
 acc_cache_off dw acc128off,acc512off,acc256off
 acc_cache_on dw acc128on,acc512on,acc256on
 acc128off db '128 KB Off',0
 acc512off db '512 KB Off',0
 acc256off db '256 KB Off',0
-acc128on db 'Enabled (128 KB)',0
-acc512on db 'Enabled (512 KB)',0
-acc256on db 'Enabled (256 KB)',0
+acc128on db '128 KB',0
+acc512on db '512 KB',0
+acc256on db '256 KB',0
 acc_cache_unknown db 'Present / unknown',0
+%endmacro
 post_memory_banks:
     pushad
     mov bx,[fs:HW_BANK_CODES]

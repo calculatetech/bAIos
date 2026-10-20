@@ -367,15 +367,7 @@ chipset_memory_prepare:
     je .load
     mov al, 0x36
     call rtc_read
-    cmp al, 0x5A
-    je .pending
-    cmp al, 0xDA
-    je .pending
-    mov ax, 0x0036
-    jmp .retry_ready
-.pending:
-    mov ax, 0xDA36
-.retry_ready:
+    ram_test_startup_state
     call rtc_write
 .load:
     call chipset_settings_load

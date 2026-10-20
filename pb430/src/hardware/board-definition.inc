@@ -14,6 +14,7 @@
 %define BOARD_DEFAULT_BOOT_FIRST 3
 %define BOARD_DEFAULT_BOOT_REST 0x0201
 %define BOARD_FAST_BOOT_SETTING (C_CHIP+6)
+%define BOARD_POST_RAM_ROW 6
 %define BOARD_RAM_POLICY_BEFORE_TEST
 %define BOARD_RAM_TRIAL_BEGIN chipset_timing_trial_begin
 %define BOARD_RAM_TRIAL_FINISH chipset_timing_trial_finish
@@ -83,9 +84,7 @@
 %define CHIPSET_INDEX 0xF2
 %define CHIPSET_DATA 0xF3
 %define VGA_SEGMENT 0xC000
-%ifdef PB430_VGA60
-%define BOARD_ROM_COMPAT_SOURCE "hardware/vga-compat.inc"
-%endif
+%define BOARD_ROM_COMPAT_SOURCE "hardware/rom-extensions.inc"
 %define STATE_SEG CFG_PLATFORM_STATE_SEG
 %define HW_BANK_CODES 0x1000
 %define HW_ROUTING 0x1002
@@ -99,6 +98,7 @@
 %define HW_CACHE_LAST 0x100A ; Last alias witness, never a capacity qualifier.
 %define HW_CACHE_WARM 0x100B
 %define HW_CACHE_VALID 0x100C
+%define HW_CACHE_CHECKED 0x100D ; 0=not tested,1=passed,2=failed.
 %define CACHE_STATE_VALID 0xA8
 %define HW_VIDEO_SS 0x1010
 %define HW_VIDEO_SP 0x1012
@@ -106,6 +106,9 @@
 %define HW_CACHE_SP 0x1016
 %define HW_CACHE_FLAGS 0x1018
 %define HW_CACHE_ENTRY_FLAGS 0x101A
+%define HW_CACHE_FAIL_ADDRESS 0x101C
+%define HW_CACHE_FAIL_EXPECTED 0x1020
+%define HW_CACHE_FAIL_READ 0x1024
 ; OEM E115..E131: establish refresh and DMA cascade before using DRAM.
 %macro pb430_refresh_dma 0
     mov al,0

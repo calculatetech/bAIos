@@ -63,6 +63,13 @@ Keep added diagnostics outside the reference's transient cache window. Do not in
 
 Write all Setup help in plain, human-friendly language. Explain what the setting does and when to choose it. Include a documented recommended choice when one exists. Keep register names, bit numbers, raw addresses, firmware implementation details, and debugging notes in developer documentation. Fit the existing help panel and use the established help renderer.
 
+## Sorted choice lists
+
+<!-- cpk-rule-owner: sorted-choice-lists -->
+<!-- cpk-rule-guard: All user-visible choice lists must be sorted by their displayed values. -->
+
+All user-visible choice lists must be sorted by their displayed values. Use ascending numeric order for numbers and alphabetical order for text. Show each value once. Mark the existing value as Default instead of adding a duplicate entry. Map display positions to stored values so that sorting does not change saved settings or hardware behavior.
+
 ## Build hygiene
 
 Run Python with `-B`. Keep generated files under the system's `build/` directory or the ignored task-result directory.

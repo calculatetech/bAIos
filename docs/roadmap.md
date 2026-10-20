@@ -13,11 +13,11 @@ Status legend:
 
 ## Active
 
-No task is active.
+- **BAIOS-003: Share cache initialization and transition tests across controllers.** PB430 consumes a shared short SRAM workload and shared interrupted-RAM-test marker policy. Preserve each controller's complete reference setup and reset sequence. The common phase and transition driver and the Presario/M919 cache migrations remain to be implemented.
 
 ## Planned next
 
-- **BAIOS-003: Share cache initialization and transition tests across controllers.** Begin after the PB430 port is complete. Use one general initialization sequence and the same state-transition tests for every maintained controller, with controller-specific adapters that preserve each working reference's prerequisites, register operations, temporary modes and reset behavior. Cover changed and unchanged cache choices through cold boot, Setup Save, warm reset and recovery. Establish the design from the completed ports before moving hardware operations into shared owners.
+No task is planned next.
 
 ## Planned later
 

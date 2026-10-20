@@ -1,7 +1,7 @@
 """Independent complete Presario summary frame and retained-provider font oracle."""
 from pathlib import Path
 
-def check(cells,font,reference,ram=16384,positions=(0,),types=0,cache='Enabled (512 KB)',fpu=True,warnings=0):
+def check(cells,font,reference,ram=16384,positions=(0,),types=0,cache='512 KB',fpu=True,warnings=0):
     expected=bytearray(b' \x07'*2000)
     def text(row,column,value,attribute=7):
         value=value.encode('cp437')

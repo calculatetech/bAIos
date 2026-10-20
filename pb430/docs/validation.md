@@ -7,13 +7,16 @@ python -B pb430/tools/test-port.py --case all
 python -B pb430/tools/test-port.py --case serial
 python -B pb430/tools/test-port.py --case cache
 python -B pb430/tools/test-stock-options.py
+python -B pb430/tools/test-cache-check.py pb430/build/baios-pb430.bin
+python -B pb430/tools/test-post-layout.py pb430/build/baios-pb430.bin
+python -B pb430/tools/test-timing-recovery.py
 ```
 
 Run cases sequentially. Each invocation rebuilds the same current ROM and listing; concurrent invocations can interrupt another case's listing read.
 
 Diagnostic builds, two-drive floppy swaps, stale boot-buffer rejection and native RAM-key observers use the supported stock-VGA build to leave room for instrumentation. The normal VGA60 image has separate native boot, display and video-service checks. A passing instrumented stock-VGA case does not by itself prove the same combined path on physical VGA60 hardware.
 
-Each named case writes a JSON result under `pb430/build/test-results/`. A failure raises and writes `status: failed`; it is not counted as a pass. Native failed fixtures keep `.retain-diagnosis` until their consumer finishes. Test images, native VM files, disk/ISO copies, display cells, font bytes and PNGs belong to the port build directory. The single ignored task record contains exact commands and outcomes. The source plan records the accepted boundary inventory.
+Each named case writes a JSON result under `pb430/build/test-results/`. A failure raises and writes `status: failed`; it is not counted as a pass. Native failed fixtures keep `.retain-diagnosis` until their consumer finishes. Test images, native VM files, disk/ISO copies, display cells, font bytes and PNGs belong to the port build directory. The single ignored task record contains exact commands and outcomes. This document records the supported execution boundaries.
 
 ## Execution boundaries
 

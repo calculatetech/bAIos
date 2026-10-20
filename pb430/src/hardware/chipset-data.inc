@@ -42,7 +42,7 @@ chip_group_3:
     chipset_field acc_field_31,20,0,7,8,acc_values_15,acc_field_31_help1,acc_field_31_help2
     chipset_field acc_field_48,22,3,1,2,acc_values_1,acc_field_48_help1,acc_field_48_help2
 chip_group_4:
-    chipset_field acc_isa_clock,22,4,7,8,acc_isa_values,acc_isa_help1,acc_isa_help2
+    chipset_field acc_isa_clock,22,4,7,7,acc_isa_values,acc_isa_help1,acc_isa_help2
     chipset_field acc_field_35,17,4,1,2,acc_values_1,acc_field_35_help1,acc_field_35_help2
     chipset_field acc_field_36,17,3,1,2,acc_values_1,acc_field_36_help1,acc_field_36_help2
     chipset_field acc_field_37,19,6,1,2,acc_values_1,acc_field_37_help1,acc_field_37_help2
@@ -110,6 +110,10 @@ acc_values_2_0 db '15 us (Normal)',0
 acc_values_2_1 db '120 us (Slow)',0
 acc_values_2_2 db '30 us',0
 acc_values_2_3 db '60 us',0
+; Keep saved codes unchanged; only the choice list follows increasing periods.
+acc_refresh_choices dw acc_values_2_0,acc_values_2_2,acc_values_2_3,acc_values_2_1
+acc_refresh_choice_index db 0,3,1,2
+acc_refresh_choice_code db 0,2,3,1
 acc_values_3 dw acc_values_3_0,acc_values_3_1,acc_values_3_2
 acc_values_3_0 db 'Normal',0
 acc_values_3_1 db 'Fast',0
@@ -300,15 +304,26 @@ chip_page_prefix db 'Page ',0
 chip_page_slash db ' / ',0
 chip_page_keys db 'PgUp/PgDn Page   F1 Help   F4/F5 Theme   F9 Defaults   F10 Save',0
 
+%macro pb430_isa_choices 0
 acc_isa_clock db 'ISA Clock Divider',0
-acc_isa_help1 db 'Smaller is faster for ISA cards.',0
+acc_isa_help1 db 'Divides the motherboard bus clock.',0
 acc_isa_help2 db 'Clear CMOS if startup fails.',0
-acc_isa_values dw acc_isa_stock,acc_isa_5,acc_isa_4,acc_isa_3,acc_isa_25,acc_isa_2,acc_isa_15,acc_isa_1
-acc_isa_stock db 'Stock',0
-acc_isa_5 db '/5',0
-acc_isa_4 db '/4',0
-acc_isa_3 db '/3',0
-acc_isa_25 db '/2.5',0
-acc_isa_2 db '/2',0
-acc_isa_15 db '/1.5',0
-acc_isa_1 db '/1',0
+acc_isa_values dw acc_isa_default4,acc_isa_5,acc_isa_4,acc_isa_3,acc_isa_25,acc_isa_default4,acc_isa_15,acc_isa_1
+acc_isa_values_other dw acc_isa_default3,acc_isa_5,acc_isa_4,acc_isa_3,acc_isa_25,acc_isa_2,acc_isa_default3,acc_isa_1
+acc_isa_choices4 dw acc_isa_1,acc_isa_15,acc_isa_default4,acc_isa_25,acc_isa_3,acc_isa_4,acc_isa_5
+acc_isa_choice_index4 db 2,6,5,4,3,2,1,0
+acc_isa_choice_code4 db 7,6,0,4,3,2,1
+acc_isa_choices3 dw acc_isa_1,acc_isa_default3,acc_isa_2,acc_isa_25,acc_isa_3,acc_isa_4,acc_isa_5
+acc_isa_choice_index3 db 1,6,5,4,3,2,1,0
+acc_isa_choice_code3 db 7,0,5,4,3,2,1
+acc_isa_default4 db '/4 (Default)',0
+acc_isa_default3 db '/3 (Default)',0
+; Labels include the fixed divide by two; saved selectors remain unchanged.
+acc_isa_5 db '/10',0
+acc_isa_4 db '/8',0
+acc_isa_3 db '/6',0
+acc_isa_25 db '/5',0
+acc_isa_2 db '/4',0
+acc_isa_15 db '/3',0
+acc_isa_1 db '/2',0
+%endmacro

@@ -17,6 +17,7 @@
 %%done:
 %endmacro
 
+; Like Presario, an interrupted POST is not a detected RAM failure.
 ; Service-resume entries bypass this normal-reset owner.
 %macro pb430_timing_recover 0
     mov al,0xB6
@@ -25,8 +26,8 @@
     in al,0x71
     cmp al,0xAB
     jne %%done
-    pb430_trial_write 0x69,0xD2
-    pb430_trial_write 0x36,0x5A
+    ram_test_startup_state
+    pb430_trial_write 0x36,ah
 %%done:
 %endmacro
 
