@@ -132,6 +132,9 @@
 %define ERR_TIMEOUT         0x80
 
 ; Wide counts are optional until a port adopts wide RAM publication.
+%ifndef BOARD_POST_RAM_ROW
+%define BOARD_POST_RAM_ROW 5
+%endif
 %ifdef BOARD_WIDE_MEMORY_COUNTS
 %define MEMORY_COUNT_DIGITS 6
 %else

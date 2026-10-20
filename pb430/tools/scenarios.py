@@ -349,7 +349,7 @@ def slow_refresh(image,seed):
         saving=action!='discard';m.continue_reset=saving
         m.stop_address=0xF0000+m.listing.symbol('.wait','boot_retry')
         keys=[0x50]*4+[28]+[0x50]*3+[28]
-        keys += [0x43,28] if action=='defaults-save' else [0x4B if initial else 0x4D]
+        keys += [0x43,28] if action=='defaults-save' else [0x4D if initial else 0x4B]
         tail=[0x44,28] if saving else [1,1,1,28]
         wanted=0 if action=='defaults-save' else 1-initial
         seen=[];normal=[];late=[]
@@ -728,7 +728,7 @@ def cache(image,seed):
             m.call('post_cache_name');name=bytes(u.mem_read(0xF0000+u.reg_read(x.UC_X86_REG_SI),40)).split(b'\0')[0].decode()
             if 0<kib<128:assert name=='Present / unknown'
             elif not kib:assert name=='Disabled'
-            else:assert str(kib) in name and ('Enabled' in name)==bool(effective)
+            else:assert name==(f'{kib} KB' if enabled else f'{kib} KB Off')
             m.cpu.mem_write(m.base+0x51,b'\x05');m.call('post_debug_summary')
             assert m.text(4,20,len(name))==name,(kib,enabled,name,m.text(4,20,len(name)))
             rows.append({'sram_kib_input':kib,'present':present,'code':code,'qualified':qualified,'requested':enabled,'effective':bool(effective),'display':name,'ram_preserved':True,'last_flush_read':reads[-1] if reads else None})
@@ -1021,6 +1021,7 @@ def cache_composed(image,seed):
         def read(cpu,access,address,size,value,unused):
             if probing():data=bytes(sram[(address-0x20000+i)%len(sram)] for i in range(size)) if sram else bytes([255])*size
             else:
+                if not 0x20000<=address<0x80000:return
                 data=bytes(ram[address-0x20000:address-0x20000+size])
                 if m.registers[4]&1 and m.registers[0x1A]&8 and size==4 and cpu.reg_read(x.UC_X86_REG_CS)*16+cpu.reg_read(x.UC_X86_REG_IP)==fill_pc:reads.append((address,size))
             cpu.mem_write(address,data)
@@ -1029,9 +1030,9 @@ def cache_composed(image,seed):
             if probing():
                 if sram:
                     for i,b in enumerate(data):sram[(address-0x20000+i)%len(sram)]=b
-            else:ram[address-0x20000:address-0x20000+size]=data
-        u.hook_add(UC_HOOK_MEM_READ,read,begin=0x20000,end=0x7FFFF)
-        u.hook_add(UC_HOOK_MEM_WRITE,write,begin=0x20000,end=0x7FFFF)
+            elif 0x20000<=address<0x80000:ram[address-0x20000:address-0x20000+size]=data
+        u.hook_add(UC_HOOK_MEM_READ,read,begin=0x10000,end=0x90003)
+        u.hook_add(UC_HOOK_MEM_WRITE,write,begin=0x10000,end=0x90003)
         entry=0xF0000+m.listing.symbol('cache_initial_policy')
         gate=0xF0000+m.listing.symbol('setup_post_gate');late=0xF0000+m.listing.symbol('chipset_late_cache')
         milestones=[];late_state=[];late_return=[];late_writes=[]
@@ -1072,7 +1073,7 @@ def cache_composed(image,seed):
             assert code==0 and 0x16 in m.posts
             assert m.text(4,20,17)=='Present / unknown'
             assert u.mem_read(m.base+0x100A,1)==bytes((int(kib==64),))
-        elif kib:assert m.text(4,20,20).strip()==(f'Enabled ({kib} KB)' if effective else f'{kib} KB Off')
+        elif kib:assert m.text(4,20,20).strip()==(f'{kib} KB' if requested else f'{kib} KB Off')
         else:assert m.text(4,20,8)=='Disabled'
         assert 'No boot device available' in m.console and 'Press any key to retry' in m.console
         assert m.posts[-1]==0xE4 and m.registers[0x1A]&0x18==(0 if effective else 8)

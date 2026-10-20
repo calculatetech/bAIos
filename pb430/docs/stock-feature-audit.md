@@ -47,7 +47,7 @@ This is a source-backed feature inventory. It does not prove exhaustive equivale
 
 ## ISA clock divider
 
-**Chipset > Bus and ROM Timing > ISA Clock Divider** offers Stock, /5, /4, /3, /2.5, /2, /1.5 and /1. Stock is the default. The existing ISA zero-wait and extra-wait controls change transaction waits, not bus frequency.
+**Chipset > Bus and ROM Timing > ISA Clock Divider** offers /2, /3, /4, /5, /6, /8 and /10 in numeric order, with one entry per divisor. The resolved jumper default is marked on /4 or /3. The labels include the fixed final divide by two. The existing ISA zero-wait and extra-wait controls change transaction waits, not bus frequency.
 
 Evidence:
 
@@ -59,7 +59,7 @@ Evidence:
 
 For a 33.333 MHz CLKSRC, the related-chip model gives `ISA MHz = CLKSRC MHz / selector divisor / 2`. These frequencies are conditional, not measurements. Do not use the multiplied CPU-core frequency.
 
-| Selector divisor | Low field | Whole byte with current upper bits A0 | Conditional ISA MHz |
+| Raw selector divisor | Low field | Whole byte with current upper bits A0 | Conditional ISA MHz |
 | --- | --- | --- | --- |
 | /5 | 10 | B0 | 3.33 |
 | /4 | 15 | B5 | 4.17 |
@@ -71,9 +71,9 @@ For a 33.333 MHz CLKSRC, the related-chip model gives `ISA MHz = CLKSRC MHz / se
 
 B3 is the first faster candidate. B4 is a much larger increase. A masked write is `(old & E0) | selector`; copying the ACC386 whole byte would also alter the upper controls.
 
-The saved selector occupies chipset-record byte22 bits6:4. Existing records select Stock. Normal and Fast preserve it. The late cache continuation applies only register06[4:0], after the complete stock cache sequence and memory policy, before option-ROM discovery and boot. Earlier device detection uses the stock clock. Ordinary reset and timing restoration return the low field to the jumper selection before stock cache owners; service05/0A resumes leave the running clock alone. No writes enter the transient cache window.
+The saved selector occupies chipset-record byte22 bits6:4. Selector zero retains the jumper default. Existing explicit selectors keep their hardware meanings. The popup maps the default and an equal explicit selector to one visible entry; confirming an unchanged entry preserves the saved encoding. Normal and Fast preserve it. The late cache continuation applies only register06[4:0], after the complete stock cache sequence and memory policy, before option-ROM discovery and boot. Earlier device detection uses the stock clock. Ordinary reset and timing restoration return the low field to the jumper selection before stock cache owners; service05/0A resumes leave the running clock alone. No writes enter the transient cache window.
 
-The VGA is local bus. The user accepts the physical clear-CMOS jumper as recovery from an ISA clock lockup. No new automatic ISA recovery mechanism is added. Existing DRAM timing recovery remains unchanged. Use /1.5 for the first faster comparison on the tested 33 MHz configuration.
+The VGA is local bus. The user accepts the physical clear-CMOS jumper as recovery from an ISA clock lockup. No new automatic ISA recovery mechanism is added. Only a detected RAM comparison error starts DRAM recovery; an interrupted POST preserves saved settings. The final /3 menu value is the first faster comparison on the tested 33 MHz configuration.
 
 Software checks exercise menu Save, Defaults, Discard, cold/warm reset and successful disk/serial transfers under the selected setting. They do not measure ISA frequency or electrical card tolerance. Physical qualification still includes clock measurement, floppy DMA, storage transfers with data comparison and installed ISA cards.
 

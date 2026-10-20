@@ -73,16 +73,16 @@ core_ram_test_tick:
     mov es,ax
     cmp byte [fs:C_CHIP+6],1
     jne .full_progress
-    cmp word [es:5*160+26*2],0x0720
+    cmp word [es:BOARD_POST_RAM_ROW*160+26*2],0x0720
     je .done                    ; Fast Boot stops before a four-digit count.
     jmp .progress_seen
 .full_progress:
-    cmp word [es:5*160+27*2],0x0720
+    cmp word [es:BOARD_POST_RAM_ROW*160+27*2],0x0720
     je .done                    ; Require an actual four-digit progress count.
 .progress_seen:
-    cmp byte [es:5*160+24*2],'1'
+    cmp byte [es:BOARD_POST_RAM_ROW*160+24*2],'1'
     jb .done
-    cmp byte [es:5*160+24*2],'9'
+    cmp byte [es:BOARD_POST_RAM_ROW*160+24*2],'9'
     ja .done
     in al,0x64
     test al,3
@@ -97,9 +97,9 @@ core_ram_test_tick:
     mov es,ax
     cmp byte [0xB35],1
     jne .paused_checked
-    mov eax,[es:5*160+24*2]
+    mov eax,[es:BOARD_POST_RAM_ROW*160+24*2]
     mov [0xB36],eax
-    mov eax,[es:5*160+26*2]
+    mov eax,[es:BOARD_POST_RAM_ROW*160+26*2]
     mov [0xB3A],eax
 .paused_checked:
     cmp byte [0xB35],16
@@ -110,10 +110,10 @@ core_ram_test_tick:
     jne .fail
     cmp byte [0x400+KB_POST_STATE],3
     jne .fail
-    mov eax,[es:5*160+24*2]
+    mov eax,[es:BOARD_POST_RAM_ROW*160+24*2]
     cmp eax,[0xB36]
     jne .fail
-    mov eax,[es:5*160+26*2]
+    mov eax,[es:BOARD_POST_RAM_ROW*160+26*2]
     cmp eax,[0xB3A]
     jne .fail
     movzx bx,byte [0xB35]

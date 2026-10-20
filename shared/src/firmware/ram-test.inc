@@ -195,7 +195,7 @@ chipset_visible_ram_test:
     shr eax, 10
     cmp byte [edx+P_PHASE], 0
     je .legacy_row
-    mov edi, 0xB8000 + 5*160 + 24*2
+    mov edi, 0xB8000 + BOARD_POST_RAM_ROW*160 + 24*2
     push eax
     mov cx, MEMORY_COUNT_DIGITS
     mov ax, 0x0720
@@ -204,7 +204,7 @@ chipset_visible_ram_test:
     add edi, 2
     loop .clear_count
     pop eax
-    mov edi, 0xB8000 + 5*160 + 24*2
+    mov edi, 0xB8000 + BOARD_POST_RAM_ROW*160 + 24*2
     xor cx, cx
     mov ebx, 10
 .count_digit:

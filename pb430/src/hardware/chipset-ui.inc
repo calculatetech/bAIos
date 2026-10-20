@@ -8,8 +8,84 @@ chipset_ui_parameters:
     mov [fs:U_CHIP_VALUE],al
     mov cx,[cs:si+5]
     mov si,[cs:si+7]
+    cmp si,acc_values_2
+    jne .ready
+    movzx bx,al
+    mov al,[cs:acc_refresh_choice_index+bx]
+    mov [fs:U_CHIP_VALUE],al
+    mov si,acc_refresh_choices
+.ready:
+    call chipset_ui_isa_values
+    call chipset_ui_isa_parameters
     mov bx,U_CHIP_VALUE
     ret
+
+; Keep these menu helpers beyond the fixed VGA compatibility entry.
+%macro pb430_isa_ui 0
+chipset_ui_isa_parameters:
+    cmp si,acc_isa_values
+    je .isa4
+    cmp si,acc_isa_values_other
+    jne .done
+    movzx bx,al
+    mov al,[cs:acc_isa_choice_index3+bx]
+    mov si,acc_isa_choices3
+    jmp .choice
+.isa4:
+    movzx bx,al
+    mov al,[cs:acc_isa_choice_index4+bx]
+    mov si,acc_isa_choices4
+.choice:
+    mov [fs:U_CHIP_VALUE],al
+.done:
+    ret
+
+chipset_ui_isa_values:
+    cmp si,acc_isa_values
+    jne .done
+    push ax
+    in al,0x78
+    and al,7
+    cmp al,5
+    je .restored
+    mov si,acc_isa_values_other
+.restored:
+    pop ax
+.done:
+    ret
+
+chipset_ui_isa_commit:
+    cmp bx,22
+    jne .done
+    cmp cl,4
+    jne .done
+    movzx di,al
+    mov si,acc_isa_values
+    call chipset_ui_isa_values
+    cmp si,acc_isa_values
+    jne .isa3
+    mov al,[cs:acc_isa_choice_code4+di]
+    test al,al
+    jnz .done
+    shr dl,4
+    and dl,7
+    cmp dl,5
+    jne .done
+    mov al,dl ; Keep a saved explicit divisor when its shared choice is unchanged.
+    ret
+.isa3:
+    mov al,[cs:acc_isa_choice_code3+di]
+    test al,al
+    jnz .done
+    shr dl,4
+    and dl,7
+    cmp dl,6
+    jne .done
+    mov al,dl
+.done:
+    ret
+%endmacro
+
 chipset_ui_editable:
     push ax
     push bx
@@ -81,11 +157,20 @@ chipset_ui_commit:
     call chipset_ui_descriptor
     movzx bx,byte [cs:si+2]
     mov cl,[cs:si+3]
+    mov dl,[fs:U_CHIP+bx]
     mov al,[cs:si+4]
     shl al,cl
     not al
     and [fs:U_CHIP+bx],al
     mov al,[fs:U_CHIP_VALUE]
+    cmp bx,7
+    jne .isa
+    movzx di,al
+    mov al,[cs:acc_refresh_choice_code+di]
+    jmp .packed
+.isa:
+    call chipset_ui_isa_commit
+.packed:
     shl al,cl
     or [fs:U_CHIP+bx],al
     cmp bx,14
@@ -187,6 +272,7 @@ chipset_ui_option_text:
     pop bx
     pop ax
 .ordinary:
+    call chipset_ui_isa_values
     mov bp,ax
     shl bp,1
     mov si,[cs:si+bp]

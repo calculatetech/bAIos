@@ -24,6 +24,7 @@ bits 16
 %endif
 
 %include "pc/state.inc"
+%include "pc/ram-test-state.inc"
 
 %macro set_vector 2
     mov word [es:(%1) * 4], %2

@@ -17,7 +17,7 @@ The Presario supplies the POST interaction and recovery pattern. Target hardware
 4. Complete mandatory cold memory initialization even when Fast Boot or Esc skips optional testing. A non-destructive test cannot replace initialization required by the reference cache fill.
 5. Arm a persistent trial marker before applying experimental timings. Clear it only after POST completes the later cache, summary and clock stages. Passing the RAM loop alone is not completion.
 6. On a detected RAM error, restore the tested block and stock timings before the existing safe-default restart. Permit one recovery attempt. A second failure must stop rather than loop forever.
-7. On a hard reset with an unfinished trial, restore safe timing before memory use and enter the existing recovery path with L2 disabled. A verified Setup save permits another trial. Discard or a rejected save must not clear the retry guard.
+7. On a normal reset with an unfinished trial, restore reference timings before memory use, clear the trial marker and preserve saved settings. Loss of power during POST is not a detected RAM failure. Only the shared comparison-error path starts safe-default recovery. A verified Setup save permits another failed-test trial; Discard or a rejected save must not clear its retry guard.
 8. Treat deliberate Ctrl+Alt+Del separately: restore the hardware and clear the pending trial before restarting with the saved choices. Service-resume entries must retain their distinct reference contract.
 9. Restore all reference prerequisites before the late stock cache sequence, then reapply selected runtime timings. Do not splice experimental writes into temporary cache modes.
 
@@ -293,3 +293,13 @@ A cold start with L1 disabled selects the reference safe tables and omits the si
 PB430 now compares the active L1/L2 choices with the effective saved record at normal reset. A change selects full cold initialization; unchanged choices retain warm reset. The comparison preserves the complete active record and validity byte so stock teardown still sees the old choices. It uses the existing loader, including invalid-record defaults and recovery behavior. No new persistent reset flag is needed.
 
 Compare at reset, not only after successful Save. Chipset data can be validly published before a later base-record verification fails. That failure must leave Setup available, but a later Ctrl+Alt+Del still needs to initialize the saved cache choices. Exercise the actual Setup and reset continuations on the same machine, including reverse changes, unchanged saves, discard, cancellation and absent or unqualified SRAM. Software checks do not qualify the new image on physical hardware.
+
+## Short cache checks and POST diagnosis
+
+Presario provides the useful testing budget. PB430 uses two complementary word-pattern write/read passes across the detected SRAM, followed by unique address witnesses at power-of-two offsets in each segment. Bulk string operations made the 512 KiB check fast enough on the bench. Retain the complete reference discovery, activation and warm-reset sequences around this shared primitive. The physically accepted line width and pre-policy placement matter; a standalone passing SRAM model does not establish the board's controller state. Run each supported capacity and both data and address failures through complete POST. Check the displayed result, final cache state and boot continuation.
+
+The early DWORD tests read an incorrect second half of a wider line. Later address diagnostics also showed a half-word rotation. These results justified the reference-compatible word access path; they did not prove bad SRAM or establish an electrical cause. Preserve reference prerequisites, mask readback-only control bits before restoring registers, and keep all diagnostics outside temporary cache modes.
+
+An apparent POST-code regression remained with the added cache test bypassed and with continuous DOS port-80 writes. The user then found poor card contact and confirmed that codes worked. No firmware cause was established. A physically confirmed comparison image is stronger evidence than a remembered change boundary, and a software OUT trace does not prove a card received a bus cycle.
+
+Visible numeric choices need both numeric ordering and unique values. Mark Default on the existing value. Keep explicit mappings between display positions and stored encodings so old settings survive opening a menu, Save and restart. Verify rendered choices and saved aliases, not only the descriptor tables.

@@ -202,7 +202,12 @@ def run(image):
                 m.cpu.mem_write(m.base+0x278,bytes((group,choice)));m.cpu.mem_write(m.base+0xF7,bytes((field,)))
                 m.call('chipset_ui_commit')
                 got=bytes(m.cpu.mem_read(m.base+0x260,24))
-                assert (got[offset]>>shift)&mask==choice,(group,field,choice,got)
+                expected=choice
+                if offset==7:
+                    expected=(0,2,3,1)[choice]
+                elif offset==22 and shift==4:
+                    expected=(7,6,0,4,3,2,1)[choice]
+                assert (got[offset]>>shift)&mask==expected,(group,field,choice,got)
                 m.cpu.reg_write(x.UC_X86_REG_SI,0x260);m.call('chipset_valid')
                 assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS)&1,(group,field,choice)
                 choices+=1

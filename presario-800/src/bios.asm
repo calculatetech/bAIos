@@ -22,6 +22,7 @@ org 0
 %endif
 
 %include "../../shared/src/pc/state.inc"
+%include "../../shared/src/pc/ram-test-state.inc"
 
 %macro set_vector 2
     mov word [es:(%1) * 4], %2

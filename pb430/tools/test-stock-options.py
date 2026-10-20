@@ -2,6 +2,7 @@
 import importlib
 import json
 import struct
+import sys
 from pathlib import Path
 from unicorn import x86_const as x, UC_HOOK_CODE
 
@@ -12,7 +13,7 @@ from scenarios import ports_record
 from shared.tools.peripheral_proof import UART
 
 PORT = Path(__file__).resolve().parents[1]
-IMAGE = PORT / 'build/baios-pb430.bin'
+IMAGE = Path(sys.argv[1]) if len(sys.argv) > 1 else PORT / 'build/baios-pb430.bin'
 SELECTORS = (0x17, 0x10, 0x15, 0x11, 0x12, 0x17, 0x13, 0x14)
 PAIRS = ((0x338, 0x238), (0x3E8, 0x2E8), (0x2E8, 0x3E8), (0x220, 0x228))
 SAVE = [0x44, 28]
@@ -21,9 +22,11 @@ ISA_MENU = [0x50]*4 + [28] + [0x50]*4 + [28]
 PAIR_MENU = [0x50]*3 + [28, 0x50, 0x50]
 
 
-def machine(selector=0, pair=1, flags=0):
+def machine(selector=0, pair=1, flags=0, refresh=None):
     chip = bytearray(timing.DEFAULT)
     chip[6] = 1
+    if refresh is not None:
+        chip[7], chip[14] = refresh, 2
     chip[22] = selector << 4 | flags
     m = timing.model(IMAGE, chip)
     ports_record(m.cmos, (3, 4, pair, 2, 0, 1, 1, 1))
@@ -46,9 +49,16 @@ def selected(m, selector):
     assert m.posts[-1] == 0xE4
 
 
+def isa_change(selector, current=0):
+    order = (7, 6, 0, 4, 3, 2, 1)
+    selector = 0 if selector == 5 else selector
+    current = 0 if current == 5 else current
+    return [0x4D] * ((order.index(selector) - order.index(current)) % len(order))
+
+
 def isa_choices():
     rows = []
-    for selector in range(8):
+    for selector in (0, 1, 2, 3, 4, 6, 7):
         print(f'CHECK ISA selector {selector}', flush=True)
         m = machine()
         visits = []
@@ -58,7 +68,7 @@ def isa_choices():
             if mm.starting and address in points:
                 visits.append(points[address])
         m.code_observer = trace
-        m.open(ISA_MENU + [0x4D]*selector + SAVE)
+        m.open(ISA_MENU + isa_change(selector) + SAVE)
         selected(m, selector)
         assert visits == list(names), visits
         assert m.cmos[0x34] >> 4 == selector
@@ -68,6 +78,105 @@ def isa_choices():
         selected(m, selector)
         rows.append({'isa_selector': selector, 'save_and_warm_reset': True})
     print('PASS all ISA choices through menu, Save and warm reset', flush=True)
+    return rows
+
+
+def isa_labels():
+    rows = []
+    for jumper, default, register in ((5, '/4 (Default)', 0xB7), (4, '/3 (Default)', 0x33)):
+        expected = ['/2', '/3', '/4', '/5', '/6', '/8', '/10']
+        order = (7, 6, 0, 4, 3, 2, 1) if jumper == 5 else (7, 0, 5, 4, 3, 2, 1)
+        expected[2 if jumper == 5 else 1] = default
+        for selector in range(8):
+            m = machine(selector, flags=0x0F)
+            m.jumper = jumper
+            m.registers[6] = register
+            m.cpu.mem_write(m.base+0x260, bytes(m.cpu.mem_read(m.base+0x60, 24)))
+            m.cpu.mem_write(m.base+0x278, b'\x05')
+            m.cpu.mem_write(m.base+0xF7, b'\x00')
+            m.call('chipset_ui_parameters')
+            alias = 5 if jumper == 5 else 6
+            choice = order.index(0 if selector == alias else selector)
+            assert m.cpu.mem_read(m.base+0x279, 1) == bytes((choice,))
+            assert m.cpu.reg_read(x.UC_X86_REG_CX) == 7
+            table = m.cpu.reg_read(x.UC_X86_REG_SI)
+            labels = []
+            for index in range(7):
+                address = int.from_bytes(m.cpu.mem_read(0xF0000+table+index*2, 2), 'little')
+                labels.append(bytes(m.cpu.mem_read(0xF0000+address, 20)).split(b'\0')[0].decode())
+            assert labels == expected, (jumper, labels)
+            divisors = [int(label[1:].split()[0]) for label in labels]
+            assert divisors == sorted(set(divisors)) and len(divisors) == 7
+            m.call('chipset_ui_commit')
+            assert m.cpu.mem_read(m.base+0x276, 1)[0] == selector << 4 | 0x0F
+            m.call('chipset_isa_policy')
+            assert m.registers[6] == (register if not selector else register & 0xE0 | SELECTORS[selector])
+            m.cpu.reg_write(x.UC_X86_REG_AX, 0x4D00)
+            m.call('chipset_ui_change')
+            assert m.cpu.mem_read(m.base+0x276, 1)[0] == order[(choice+1)%7] << 4 | 0x0F
+        rows.append({'jumper': jumper, 'labels': expected, 'selectors_unchanged': True})
+    print('PASS ISA final divisors, resolved defaults and unchanged selectors', flush=True)
+    return rows
+
+
+def isa_menus():
+    rows = []
+    for jumper, alias, register in ((5, 5, 0xB7), (4, 6, 0x33)):
+        expected = ['/2', '/3', '/4', '/5', '/6', '/8', '/10']
+        expected[2 if jumper == 5 else 1] += ' (Default)'
+        m = machine(alias)
+        m.jumper = jumper
+        m.registers[6] = register
+        captured = []
+        tail = [28] + SAVE
+        def capture(mm):
+            if mm.script == tail and not mm.pending and not captured:
+                screen = bytes(mm.cpu.mem_read(0xB8000, 4000))[::2].decode('cp437')
+                labels = [screen[row*80+26:row*80+46].strip() for row in range(25)]
+                labels = [label for label in labels if label in expected]
+                assert labels == expected, labels
+                captured.extend(labels)
+        m.observer = capture
+        m.open(ISA_MENU + [28] + tail)
+        assert captured and m.cmos[0x34] >> 4 == alias
+        assert m.registers[6] == register
+        m.irq_scans([0x1D, 0x38, 0xE0, 0x53])
+        assert m.reset_pending
+        m.complete_reset()
+        assert m.cmos[0x34] >> 4 == alias and m.registers[6] == register
+        rows.append({'jumper': jumper, 'popup': captured, 'saved_alias': alias,
+                     'save_and_warm_reset': True})
+    print('PASS unique rendered ISA menus and both saved aliases through Save/reset', flush=True)
+    return rows
+
+
+def refresh_menus():
+    rows = []
+    expected = ['15 us (Normal)', '30 us', '60 us', '120 us (Slow)']
+    for saved in range(4):
+        print(f'CHECK refresh code {saved}', flush=True)
+        m = machine(refresh=saved)
+        captured = []
+        tail = [28] + SAVE
+        def capture(mm):
+            if mm.script == tail and not mm.pending and not captured:
+                screen = bytes(mm.cpu.mem_read(0xB8000, 4000))[::2].decode('cp437')
+                labels = [screen[row*80+26:row*80+46].strip() for row in range(25)]
+                labels = [label for label in labels if label in expected]
+                assert labels == expected, labels
+                captured.extend(labels)
+        m.observer = capture
+        menu = [0x50]*4 + [28] + [0x50]*3 + [28]
+        m.open(menu + [28] + tail)
+        assert captured and m.cmos[0x72] == saved, (saved, captured, m.cmos[0x72])
+        assert m.cpu.mem_read(m.base+0x67, 1) == bytes((saved,))
+        assert m.registers[5] & 3 == (0, 3, 1, 2)[saved]
+        m.irq_scans([0x1D, 0x38, 0xE0, 0x53])
+        assert m.reset_pending
+        m.complete_reset()
+        assert m.cmos[0x72] == saved and m.registers[5] & 3 == (0, 3, 1, 2)[saved]
+        rows.append({'refresh_code': saved, 'popup': captured, 'unchanged_save_and_cad': True})
+    print('PASS sorted refresh popups and all saved codes through Save/reset', flush=True)
     return rows
 
 
@@ -82,7 +191,7 @@ def persistence():
         registers = bytes(m.registers)
         resets = m.reset_count
         seen = []
-        keys = ISA_MENU + [0x4D]
+        keys = ISA_MENU + isa_change(7, 6)
         if action.startswith('defaults'):
             keys += [0x43, 28]
         tail = SAVE if action == 'defaults-save' else DISCARD_CHIP
@@ -194,7 +303,7 @@ def cache_and_reset():
     for address in addresses:
         m.cpu.hook_add(UC_HOOK_CODE,clock_order,begin=address,end=address)
     cache.prepare_ui(m)
-    m.open(ISA_MENU + [0x4D]*6 + SAVE)
+    m.open(ISA_MENU + isa_change(6) + SAVE)
     selected(m, 6)
     for script, cold in ((cache.edit(1)+SAVE, True), (SAVE.copy(), False), (None, False)):
         rows.append(cache.transition(m, script, cold, 1, 1))
@@ -263,7 +372,7 @@ def disk_at_selected_clock():
     m = Disk()
     m.continue_reset = True
     m.stop_address = 0x7C00
-    m.open(ISA_MENU + [0x4D]*6 + SAVE)
+    m.open(ISA_MENU + isa_change(6) + SAVE)
     assert m.cpu.reg_read(x.UC_X86_REG_CS) == 0 and m.cpu.reg_read(x.UC_X86_REG_IP) == 0x7C00
     assert bytes(m.cpu.mem_read(0x7C00,512)) == m.sector
     ax, flags = m.public(0x13,0x0201,dx=0x80,cx=1,bx=0x7E00)
@@ -280,7 +389,7 @@ def screens():
             (0,1,ISA_MENU,DISCARD_CHIP,'ISA Clock Divider'),
             (0,1,ISA_MENU+[0x3B],[1]+DISCARD_CHIP,'Clear CMOS if startup fails.'),
             (0,1,PAIR_MENU,[1,1,28],'COM3 / IRQ4'),
-            (6,1,ISA_MENU,DISCARD_CHIP,'/1.5'),
+            (6,1,ISA_MENU,DISCARD_CHIP,'/3'),
             (0,2,PAIR_MENU,[1,1,28],'2E8h / 3E8h')):
         m = machine(selector,pair)
         captured = []
@@ -301,7 +410,7 @@ def screens():
 
 
 def run():
-    rows = isa_choices() + persistence() + serial_pairs() + cache_and_reset() + disk_at_selected_clock() + screens()
+    rows = isa_labels() + isa_menus() + refresh_menus() + isa_choices() + persistence() + serial_pairs() + cache_and_reset() + disk_at_selected_clock() + screens()
     output = PORT / 'build/test-results/stock-options.json'
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(rows, indent=2)+'\n')

@@ -46,7 +46,7 @@ def nvram():
     return raw
 
 
-def _native(name='native', ram=16384, defines=(), positions=(0,), expected=0x60, types=0, cmos=None, dirty_vga=False, dirty_option=False, floppy_media=False, swap=False, cdroms=None, boot_source="native-boot.asm", disk_services=False, cd_media=0, ram_flags=4, runtime_input=False, cpu_family="i486dx", fpu=True, external_video=False, shadow_policy=None, cache_expected="Enabled (512 KB)", option_source=None, option_blob=None, rom_counts=None, warnings=0, mouse="none", missing_floppy=False,saved_ads=None,preserve_boot_order=False,bootable_floppy=False,expected_boot_unit=0x80,vga60=True,saved_refresh=None):
+def _native(name='native', ram=16384, defines=(), positions=(0,), expected=0x60, types=0, cmos=None, dirty_vga=False, dirty_option=False, floppy_media=False, swap=False, cdroms=None, boot_source="native-boot.asm", disk_services=False, cd_media=0, ram_flags=4, runtime_input=False, cpu_family="i486dx", fpu=True, external_video=False, shadow_policy=None, cache_expected="512 KB", option_source=None, option_blob=None, rom_counts=None, warnings=0, mouse="none", missing_floppy=False,saved_ads=None,preserve_boot_order=False,bootable_floppy=False,expected_boot_unit=0x80,vga60=True,saved_refresh=None):
     result = build('build/test-results/'+name+'/image', defines,vga60=vga60)
     folder = PORT/'build/test-results'/name
     vm,roms = folder/'vm',folder/'roms'
@@ -288,7 +288,8 @@ def boot_checks(image):
         rows.append(native('boot-'+source[:-4],option_source=source,cmos=repair_checksum(n)))
     n=nvram();n[0x3C]=1;n[0x3E]=2;n[0x3B]=(n[0x3B]&~0x18)|8
     rows.append(native('boot-failed-floppy-then-disk',types=0x40,missing_floppy=True,cmos=repair_checksum(n),warnings=2))
-    rows.append(native('boot-fresh-key-retry',positions=(),defines=('PB430_BOOT_RETRY_PROOF','EMULATOR_BOOT_RETRY_EXIT=0x71'),expected=0x71))
+    # Boot-retry instrumentation needs the space below VGA60's fixed F065 entry.
+    rows.append(native('boot-fresh-key-retry',positions=(),defines=('PB430_BOOT_RETRY_PROOF','EMULATOR_BOOT_RETRY_EXIT=0x71'),expected=0x71,vga60=False))
     n=nvram();n[0x3B]=9;n[0x3C]=1;n[0x3E]=0;n[0x3F]=0
     rows.append(native('boot-stale-signed-buffer',positions=(),cmos=repair_checksum(n),types=0x40,missing_floppy=True,defines=('EMULATOR_TEST','EMULATOR_BOOT_STALE','PB430_BOOT_RETRY_PROOF','EMULATOR_BOOT_RETRY_EXIT=0x71'),expected=0x71,vga60=False))
     rows.append(scenarios.bootstrap_path(image,nvram,inactive=True))
@@ -299,6 +300,7 @@ def ram_checks(image):
     from shared.tools.ram_proof import run,constants
     config=json.loads((PORT/'port.json').read_text());state=constants(REPOSITORY/'shared/src/pc/state.inc')
     state.update(constants(REPOSITORY/'shared/src/setup/layout.inc'))
+    state['BOARD_POST_RAM_ROW']=constants(PORT/'src/hardware/board-definition.inc')['BOARD_POST_RAM_ROW']
     rows=[run(image,config['rom'],state,ebda=0x9E00,kib=2049,decode=True)]
     for key in ('esc','delete'):rows.append(run(image,config['rom'],state,ebda=0x9E00,kib=2049,input_case=key,coverage=False))
     rows.append(run(image,config['rom'],state,ebda=0x9E00,kib=2049,fault=(0x10000,'first'),defaults=True))
@@ -343,7 +345,7 @@ def run_case(case,image):
     if case=='parallel':return scenarios.parallel(image,nvram)
     if case=='floppy':return floppy_checks()
     if case=='disk-services':return [native('disk-master',boot_source='native-disk.asm',expected=0x65,disk_services=True),native('disk-slave',positions=(1,),boot_source='native-disk.asm',expected=0x65,disk_services=True),native('disk-both',positions=(0,1),boot_source='native-disk.asm',expected=0x65,disk_services=True),scenarios.disabled_ide(image,nvram)]
-    if case=='cd':return [native('cd-master',cdroms={0:True},positions=(),boot_source='native-cd.asm',expected=0x68),native('cd-slave-only',cdroms={1:True},positions=(),boot_source='native-cd.asm',expected=0x68),native('cd-later-slave',cdroms={0:False,1:True},positions=(),boot_source='native-cd.asm',expected=0x68),native('cd-unusable',cdroms={0:False},positions=(),defines=('PB430_BOOT_RETRY_PROOF','EMULATOR_BOOT_RETRY_EXIT=0x71'),expected=0x71),native('cd-emulated',cdroms={0:True},positions=(),cd_media=2,boot_source='native-cd.asm',expected=0x68)]
+    if case=='cd':return [native('cd-master',cdroms={0:True},positions=(),boot_source='native-cd.asm',expected=0x68),native('cd-slave-only',cdroms={1:True},positions=(),boot_source='native-cd.asm',expected=0x68),native('cd-later-slave',cdroms={0:False,1:True},positions=(),boot_source='native-cd.asm',expected=0x68),native('cd-unusable',cdroms={0:False},positions=(),defines=('PB430_BOOT_RETRY_PROOF','EMULATOR_BOOT_RETRY_EXIT=0x71'),expected=0x71,vga60=False),native('cd-emulated',cdroms={0:True},positions=(),cd_media=2,boot_source='native-cd.asm',expected=0x68)]
     if case=='option-roms':return option_checks(image)
     if case=='boot-order':return boot_checks(image)
     if case=='ram':return ram_checks(image)

@@ -59,7 +59,7 @@ def run(image,banks=(16,0,0,0),expected_pattern=0x0004,expected_map=0x20,expecte
         nonlocal refreshing
         if 0xC0000<=address<0xC8000 and not regs[2]&1:
             original_write(address,bytes([255])*size);return
-        if regs[0x1A]&0x18==0x10 and 0x20000<=address<0x80000:
+        if regs[0x1A]&0x18==0x10 and 0x10000<=address<0x90004:
             original_write(address,bytes(sram[(address-0x20000+i)%len(sram)] for i in range(size)) if sram else bytes([255])*size);return
         target=mapping(address)
         if target is None:return
@@ -68,7 +68,7 @@ def run(image,banks=(16,0,0,0),expected_pattern=0x0004,expected_map=0x20,expecte
         try:original_write(address,payload)
         finally:refreshing=False
     def write(cpu,access,address,size,value,context):
-        if regs[0x1A]&0x18==0x10 and 0x20000<=address<0x80000:
+        if regs[0x1A]&0x18==0x10 and 0x10000<=address<0x90004:
             if sram:
                 for i,b in enumerate(value.to_bytes(size,'little')):sram[(address-0x20000+i)%len(sram)]=b
             return
