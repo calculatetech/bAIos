@@ -370,12 +370,10 @@ ide_configure_disk:
     stc
     ret
 
-; Reuse the selected disk's accepted native geometry after channel reset.
+; Auto CHS disks also need their accepted geometry initialized after reset.
 ide_initialize_geometry:
     cmp byte [fs:S_CHS_ONLY], 1
     jne .unchanged
-    cmp byte [fs:S_IDE + IDE_TYPE], 0
-    je .unchanged
     call ata_select_ready
     jc .return
     mov al, [fs:S_NATIVE_HEADS]

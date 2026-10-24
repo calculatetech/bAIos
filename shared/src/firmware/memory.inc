@@ -33,38 +33,41 @@ publish_memory_cmos:
     ret
 
 ; Shared AT checksum only. Setup must not republish fixed-segment RAM state.
+%ifdef BOARD_RTC_EXTENDED_READ
+%include "pc/cmos-checksum.inc"
+%else
 update_cmos_checksum:
     pushf
     cli
     pushad
-    ; 15h-18h are in the standard AT checksum range, 10h through 2Dh.
-    xor bx, bx
-    mov dl, 0x90
+    xor bx,bx
+    mov dl,0x90
 .sum:
-    mov al, dl
-    out 0x70, al
-    in al, 0x84
-    in al, 0x71
-    xor ah, ah
-    add bx, ax
+    mov al,dl
+    out 0x70,al
+    in al,0x84
+    in al,0x71
+    xor ah,ah
+    add bx,ax
     inc dl
-    cmp dl, 0xAE
+    cmp dl,0xAE
     jb .sum
-    xchg bl, bh                ; AT stores checksum high byte at 2Eh.
+    xchg bl,bh
     call .word
     popad
     popf
     ret
 .word:
-    mov cx, 2
+    mov cx,2
 .byte:
-    mov al, dl
-    out 0x70, al
-    in al, 0x84
-    mov al, bl
-    out 0x71, al
-    shr bx, 8
+    mov al,dl
+    out 0x70,al
+    in al,0x84
+    mov al,bl
+    out 0x71,al
+    shr bx,8
     inc dl
     loop .byte
     ret
+%endif
 

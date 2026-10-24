@@ -2,9 +2,9 @@
 
 Research date: 2026-10-20.
 
-Use the Mitsubishi ROM as the board-specific hardware reference. Compare it with the Intel-cache MR BIOS and the other Tiger ROMs. The complete TACT83000 programmer guide is still missing. No related chipset register map is established as a compatible substitute.
+This initial assessment used the then-reported MR BIOS boot as its startup reference. Later bench reports correct that identification: the OEM boots, including with the proprietary expansion card. MR memory methods do not support that card. The implemented port therefore uses the Mitsubishi OEM memory and cache sequence. MR remains a source for decoded timing labels and masks. See the current [port contract](../plans/MP386-001-port.md) and [timing notes](timing-controls.md).
 
-This assessment records source evidence and open questions. It does not select a flash image or establish a working hardware baseline.
+The remaining sections preserve the initial research context. Their first-boot recommendations and open cache-capacity question are superseded by the current port contract and physical 32 KiB cache result. The complete TACT83000 programmer guide remains missing. No related chipset register map is established as a compatible substitute.
 
 ## Supplied ROMs
 
@@ -20,7 +20,7 @@ Interleave the low/even byte first, followed by the high/odd byte. Both resultin
 The Mitsubishi combined-image SHA-256 is `573eae691f78fcfc2906acfb59abe3cf8ffb3d8cfc37d761318018b430f900e7`.
 The MR BIOS combined-image SHA-256 is `5e0c0e389252ba6d2cb96398900d48fed0ba2d555ecc8f0d22b049a314729a14`.
 
-The user reports that the OEM BIOS requires an external Setup utility. A correct utility is not established by the supplied diagnostic names. The exact image associated with the reported L2 failure still needs clarification.
+The OEM Setup disk is unavailable. A correct substitute is not established by the supplied diagnostic names. The MR BIOS pair and V010B302 are one functional reference. Their cache behavior remains unqualified.
 
 ## Chipset documentation
 
@@ -54,7 +54,7 @@ A [local Intel copy](../../../reference/controllers/intel/82385-dec1990-datashee
 
 The Mitsubishi [product brochure](../mitsubishi-mp386-25.pdf), page 4, specifies **32 KiB cache**, a 25 MHz 80386 and 2 MiB standard RAM. The supplied MP3220 layout also says 32 KiB. The older diagnostic handoff instead says 64 KiB. Keep that conflict open until the board's SRAM population and wiring establish its actual capacity.
 
-The MR BIOS identifies itself as TACT302. The user identifies V010B302 as the alleged Intel-cache variant. Its actual behavior on this Mitsubishi board is not established by that identifier. Confirm the physical controller marking and SRAM population before selecting its cache geometry. Do not use the filename or identifier as proof of compatibility.
+The MR BIOS identifies itself as TACT302. The user identifies V010B302 as the alleged Intel-cache variant and confirms that it boots. This does not establish its cache behavior. Confirm the physical controller marking and SRAM population before selecting cache geometry. Do not use the filename or identifier as proof of cache compatibility.
 
 ## What the old diagnostic history establishes
 
@@ -83,13 +83,13 @@ Reading RTC status C acknowledges pending RTC interrupt state. A tool can avoid 
 
 ## Recommended continuation
 
-Trace the OEM normal cold entry and its proprietary-configuration validation through memory mapping, cache, speed control and boot. Cover both valid and invalid configuration paths. Resolve the complete cache sequence and its callers before adapting any controller operation.
+The user selects first boot before cache investigation. Reassemble the MR BIOS cold memory initialization and normal warm continuation. Keep OEM configuration repair outside that first candidate. This supersedes the earlier recommendation to complete the OEM cold-configuration map first.
 
-Use MR BIOS and the Quadtel/AMI references to compare specific hardware operations after that OEM map exists. Preserve each source's separate assumptions and configuration format. Follow the [reference-first porting instructions](../../../docs/porting.md) and [cache sequence rule](../../../AGENTS.md#reference-cache-setup).
+Preserve each reference's separate assumptions and configuration format. The first adapter uses the MR ROM-default memory policy instead of its saved CMOS fields. It uses OEM port-48 transactions for bAIos configuration storage. Follow the [reference-first porting instructions](../../../docs/porting.md) and [cache sequence rule](../../../AGENTS.md#reference-cache-setup) for later cache changes.
 
 The shared bAIos services and existing Setup interaction remain the reusable base. Check their instruction and hardware assumptions for a 386 target. Donor DRAM, cache, shadow, reset, clock and peripheral initialization remain outside the starting set until target evidence establishes compatibility.
 
-Initial hardware qualification must include cold POST, the actual cache configuration, Setup Save/reset and boot from the intended medium. An emulator result or a boot with cache disabled does not establish that baseline.
+Full hardware qualification must include cold POST, the actual cache configuration, Setup Save/reset and boot from the intended medium. The first candidate is a separate, earlier milestone. Synthetic execution or a boot with cache disabled does not establish full qualification.
 
 ## Sources
 

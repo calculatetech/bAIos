@@ -969,6 +969,13 @@ setup_main:
 .normalize_field:
     call setup_field_available
     jnc .draw
+%ifdef BOARD_SETUP_READONLY_PAGES
+    test cl,cl
+    jnz .previous_field
+    mov byte [fs:U_FOCUS],0
+    jmp .draw
+.previous_field:
+%endif
     dec cl
     jmp .normalize_field
 .draw:
@@ -1203,14 +1210,19 @@ setup_main:
 .escape:
     cmp byte [fs:U_PAGE], 5
     jne .non_chip_escape
+%ifndef BOARD_SETUP_READONLY_PAGES
     cmp byte [fs:U_FOCUS], 1
     jne .non_chip_escape
+%endif
     cmp byte [fs:U_CHIP_SCREEN], 0
     je .non_chip_escape
     mov al, [fs:U_CHIP_SCREEN]
     dec al
     mov [fs:U_FIELD], al
     mov byte [fs:U_CHIP_SCREEN], 0
+%ifdef BOARD_SETUP_READONLY_PAGES
+    mov byte [fs:U_FOCUS], 1
+%endif
     jmp .redraw
 .non_chip_escape:
     cmp byte [fs:U_IDE_DEVICE], 1
@@ -2628,7 +2640,15 @@ setup_draw:
     call setup_text
     jmp .done
 .devices:
+%ifdef BOARD_PORTS_SETUP_DRAW
+    call BOARD_PORTS_SETUP_DRAW
+%else
+%ifdef BOARD_PORTS_NOTE1
+    ui_text 5,UI_LABEL_COL,BOARD_PORTS_NOTE1,7
+    ui_text 6,UI_LABEL_COL,BOARD_PORTS_NOTE2,7
+%endif
     call ports_ui_draw
+%endif
     jmp .done
 .boot:
     ui_text 3, 23, u_boot_title, 0x0B
@@ -2883,6 +2903,13 @@ setup_help:
     add di, (80 - 55) * 2
     dec dx
     jnz .clear
+%ifdef BOARD_PORTS_SETUP_HELP
+    cmp byte [fs:U_PAGE],3
+    jne .ordinary_port_help
+    call BOARD_PORTS_SETUP_HELP
+    jmp .wait
+.ordinary_port_help:
+%endif
     movzx bx, byte [fs:U_PAGE]
     cmp bx, 3
     jne .old_help

@@ -19,6 +19,12 @@ These are shared implementations for a defined firmware contract. They do not pr
 
 Keep chipset register access and board-specific behavior outside this directory. Standard PC and PCI mechanisms belong here. A new port must provide the same helper/state contract or separate its policy before integration. The menu's policy, availability, formatting, and commit callbacks remain port-owned. Source sharing alone does not establish physical hardware support.
 
+The MP386 extended-RTC adapter selects verified AT checksum acknowledgment through `src/pc/cmos-checksum.inc`. Ordinary RTC ports retain the existing checksum writer. Board-selected processor and A20 primitives omit 486-only operations on the 386 target. Devices can select board-owned drawing and help callbacks while retaining the shared Setup renderer.
+
+The existing `BOARD_BOOT_HANDOFF` callback runs at the INT19 bootstrap entry, including direct software restarts. The MP386 adapter uses it to release its motherboard A20 override. Shared memory services still save and restore the adapter's gate token around extended-memory copies. Other adapters retain their existing hook selection and call sequence.
+
+`src/firmware/ide.inc` initializes accepted native geometry for every CHS-only disk, including Auto detection, before media access and after channel reset. LBA disks skip this command. A rejected initialization retains the existing error path. Presario's remaining private IDE body follows the same rule.
+
 Port configuration owns vendor/model/revision, BIOS version/date, ROM size/layout, and chipset variants. Shared code must consume variables supplied by that configuration. Do not add system model or firmware-version literals to shared routines.
 
 `src/pc/` owns shared state definitions, PIC/PIT, keyboard, timer, text, and RTC services extracted from Presario. KBC output/command policy and RTC century/NMI choices are port constants. Its assembly contract remains the original helper/state contract. Presario's hardware warm reset remains port-owned.
@@ -60,3 +66,7 @@ Shared manual conversion and verification live in `tools/convert-docs.ps1` and `
 `src/pc/ram-test-state.inc` owns normal-startup marker classification. An unfinished test does not create a detected-memory-error notice. Explicit pending notices remain pending. Adapters retain their reset gates and RTC access; PB430 only clears its unfinished marker at that entry, while Presario retains its existing broader startup placement.
 
 `BOARD_POST_RAM_ROW` selects the live RAM counter and status row. Its default preserves existing layouts. PB430 selects row6, leaving a blank row after L2 and placing the bank list on row7.
+
+`src/pc/processor.inc` selects cache instructions and byte swapping for the configured processor class. `BOARD_CPU_386` omits 486 cache instructions and reserved CR0 cache bits. `BOARD_A20_READ` and `BOARD_A20_WRITE` select board routines with AL as a gate token. The default preserves the existing port92 path. The token's bit0 follows that default's reset convention, so an8042 adapter must translate its opposite reset polarity. The adapter owns queued keyboard input and gate restoration.
+
+`BOARD_RTC_EXTENDED_READ` and `BOARD_RTC_EXTENDED_WRITE` can store logical indexes40h..7Fh outside the physical RTC. The shared RTC helpers retain their flags and interrupt contract. MP386 uses its OEM NVRAM protocol instead of assuming128 physical RTC bytes. `BOARD_SETUP_READONLY_PAGES` bounds selection when a page has no editable field. Other ports retain their assembled default path.
