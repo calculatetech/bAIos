@@ -141,6 +141,8 @@ Keep mandatory reference memory initialization separate from optional testing. F
 
 Reuse the existing recovery owner and retry limit. Arm a persistent timing trial before risky settings take effect. Keep it pending through all later POST stages that use those settings. A detected failure must restore safe hardware state before retry. An unfinished trial on hard reset must select safe defaults early enough to regain Setup. Clear the recovery guard only after a verified save. Test rejected saves and Discard as well as successful saves.
 
+An unfinished trial is unconfirmed work, not a RAM failure. Power loss or intentional reset must not create a RAM failure notice, a RAM recovered notice, or a consumed RAM retry. Only a failed RAM comparison can create that failure state. Safe timing selection after an unfinished trial must preserve this distinction and the saved payload. Verify the complete Save before releasing recovery; chipset-local verification alone is insufficient.
+
 Prove deliberate warm reset and reference service-resume paths separately from failed-trial hard reset. Restore reference prerequisites before the stock cache sequence, then apply runtime choices through their existing owner. Derive the restoration order from the target's timing dependencies, not from the donor's register numbers.
 
 Use tests that observe actual memory reads and writes, cache state, restored data, persistent markers, and the terminal Setup or boot path. A passing component test or RAM loop cannot prove the complete recovery sequence. Label physical timing and long-term stability separately from software validation.

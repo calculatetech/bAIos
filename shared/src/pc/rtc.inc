@@ -4,6 +4,14 @@
 rtc_read:
     pushf
     cli
+%ifdef BOARD_RTC_EXTENDED_READ
+    test al,0x40
+    jz .ordinary
+    call BOARD_RTC_EXTENDED_READ
+    popf
+    ret
+.ordinary:
+%endif
 %if RTC_NMI_SELECT_MASK != 0
     or al, RTC_NMI_SELECT_MASK
 %endif
@@ -16,6 +24,14 @@ rtc_read:
 rtc_write:
     pushf
     cli
+%ifdef BOARD_RTC_EXTENDED_WRITE
+    test al,0x40
+    jz .ordinary
+    call BOARD_RTC_EXTENDED_WRITE
+    popf
+    ret
+.ordinary:
+%endif
 %if RTC_NMI_SELECT_MASK != 0
     or al, RTC_NMI_SELECT_MASK
 %endif

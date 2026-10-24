@@ -9,6 +9,7 @@ bits 16
 %error "Select a board definition before composing the firmware core"
 %endif
 %include BOARD_DEFINITION
+%include "pc/processor.inc"
 %ifdef EMULATOR_WARM_RESET_TEST
 %define EMULATOR_PAUSE_ONLY
 %endif
@@ -535,11 +536,11 @@ move_extended_memory:
     add eax, edi
     jc .invalid
     ; Temporarily enable fast A20 and restore its exact prior gate state.
-    in al, 0x92
+    board_a20_read
     mov dl, al
     and al, 0xFE
     or al, 2
-    out 0x92, al
+    board_a20_write
     mov al, 0x80
     out 0x70, al
     lgdt [cs:move_gdtr]
@@ -565,7 +566,7 @@ move_extended_memory:
     o32 lgdt [ss:di]
     mov al, dl
     and al, 0xFE
-    out 0x92, al
+    board_a20_write
     xor al, al
     out 0x70, al
     clc
@@ -2259,7 +2260,7 @@ rom_code_end:
 %include "../tests/firmware/setup-test.inc"
 %endif
 %endif
-times CFG_ROM_CHECKSUM_OFFSET-0x10000-($-$$) db 0xFF
+times CFG_ROM_CHECKSUM_OFFSET-((CFG_ROM_CODE_SEGMENT << 4)-CFG_ROM_BASE)-($-$$) db 0xFF
 checksum_byte: db 0
 reset_vector:
     jmp CFG_ROM_CODE_SEGMENT:startup

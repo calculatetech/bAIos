@@ -1,3 +1,6 @@
+%ifndef PC_PROCESSOR_PRIMITIVES
+%include "pc/processor.inc"
+%endif
 %if S_RAM_TEST_BUFFER + RAM_TEST_BLOCK_SIZE > CFG_PLATFORM_STATE_KIB * 1024
     %error RAM burst backup exceeds the reserved firmware state
 %endif
@@ -65,15 +68,15 @@ chipset_visible_ram_test:
     push ax
     or al, 0x0C
     out 0x61, al
-    in al, 0x92
+    board_a20_read
     push ax
     and al, 0xFE
     or al, 2
-    out 0x92, al
+    board_a20_write
     mov ebp, cr0
-    wbinvd
+    cpu_cache_flush
     mov eax, ebp
-    or eax, 0x60000000
+    cpu_cache_disable
     mov cr0, eax
     memory_extended_kib ebx
     add ebx, 1024
@@ -181,7 +184,7 @@ chipset_visible_ram_test:
 .bad:
     mov edi, 1
 .leave:
-    wbinvd
+    cpu_cache_flush
     mov ax, 0x18
     mov ds, ax
     mov es, ax
@@ -318,7 +321,7 @@ chipset_visible_ram_test:
     mov es, ax
     pop ax
     and al, 0xFE
-    out 0x92, al
+    board_a20_write
     pop ax
     out 0x61, al
     mov si, sp
@@ -427,15 +430,15 @@ chipset_runtime_ram_check:
     sub sp, 6
     mov di, sp
     sgdt [ss:di]
-    in al, 0x92
+    board_a20_read
     push ax
     and al, 0xFE
     or al, 2
-    out 0x92, al
+    board_a20_write
     mov ebp, cr0
-    wbinvd
+    cpu_cache_flush
     mov eax, ebp
-    or eax, 0x60000000
+    cpu_cache_disable
     mov cr0, eax
     memory_extended_kib ebx
     add ebx, 1024
@@ -482,7 +485,7 @@ chipset_runtime_ram_check:
     mov eax, [edx]
     mov edi, 1
 .leave:
-    wbinvd
+    cpu_cache_flush
     mov ax, 0x18
     mov ds, ax
     mov es, ax
@@ -493,7 +496,7 @@ chipset_runtime_ram_check:
 .real:
     pop ax
     and al, 0xFE
-    out 0x92, al
+    board_a20_write
     mov si, sp
     o32 lgdt [ss:si]
     add sp, 6

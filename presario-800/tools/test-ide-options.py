@@ -485,7 +485,7 @@ def reset_geometry():
                     previous = len(m.selected_commands)
                     assert not m.disk(function, dx=0x80 + reset_drive)[0]
                     restored = [unit for unit, command in m.selected_commands[previous:] if command == 0x91]
-                    assert restored == [unit for unit in units if types[unit] and not lba]
+                    assert restored == [unit for unit in units if not lba]
                 for logical, unit in enumerate(units):
                     assert m.hardware_geometry[unit] == expected[unit]
                     heads, sectors = logical_geometry[unit]
@@ -498,7 +498,7 @@ def reset_geometry():
                     assert not m.disk(2, cx=0x0102, dx=0x180 + logical)[0]
                     assert m.taskfiles[-1][2] == target
                     assert m.cpu.mem_read(0x21000, 512) == payload
-    print('Reset geometry: actual INT19, AH00/AH0D, both CHS slots, Auto/LBA/packet/absent exclusions and nonzero read/write PASS', flush=True)
+    print('Reset geometry: actual INT19, AH00/AH0D, both CHS slots including Auto, LBA/packet/absent exclusions and nonzero read/write PASS', flush=True)
 
 
 def ui():

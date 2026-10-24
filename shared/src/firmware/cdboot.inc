@@ -76,7 +76,7 @@ cd_try_boot:
     cmp dword [fs:CD_SENSE+4], 0x00080000 ; Big-endian2048.
     jne .fail
     mov eax, [fs:CD_SENSE]
-    bswap eax
+    cpu_swap_eax
     inc eax
     jz .fail
     mov [fs:CD_CAPACITY], eax
@@ -289,7 +289,7 @@ cd_read_block:
     jae .bad
     call cd_command_clear
     push eax
-    bswap eax
+    cpu_swap_eax
     mov [fs:CD_CMD+2], eax
     pop eax
     mov byte [fs:CD_CMD], 0x28    ; READ(10), one2048-byte block.
