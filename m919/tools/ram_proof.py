@@ -145,7 +145,7 @@ def check(native=False):
     result['limits'] = ['Flat external DRAM and tied-line models prove the assembled RAM owner only.',
                         'Native 86Box proves composed keyboard/Setup/reset/boot paths; physical POST timing and memory wiring remain unmeasured.',
                         'Bounded failures stop at reset entry or E7; native transient and persistent cases close the actual 8042 reset/defaults/retry path. Persistent E7 is observed immediately before hard_halt.']
-    path = PORT/'build/hardware-research/ram-proof.json'
+    path = PORT/'build/research/hardware/ram-proof.json'
     path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps({'scenarios':len(result['bounded']),

@@ -128,7 +128,8 @@ class Banks:
                     MIB <= address and address + size <= 32 * MIB or
                     firmware_test and (address + size <= 0x10000 or
                                        0x9FC00 <= address and address + size <= 0xA0000) or
-                    visible_test and (0x6000 <= address and address+size <= 0x7000 or
+                    visible_test and (0x800 <= address and address+size <= 0xC00 or
+                                      0x6000 <= address and address+size <= 0x7000 or
                                       0xB8000 <= address and address+size <= 0xBA000)), (
                         'protected probe wrote reserved memory', hex(address))
         if 0xA0000 <= address < MIB:  # ROM/GDT, not banked RAM.
@@ -607,6 +608,7 @@ def recovery_transition_checks():
                 index = m.chipset_index
                 if index == 4:
                     if bank.ramset >> 5 and not value >> 5:
+                        assert faults, 'controlled teardown must follow the injected comparison failure'
                         assert cpu.reg_read(x.UC_X86_REG_CR0) & 0x60000000 == 0x60000000
                         assert m.chipset[0x19] == 0 and not m.chipset[7] & 8
                         assert all(m.chipset.get(r, 0) == 0 for r in range(0xF, 0x13))
@@ -662,7 +664,12 @@ def recovery_transition_checks():
             in_owner = (early <= ip < apply if owner == 'early' else
                         visible <= ip < runtime if owner == 'visible' else
                         runtime <= ip < nmi)
-            compare = opcode[:3] in (b'\x67\x66\x39', b'\x67\x66\x3b') if owner != 'final' else opcode == b'\x67\x66\x8b\x07'
+            if owner == 'visible':
+                compare = opcode[-1:] == b'\xaf' and cpu.reg_read(x.UC_X86_REG_EAX) in (0x55AA55AA, 0xAA55AA55, 0)
+            elif owner == 'early':
+                compare = opcode[:3] in (b'\x67\x66\x39', b'\x67\x66\x3b')
+            else:
+                compare = opcode == b'\x67\x66\x8b\x07'
             if address == point and in_owner and compare:
                 faults.append(address)
                 cpu.mem_write(address, bytes(4))

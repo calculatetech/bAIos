@@ -93,7 +93,7 @@ ACC2046 CAS consumers correlate 2T with 04 and 3T with 08 in register 0B bits 3:
 
 ## Memory throughput and register capture
 
-Build the DOS reader with `python -B pb430/tools/build-acc-registers.py` from the repository root. Copy `pb430/build/diagnostics/ACCDUMP.COM` to the PB430. Run it in plain DOS without EMM386 or Windows. This utility targets the PB430 and does not detect the chipset automatically.
+Build the DOS reader with `python -B pb430/diagnostics/build-acc-registers.py` from the repository root. Copy `pb430/build/diagnostics/ACCDUMP.COM` to the PB430. Run it in plain DOS without EMM386 or Windows. This utility targets the PB430 and does not detect the chipset automatically.
 
 Run `ACCDUMP > BAION.TXT` immediately before CACHECHK with L1 and L2 enabled. Then disable only L2 in Setup and run `ACCDUMP > BAIOFF.TXT` before the same benchmark. Keep the boot media, memory managers, benchmark command, and other settings the same. Record whether each boot was cold or warm. The ACC386 ROM remains static comparison evidence, not a replacement ROM for this board.
 
@@ -163,7 +163,7 @@ The user subsequently confirmed that performance matches stock and requested fas
 
 ## Temporary timing trials
 
-Build with `python -B pb430/tools/build-acc-timing.py`. Copy `pb430/build/diagnostics/ACCPROBE.COM` to the PB430 DOS disk. Use the normal BIOS. Each command changes one register: F2/F4/F8 test05, H/S/T test18, R tests01, and C/5/4/W5/W4 test0B. W5/W4 measure writes. Other supported commands measure reads. C1 and D are withdrawn and refused. It restores the stock programmed value before each interrupt window and all DOS output.
+Build with `python -B pb430/diagnostics/build-acc-timing.py`. Copy `pb430/build/diagnostics/ACCPROBE.COM` to the PB430 DOS disk. Use the normal BIOS. Each command changes one register: F2/F4/F8 test05, H/S/T test18, R tests01, and C/5/4/W5/W4 test0B. W5/W4 measure writes. Other supported commands measure reads. C1 and D are withdrawn and refused. It restores the stock programmed value before each interrupt window and all DOS output.
 
 Boot plain DOS with F5, with L1 and128 or512 KiB L2 enabled. Do not load memory managers or programs that use extended memory. The probe overwrites physical1-5 MiB as scratch space. It rejects protected mode, an installed XMS driver, insufficient reported memory, and an unsupported register state. In addition to the two supported cache-size encodings, unrelated-register trials accept Fast Memory Writes (0B=04) and Slow Refresh (05=9F). They preserve both choices throughout the test. The displayed size comes from a checked register pair: 1D=FC with1E=79 means128 KiB; 1D=F0 with1E=7B means512 KiB. Mismatched pairs are refused. This is not an independent test of installed SRAM capacity. The user reports that256 KiB is not a documented board size and has installed128 KiB. The ROM has a256 KiB table entry, but that does not establish board support. The probe now refuses that encoding. These guards qualify the expected PB430 configuration, not arbitrary ACC boards.
 
@@ -409,7 +409,7 @@ The earlier S and H results were neutral with stock write timing. These tests ch
 
 ## Address-order diagnostic
 
-Build with `python -B pb430/tools/build-acc-order.py`. Copy `pb430/build/diagnostics/ACCORDER.COM` to the DOS disk. Keep the normal BIOS, L1 enabled, and the current Fast Memory Writes and Slow Refresh choices. Boot plain DOS with F5 and no memory manager, then run `ACCORDER` without arguments. The utility overwrites scratch RAM from 1 MiB to 5 MiB. It uses the existing ACCPROBE admission, A20, timer and machine-state restoration code. It does not write chipset configuration registers or change cache policy.
+Build with `python -B pb430/diagnostics/build-acc-order.py`. Copy `pb430/build/diagnostics/ACCORDER.COM` to the DOS disk. Keep the normal BIOS, L1 enabled, and the current Fast Memory Writes and Slow Refresh choices. Boot plain DOS with F5 and no memory manager, then run `ACCORDER` without arguments. The utility overwrites scratch RAM from 1 MiB to 5 MiB. It uses the existing ACCPROBE admission, A20, timer and machine-state restoration code. It does not write chipset configuration registers or change cache policy.
 
 The three rows are Linear, 4K-column, and Linear again. Each row follows one pointer per 16-byte line through the same 4 MiB span. Linear visits adjacent lines. 4K-column visits successive 4 KiB offsets before moving to the next line offset. Links are built and checked before timing. One untimed traversal precedes four measured traversals. Both orders use the same bounded pointer-load loop, with pointer range and alignment checks. A full traversal reads 1 MiB of useful pointer bytes. Each row measures 4 MiB of useful reads.
 
@@ -428,7 +428,7 @@ The2026-10-16 photograph reports Linear3.9,4K-column3.5,Linear3.9 usefulMiB/s. A
 
 The user's live `ACCNOW.TXT` supplies14=06,16=00,19=08, with01=BF,04=15,0B=04,12=09,18=00 and05=9F. The [register comparison and calculation](register-map.md#live-timing-snapshot-and-probable-acc2168-model) retains the complete capture and the probable2168 field table. Bank layout is outside this experiment.
 
-The user selected a combined faster profile rather than more isolated conservative trials. Build `python -B pb430/tools/build-acc-profile.py`. Copy `pb430/build/diagnostics/ACCPROF.COM` to the DOS disk. Keep the current normal BIOS and enable L1, L2, Fast Memory Writes, and Slow Refresh. Boot plain DOS withF5 and no memory manager. Run `ACCPROF` without arguments. No ROM flash is needed. This program overwrites scratch RAM from1MiB to5MiB, as ACCPROBE does.
+The user selected a combined faster profile rather than more isolated conservative trials. Build `python -B pb430/diagnostics/build-acc-profile.py`. Copy `pb430/build/diagnostics/ACCPROF.COM` to the DOS disk. Keep the current normal BIOS and enable L1, L2, Fast Memory Writes, and Slow Refresh. Boot plain DOS withF5 and no memory manager. Run `ACCPROF` without arguments. No ROM flash is needed. This program overwrites scratch RAM from1MiB to5MiB, as ACCPROBE does.
 
 | Register | Programmed baseline | Trial | Intended effect under the probable map |
 | --- | --- | --- | --- |

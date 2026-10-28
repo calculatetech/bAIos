@@ -25,6 +25,8 @@
 %define BOARD_PORTS_SETUP_STRINGS "hardware/ports-setup.inc"
 %define BOARD_MOUSE_DIAGNOSTIC_LABEL ' MP386 '
 %define BOARD_MOUSE_INIT mp386_mouse_init
+%define BOARD_FPU_PROBE_ALLOWED mp_fpu_probe_allowed
+%define BOARD_FPU_CONFIGURE mp_fpu_configure
 %define BOARD_DEFAULT_BOOT_FIRST 3
 %define BOARD_DEFAULT_BOOT_REST 0x0201
 %define BOARD_LATE_MEMORY_POLICY mp_memory_finish
@@ -80,3 +82,4 @@
     mov dx,%1
 %endmacro
 %include "setup/layout.inc"
+%include "hardware/cpu-upgrade.inc"

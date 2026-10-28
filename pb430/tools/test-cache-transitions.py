@@ -163,7 +163,7 @@ def run():
         label = 'Present / unknown' if size else 'Disabled'
         assert m.text(4, 20, len(label)) == label, m.text(4, 20, 24)
         print(f'PASS {size} KiB unqualified SRAM remains disabled', flush=True)
-    result = PORT / 'build/test-results/cache-transitions.json'
+    result = PORT / 'build/tests/results/cache-transitions.json'
     result.parent.mkdir(parents=True, exist_ok=True)
     result.write_text(json.dumps(rows, indent=2)+'\n')
 

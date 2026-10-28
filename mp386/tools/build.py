@@ -7,6 +7,7 @@ import sys
 PORT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PORT.parent))
 from shared.tools.rom import build, verify
+from shared.tools.candidates import record
 
 
 def validate(image):
@@ -36,6 +37,7 @@ def run(output='build', defines=()):
     for offset, name in enumerate(('even', 'odd')):
         image.with_name('baios-mp386-' + name + '.bin').write_bytes(raw[offset::2])
     result.update(validate(image))
+    record(PORT,[image,image.with_name('baios-mp386-even.bin'),image.with_name('baios-mp386-odd.bin')],result['identity']['version'])
     image.with_name('rom-checksums.json').write_text(json.dumps(result, indent=2)+'\n')
     return result
 

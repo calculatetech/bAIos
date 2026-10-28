@@ -12,7 +12,7 @@ import sys
 from build import PORT, run, validate
 from fixture import Tiger, rtc
 
-OUT = PORT/'build/test-results'
+OUT = PORT/'build/tests/results'
 
 
 def boot_sector(a20=0xCD, board_gate=1):
@@ -79,6 +79,7 @@ def boot_checks(image, reference=False):
         return memory.original_windows(image) + [
             memory.mapper_comparison(image, ((16,16),(64,64),(64,64))),
             memory.mapper_comparison(image, ((16,16),(0,0),(64,16))),
+            *memory.early_sequence_checks(image),
             memory.reset_reference(image)]
     return memory.boot_checks(image)
 
@@ -315,7 +316,7 @@ def retained_checks(image):
             override = folder/'ide.inc'
             data = None
         else:
-            result = build(port, 'build/mp386-regression')
+            result = build(port, 'build/tests/mp386-regression')
             target = Path(result['path'])
             includes += ['-I', str(target.parent)+'/']
             ide = root/'shared/src/firmware/ide.inc'
@@ -654,7 +655,7 @@ def main():
     parser.add_argument('--case', choices=('image', 'reference', 'boot', 'disk', 'setup', 'ram', 'recovery', 'retained'), required=True)
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
-    image = args.image
+    image = args.image.resolve()
     checks = {'image': image_checks, 'reference': lambda p: boot_checks(p, True),
               'boot': a20_boot_checks, 'disk': disk_controls_checks, 'setup': setup_checks, 'ram': ram_checks,
               'recovery': recovery_checks, 'retained': retained_checks}

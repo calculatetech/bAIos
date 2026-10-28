@@ -4,6 +4,12 @@ This port targets the 25 MHz 386DX board with the TI TACT83000 chipset and Intel
 
 The port boots on the physical board with expansion RAM, ROM shadowing and working 32 KiB cache. The user confirmed the reviewed POST and Setup image works. Software checks do not establish electrical stability or qualify faster RAM timings.
 
+A reported configuration stops at POST code `11` with either a 3Com 3C509B or 3C509TP installed. The owner reports that the OEM BIOS completes POST with the 3Com card. Another network card works with bAIos. Code `11` covers cold controller and DRAM initialization, before NIC ROM discovery.
+
+The cold memory owner now disables both DMA controllers, inhibits parity/channel-check reporting, and tests and starts refresh before its first destructive RAM seed. This restores OEM prerequisites that bAIos previously applied too late. Complete hardware-operation comparisons and reset-to-boot checks cover the restored ordering and bounded timer failures.
+
+The cause of the 3Com stop remains unconfirmed, and the machine is unavailable for further tests. [MP386-004](docs/roadmap.md) tracks this compatibility issue.
+
 The [v0.2.0 release](docs/releases/v0.2.0.md) provides combined and split programmer images. It includes the legacy IDE and DOS A20 fixes and retains the existing firmware identity.
 
 ## Build and program
@@ -68,16 +74,19 @@ Run each focused check from the repository root:
     python -B mp386/tools/test-port.py --case boot
     python -B mp386/tools/test-port.py --case setup
     python -B mp386/tools/test-port.py --case ram
-    python -B mp386/tools/test-port.py --case retained
     python -B mp386/tools/test-setup-controls.py --image mp386/build/baios-mp386.bin --boot
     python -B mp386/tools/test-ata-chs.py --image mp386/build/baios-mp386.bin
     python -B mp386/tools/test-a20-handoff.py --image mp386/build/baios-mp386.bin
+    python -B mp386/tools/test-boot-source.py --image mp386/build/baios-mp386.bin
+    python -B mp386/tools/test-rom-window.py --image mp386/build/baios-mp386.bin
 
-The checks require NASM, Python, Unicorn and Capstone from the existing project toolchain. Reference comparisons use the supplied OEM even/odd ROMs. The retained-port check needs the existing PB430 reference inputs. Building this port itself requires no vendor ROM file. The cache, memory and shadow test commands also provide individual reference-comparison cases through their `--case` options.
+The checks require NASM, Python, Unicorn and Capstone from the existing project toolchain. Reference comparisons use the supplied OEM even/odd ROMs. Building this port itself requires no vendor ROM file. The cache, memory and shadow test commands also provide individual reference-comparison cases through their `--case` options.
+
+Three historical checks remain outside current validation: two retired bench probes and the `test-port.py --case retained` comparison pinned to the old `a8d0542` whole-ROM result. The latter reverses only the former Auto CHS patch and does not permit the later shared-code changes. Its original source and hashes remain unchanged. `tools/update-ports.py --historical` attempts these checks under their original conditions; failures remain failures. Current image integrity, retained hardware windows and input preservation still apply.
 
 The device fixtures execute the assembled firmware from its reset vector. They model external AT devices, VGA services, TI register access, DRAM probe aliases, and a conservative 64-byte RTC with separate Mitsubishi NVRAM. The independent signed boot sector uses the installed disk and extended-memory services. These synthetic results establish source integration and reference agreement. They do not establish electrical behavior, real VGA compatibility, RAM stability or cache operation on the board.
 
-Startup progress codes precede and follow the reference routines. `10` means startup entered, `11` enters cold TI initialization, `12` returns from it, `20` starts the early keyboard-controller transaction, `21` completes it, `22` enters the normal memory-map continuation, and `23` reaches RAM workspace setup. `E1` stops on an unusable memory result. `E2` stops on an early keyboard-controller failure. No progress output occurs inside the TI routines.
+Startup progress codes precede and follow the reference routines. `10` means startup entered, `11` enters cold TI initialization, `12` returns from it, `20` starts the early keyboard-controller transaction, `21` completes it, `22` enters the normal memory-map continuation, and `23` reaches RAM workspace setup. An unusable cold memory result halts within `11`. `E2` stops on an early keyboard-controller failure. No progress output occurs inside the TI routines.
 
 The [reference assessment](docs/research/initial-reference-assessment.md) describes the supplied images and missing register guide. The [port roadmap](docs/roadmap.md) tracks the port and accepted limits.
 

@@ -248,7 +248,7 @@ def main():
     out=PORT/'build/diagnostics';out.mkdir(parents=True,exist_ok=True)
     nasm=shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA'])/'bin/NASM/nasm.exe')
     image=out/'ACCORDER.COM';listing=out/'ACCORDER.lst'
-    subprocess.run([nasm,'-w+error','-f','bin','-DACC_ORDER','-I'+str(PORT/'tools')+'/', '-l',str(listing),'-o',str(image),str(PORT/'tools/acc-timing.asm')],check=True)
+    subprocess.run([nasm,'-w+error','-f','bin','-DACC_ORDER','-I'+str(PORT/'diagnostics')+'/', '-l',str(listing),'-o',str(image),str(PORT/'diagnostics/acc-timing.asm')],check=True)
     raw=image.read_bytes();sym=symbols(listing.read_text())
     decoder=Cs(CS_ARCH_X86,CS_MODE_16)
     kernel=list(decoder.disasm(raw[sym['protected_chunk']-0x100:sym['order_main']-0x100],sym['protected_chunk']))
@@ -262,7 +262,7 @@ def main():
     load=[i for i in kernel if i.mnemonic=='mov' and i.op_str=='esi, dword ptr es:[esi]']
     assert len(load)==1,'Both orders must share one dependent-load instruction'
     normal=out/'ACCPROBE-normal-check.COM'
-    subprocess.run([nasm,'-w+error','-f','bin','-o',str(normal),str(PORT/'tools/acc-timing.asm')],check=True)
+    subprocess.run([nasm,'-w+error','-f','bin','-o',str(normal),str(PORT/'diagnostics/acc-timing.asm')],check=True)
     baseline=normal.read_bytes()
     assert len(baseline)==3002 and sum(baseline)==0x4525E
     retained=out/'ACCPROBE.COM'

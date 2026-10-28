@@ -245,7 +245,7 @@ def main():
     def build(name,defines=()):
         subprocess.run([str(nasm),'-w+error','-f','bin','-I',str(PORT/'src')+os.sep,'-I',str(PORT.parent/'shared/src')+os.sep,'-I',str(OUT)+os.sep,
                         *defines,'-l',str(OUT/(name+'.lst')),'-o',str(OUT/(name+'.COM')),
-                        str(PORT/'tools/cache-state.asm')],check=True)
+                        str(PORT/'diagnostics/cache-state.asm')],check=True)
     build('TGCACHE')
     raw = (OUT/'TGCACHE.COM').read_bytes()
     report = dict(size=len(raw),sum32=f'{sum(raw):08X}',real_mode=run(raw,False),protected_mode=run(raw,True))

@@ -850,10 +850,10 @@ def ports_ui():
         available = [i for i in (0, 3, 4, 6) if i != 4 or parallel_enabled]
         labels = ('Serial Port', 'Serial Port B', 'COM3 / COM4 Addresses', 'Parallel Port',
                   'Parallel Port Mode', 'Floppy Controller', 'PS/2 Mouse', 'ISA Serial Discovery')
-        details = ('Select the onboard serial I/O address and IRQ.', 'Select the onboard serial I/O address and IRQ.',
-                   'COM3 and COM4 share this address pair.', 'Select the onboard parallel address or Disabled.',
-                   'Printer output or PS/2 bidirectional data.', 'Disabled hides both drives and disables the FDC.',
-                   'Disabled inhibits AUX and mouse BIOS services.', 'Discover decoded UARTs at standard ISA addresses.')
+        details = ('Choose a COM port number for this serial port.', 'Choose a COM port number for this serial port.',
+                   'Choose the address pair for COM3 and COM4.', 'Choose the printer port address or Disabled.',
+                   'Printer output or PS/2 bidirectional data.', 'Enable or disable both motherboard floppy drives.',
+                   'Enable or disable the PS/2 mouse port.', 'Find serial ports on ISA expansion cards.')
         values = (('Disabled', '3F8h / IRQ4', '2F8h / IRQ3', '3E8h / IRQ4', '2E8h / IRQ3'),)*2 + (
             ('338h / 238h', '3E8h / 2E8h', '2E8h / 2E0h', '220h / 228h'),
             ('Disabled', '3BCh', '378h', '278h'), ('Printer', 'PS/2 Bidirectional'),
@@ -1040,7 +1040,8 @@ def board_layout():
             model.script = [0x3B]
         elif phase == 1:
             assert model.text(18, 25, 17) == 'Floppy Controller'
-            assert model.text(19, 25, 48).strip() == 'Disabled hides both drives and disables the FDC.'
+            assert model.text(19, 25, 49).strip() == 'Enable or disable both motherboard floppy drives.'
+            assert model.text(20, 25, 48).strip() == 'Saved drive types remain available when enabled.'
             model.script = [1, 28]
         elif phase == 2:
             assert model.text(10, 26, 8) == 'Disabled'
@@ -1312,11 +1313,11 @@ CASES = {'serial-addresses': serial_addresses,
 def run_86box():
     floppy = importlib.import_module('floppy-matrix')
     build = rtc.ROOT/'build'
-    evidence = build/'chipset-review/serial-addresses'
+    evidence = build/'review/chipset/serial-addresses'
     evidence.mkdir(parents=True, exist_ok=True)
     nasm = shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA'])/'bin/NASM/nasm.exe')
     exe = shutil.which('86Box.exe') or str(Path(os.environ['LOCALAPPDATA'])/'Microsoft/WinGet/Packages/86Box.86Box_Microsoft.Winget.Source_8wekyb3d8bbwe/86Box.exe')
-    roms = build/'86box/roms'
+    roms = build/'tests/86box/roms'
     wrapper = roms/'machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin'
     production = (build/'baios-presario800.bin').read_bytes()
     saved = None

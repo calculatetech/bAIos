@@ -10,6 +10,8 @@ python -B pb430/tools/test-stock-options.py
 python -B pb430/tools/test-cache-check.py pb430/build/baios-pb430.bin
 python -B pb430/tools/test-post-layout.py pb430/build/baios-pb430.bin
 python -B pb430/tools/test-timing-recovery.py
+python -B pb430/tools/test-ata-chs.py --image pb430/build/baios-pb430.bin
+python -B pb430/tools/test-boot-source.py --image pb430/build/baios-pb430.bin
 ```
 
 Run cases sequentially. Each invocation rebuilds the same current ROM and listing; concurrent invocations can interrupt another case's listing read.
@@ -22,7 +24,7 @@ Each named case writes a JSON result under `pb430/build/test-results/`. A failur
 
 | Check | Actual production path and independent terminal |
 | --- | --- |
-| image | Builder and verifier; default and stock-VGA command-line selection, geometry, reference hashes, retained video/padding, reset target, checksum, five damaged-image rejections |
+| image | Builder and verifier; default, stock, VGA50/VGA60 and experimental command-line selection; retained video/padding, fixed VGA entry, selected late CD placement, reset/checksum and five damaged-image rejections |
 | native | Actual NASM dependency/preprocessor provenance, active symbols and decoded assembled I/O, plus compiled missing-owner/UMC/PCI negatives; PB430 reset through all owners and INT19 to real DX/SX boot |
 | display | Actual Cirrus provider, clean and dirty provider returns, Setup Discard return; all 2000 characters, 2000 attributes and 4096 original font bytes |
 | chipset-settings | Real Setup edit/Save/KBC reset/vector/startup/apply; saved ADS with only Auto changed, masked 1A and preserved unknown bit 6 |
@@ -57,6 +59,10 @@ Diagnostic cases retain the actual keyboard, floppy and mouse callback reports, 
 
 Native disk guests check both BIOS units with distinct master/slave payloads, AH08/AH48 geometry, successful AH/count and range failures. Floppy guests read logical A and B with swapped and unswapped media. AH08 returns disk count in DL and the inherited reserved-cylinder geometry; the guest restores the unit before its next call. A disabled IDE case executes the real initialization/public error path without ATA commands. Scanner cases record ordered ROM entries; a provider installs a nonzero captured INT19 chain and returns to the real cursor/retry. A separate provider invokes public INT18 with the cursor inactive and reaches that same retry owner.
 
+The ATA parameter check executes actual cold POST and Setup Save/reset against an independent 989-cylinder, 15-head, 56-sector disk model. It requires accepted parameters before CHS reads and after reset. LBA skips initialization. Rejected initial parameters publish no disk, and rejected reset restoration returns an error without reading media.
+
+The boot-source check executes failed HDD, returning Other and INT18 Other continuations into the actual CD loader. Installed AH08/AH48 and nonzero cylinder/head reads and writes must retain native geometry and reach independent sector2080. The same producer proof runs on the other maintained ports. These models do not qualify physical controllers or disks.
+
 Native guest observers use real interrupt services and 86Box devices. They do not set active/draft policy to manufacture a result. They export display/font/system bytes through real INT13 writes. Test keyboard stimuli use the existing 8042 injection and IRQ path. The RAM coverage helper is the committed shared fixture; input-skip cases check restoration without requiring an intentionally skipped whole-memory pass.
 
 ## Emulator dependency and limits
@@ -67,7 +73,7 @@ The official artifact URL is:
 
 `https://ci.86box.net/job/86Box/10408/artifact/Old%20Recompiler%20(recommended)/Windows%20-%20x64%20(64-bit)/86Box-Windows-64-b10408.zip`
 
-Extract it to `pb430/build/deps/86box-b10408`. This preserves the installed emulator. The adapter selects this exact executable. Source contracts retained in build/deps show ACC2168 unchanged from the pinned research model, the same PB430 initializer and only an ACC3221 FDC reset/re-add/init-flag change. The native external-video fixture uses the original input at private `video/cirruslogic/cl5422.bin` with `cl_gd5422_migrated_isa`; it does not rename a donor machine or alter installed ROMs.
+Extract it to `tools/deps/86box-b10408`. This preserves the installed emulator. The adapter selects this exact executable. Source contracts retained in build/deps show ACC2168 unchanged from the pinned research model, the same PB430 initializer and only an ACC3221 FDC reset/re-add/init-flag change. The native external-video fixture uses the original input at private `video/cirruslogic/cl5422.bin` with `cl_gd5422_migrated_isa`; it does not rename a donor machine or alter installed ROMs.
 
 The ACC3221 model incorrectly requires primary UART source 1 although the data sheet and its own comments specify source 2. Correct physical DE programming therefore removes the native model's primary UART. Native display expects only the secondary UART; the independent data-sheet decoder proves both sources, real BDA entries and public INT14 traffic. The port does not change physical encoding or patch the emulator to hide this limit.
 
@@ -102,7 +108,7 @@ Changes are in PB430 code/configuration/tooling/tests/docs, the shared option-RO
 The native check uses the generated configuration beside the candidate image, even when the root build configuration is absent. It rejects configuration dependencies from another build. It records NASM's 46 active dependency files, all active global labels and 48 required hardware/public-service symbols. It records shared-source comparison with the isolated base after newline normalization. This comparison does not reject inactive shared-source changes; acceptance checks the active emitted owners, assembled I/O and actual firmware behavior. Capstone decodes assembled IN/OUT instructions and constant-DX port selections from the actual listing. The validator rejects donor configuration indexes/PCI ports and foreign source dependencies. Separately assembled negative fixtures add UMC index I/O, PCI configuration I/O or remove a required owner. These inputs must fail the inventory guard; they are never executed as firmware candidates.
 
 
-The reference-map command is `python -B pb430/tools/map_reference_roms.py`. It writes under `pb430/build/reference-maps`, verifies the original hashes, and assembles both complete ROM reconstructions for byte comparison. Durable text maps are in `pb430/reference/maps`. Assertions cover all83 ACC386 ROM-stack calls, PB430 inline-string returns, wrapped near targets, and real overlapping entries. Unknown indirect transfers remain explicit.
+The reference-map command is `python -B pb430/tools/map_reference_roms.py`. It writes under `pb430/build/research/reference-maps`, verifies the original hashes, and assembles both complete ROM reconstructions for byte comparison. Durable text maps are in `pb430/reference/maps`. Assertions cover all83 ACC386 ROM-stack calls, PB430 inline-string returns, wrapped near targets, and real overlapping entries. Unknown indirect transfers remain explicit.
 
 The focused stock comparison now includes early refresh/DMA I/O and963D-9687 warm-entry operations. The composed memory check rejects RAM entry before refresh/cascade setup. Warm disk checks require both the0000:7BFE early fill entry and0030:00EA final fill entry. Original ROM execution supplies the operation oracle. These checks do not simulate physical refresh decay or cache-tag SRAM.
 

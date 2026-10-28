@@ -231,7 +231,10 @@ observe16:
     ; INT entry has IF clear: IRQ12 cannot drain this byte before the BIOS
     ; polls. EDIT's pre-reading IRQ1 hook must never see these mouse bytes.
     cmp ah, 1
+    je .poll
+    cmp ah, 0x11
     jne .observe
+.poll:
     cmp word [cs:key_index], 2     ; ESC has dismissed the opening dialog.
     jb .observe
     cli                          ; EMM386 may reflect INT16 with virtual IF set.

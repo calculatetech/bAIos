@@ -99,3 +99,37 @@
 %define RTC_CENTURY_REGISTER     0x32
 %define RTC_NMI_SELECT_MASK      0
 %define RTC_INTERRUPT_LABEL      int1a
+
+; Generic services retain this board's one-KiB state and POST scratch phase.
+%define CFG_ROM_SIZE 131072
+%define CFG_ROM_MODEL_BYTE 0xFC
+%define CFG_PLATFORM_SYSTEM_SUBMODEL 1
+%define CFG_PLATFORM_SYSTEM_REVISION 0
+%define CFG_PLATFORM_STATE_KIB 1
+%define BOARD_POST_RAM_ROW 5
+%define BOARD_MOUSE_DIAGNOSTIC_LABEL ' KBCFG='
+%define BOARD_PORTS_LOAD_FILTER ports_load_filter
+%define BOARD_PORTS_SAVE_FILTER ports_save_filter
+%define BOARD_PORTS_ROWS 5,0,0,6,7,0,8,0
+%define BOARD_PORTS_VALUES u_uart_values,u_uart_values,u_pair_values,u_parallel_values,u_mode_values,u_seek_values,u_seek_values,u_seek_values
+%define BOARD_PORTS_MODES u_printer,u_bidirectional
+%define BOARD_PORTS_MODE_HELP 'Printer output or PS/2 bidirectional data.'
+%define BOARD_PORTS_SETUP_STRINGS "hardware/adapters.inc"
+%ifndef RAM_TEST_BLOCK_SIZE
+%define RAM_TEST_BLOCK_SIZE 0x0400
+%endif
+%ifndef RAM_TEST_SERVICE_MASK
+%define RAM_TEST_SERVICE_MASK 0x03FF
+%endif
+%ifndef RAM_TEST_BUFFER_ABSOLUTE
+%define RAM_TEST_BUFFER_ABSOLUTE 0x0800
+%endif
+%define RAM_TEST_SCRATCH_BEGIN 0x0800
+%define RAM_TEST_SCRATCH_END 0x1000
+%define RAM_TEST_STACK_TOP 0x7000
+%macro ata_port 1
+    mov dx,%1
+%endmacro
+%macro cd_port 1
+    mov dx,%1
+%endmacro

@@ -113,6 +113,6 @@ if __name__ == '__main__':
                        ('RAM',port.ram_checks)):
         results[name] = check(args.image.resolve())
         print('PASS',name,json.dumps(results[name]),flush=True)
-    folder = PORT/'build/test-results'
+    folder = PORT/'build/tests/results'
     folder.mkdir(exist_ok=True)
     (folder/'post.json').write_text(json.dumps(results,indent=2)+'\n')

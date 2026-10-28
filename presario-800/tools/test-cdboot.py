@@ -2,11 +2,13 @@
 import argparse
 import hashlib
 import importlib
+import json
 import os
 from pathlib import Path
 import shutil
 import struct
 import subprocess
+import sys
 
 from unicorn import UC_HOOK_CODE
 from unicorn import x86_const as x
@@ -14,6 +16,7 @@ from unicorn import x86_const as x
 setup = importlib.import_module('test-setup')
 rtc = setup.rtc
 ROOT, BUILD = rtc.ROOT, rtc.BUILD
+sys.path.insert(0, str(ROOT.parent))
 TARGET = ROOT / 'reference/media/windows98se.iso'
 
 
@@ -621,10 +624,141 @@ handler:
             assert m.cpu.mem_read(m.base+0x298,1)==b'\0'
         finally:
             m.cpu.hook_del(hook)
+    source_geometry_lifecycle(other=True)
     print('Other uses initialized ROM chain at selected priority; dirty chained/returning failures and absent ROM continue: PASS')
 
 
+def source_geometry_lifecycle(other=False, *, factory=None, start=None, assemble=None, check_post_ff=True):
+    """The actual selector owns source identity across failed HDD/CD/Other."""
+    legacy=importlib.import_module('test-legacy-boot')
+    rows=[]
+    for action in (('return','int18') if other else ('cd',)):
+        image=disc();at=21*2048
+        image[at]=0xEB
+        struct.pack_into('<H',image,at+11,512);struct.pack_into('<H',image,at+14,1)
+        struct.pack_into('<HH',image,at+24,18,2);struct.pack_into('<H',image,at+510,0xAA55)
+        card=None
+        if other:
+            body="""bits 16
+org 0
+db 0x55,0xAA,4
+jmp init
+init:
+ xor ax,ax
+ mov ds,ax
+ mov word [0x64],handler
+ mov [0x66],cs
+ retf
+handler:
+ xor ax,ax
+ mov ds,ax
+ mov byte [0x7C00],0xEB
+ mov word [0x7C0B],512
+ mov word [0x7C0E],1
+ mov word [0x7C18],17
+ mov word [0x7C1A],4
+ mov word [0x7DFE],0xAA55
+ mov ax,0x0800
+ mov dl,0x80
+ int 0x13
+ jc failed
+ cmp dh,31
+ jne failed
+ and cl,63
+ cmp cl,63
+ jne failed
+ xor ax,ax
+ mov ds,ax
+ mov si,0x500
+ mov word [si],30
+ mov ax,0x4800
+ mov dl,0x80
+ int 0x13
+ jc failed
+ cmp dword [si+8],32
+ jne failed
+ cmp dword [si+12],63
+ jne failed
+ mov ax,0x2000
+ mov es,ax
+ mov di,0x1000
+ mov ax,0xB135
+ mov cx,256
+ cld
+ rep stosw
+ mov ax,0x0301
+ mov bx,0x1000
+ mov cx,0x0102
+ mov dx,0x0180
+ int 0x13
+ jc failed
+ mov word [es:bx],0
+ mov ax,0x0201
+ mov cx,0x0102
+ mov dx,0x0180
+ int 0x13
+ jc failed
+ cmp word [es:bx],0xB135
+ jne failed
+ mov word [0x590],1
+ jmp finish
+failed:
+ mov word [0x590],0xE1
+finish:
+"""
+            body+='int 0x18\n' if action=='int18' else 'iret\n'
+            body+='times 2048-($-$$) db 0\n'
+            card=bytearray((assemble or legacy.assemble)('source-geometry-'+action,body));card[-1]=-sum(card[:-1])&255
+            card=bytes(card)
+        if factory is None:
+            m=model(images=[None,image])
+            if card is not None:m.cpu.mem_write(0xC8000,card)
+        else:
+            m=factory(images=[None,image],option_rom=card)
+        m.use_disk_media=True
+        struct.pack_into('<I',m.disk_device.payloads[0],120,0x1F8000)
+        for word in range(256):m.disk_device.disk_words[0,word]=0 # Real HDD read returns unsigned media.
+        order=(2,4,3,0) if other else (2,3,0,0)
+        record=bytearray((66,56,5,1,order[0],0,order[1]|order[3]<<3,order[2]))
+        record[5]=-(sum(record)+m.cmos[0x10])&255;m.cmos[0x38:0x40]=record
+        reached=[]
+        hook=m.cpu.hook_add(UC_HOOK_CODE,lambda cpu,a,n,u:(reached.append(a),cpu.emu_stop()),None,0x7C00,0x7C00)
+        try:
+            try:
+                if start is None:m.startup(production_controls=True,through_boot=True)
+                else:start(m)
+            except AssertionError:assert reached,('failed before actual media handoff',m.console)
+        finally:m.cpu.hook_del(hook)
+        assert reached==[0x7C00] and m.cpu.mem_read(m.base+0x298,1)==b'\1'
+        assert m.disk_device.taskfiles[0][:3]==(0,0x20,0)
+        assert m.disk_device.packet_log, 'real CD loader did not execute'
+        assert m.cpu.mem_read(m.base+0x4A,2)==bytes(2), 'selector retained an earlier source'
+        assert not api(m,8,dl=0x80)[0]
+        assert (m.cpu.reg_read(x.UC_X86_REG_DH)+1,m.cpu.reg_read(x.UC_X86_REG_CL)&63)==(32,63)
+        m.cpu.mem_write(0x500,b'\x1E\0'+bytes(28))
+        assert not api(m,0x48,dl=0x80)[0]
+        assert struct.unpack_from('<II',m.cpu.mem_read(0x500,26),8)==(32,63)
+        data=struct.pack('<H',0xB246)*256;m.cpu.mem_write(0x21000,data)
+        assert not api(m,3,al=1,dl=0x180,cx=0x0102)[0]
+        assert m.disk_device.taskfiles[-1][:3]==(0,0x30,2080)
+        m.cpu.mem_write(0x21000,bytes(512))
+        assert not api(m,2,al=1,dl=0x180,cx=0x0102)[0]
+        assert m.disk_device.taskfiles[-1][:3]==(0,0x20,2080)
+        assert m.cpu.mem_read(0x21000,512)==data
+        if other:
+            assert m.cpu.mem_read(0x590,2)==b'\1\0', (action,m.cpu.mem_read(0x590,2))
+            assert (0,0x30,2080,1) in m.disk_device.taskfiles
+        if check_post_ff:assert m.posts.count(0xFF)==1
+        rows.append(dict(action=action,first_hdd_read=m.disk_device.taskfiles[0],
+                         packet_commands=len(m.disk_device.packet_log),source_identity=m.cpu.mem_read(m.base+0x4A,2).hex(),
+                         heads=32,sectors=63,nonzero_lba=m.disk_device.taskfiles[-1][2],
+                         readback_equal=True,other_callback_passed=bool(other),installed_int13=m.cpu.mem_read(0x4C,4).hex()))
+    print('Boot source lifecycle: failed physical HDD -> actual '+('returning/INT18 Other -> ' if other else '')+'CD loader -> installed native AH08/AH48/nonzero I/O PASS',flush=True)
+    return rows
+
+
 def lifecycle():
+    source_geometry_lifecycle()
     # A bootloader can retain its own disk hook across INT19. Reopening must
     # reuse the wrapper already below that hook, without making a cycle.
     m = model(); boot(m)
@@ -727,16 +861,25 @@ def lifecycle():
     # Fresh media alone and timer wakes do not leave the retry gate. Only a new
     # keyboard event re-enters INT19 and re-reads the disc through the real owner.
     m = model(absent_media=True)
+    m.startup_native_owners=('post_success_tone',)
+    completed=[];completion_hooks=[]
+    for owner in ('post_ui_begin','chipset_late_cache','post_success_tone','post_tone','post_debug_summary'):
+        point=0xF0000+rtc.symbol(owner)
+        completion_hooks.append(m.cpu.hook_add(UC_HOOK_CODE,lambda cpu,a,n,u,owner=owner:completed.append(owner),None,point,point))
     m.cmos[0x3E] = 0
     m.cmos[0x3D] = -(sum(m.cmos[0x38:0x3D])+sum(m.cmos[0x3E:0x40])+m.cmos[0x10]) & 255
     m.startup(production_controls=True,boot_failure=True)
     requests = len(m.disk_device.packet_log)
+    assert completed==['post_ui_begin','chipset_late_cache','post_success_tone','post_tone','post_debug_summary']
+    assert m.posts.count(0xFF)==1
     wake=[]
     def events(current,address):
         if current.cpu.mem_read(address,1) != b'\xF4': return
         wake.append(address)
         assert 'Press any key to retry' in current.console
         assert len(current.disk_device.packet_log) == requests
+        assert completed==['post_ui_begin','chipset_late_cache','post_success_tone','post_tone','post_debug_summary']
+        assert current.posts.count(0xFF)==1
         if len(wake)==2: current.disk_device.absent_media=False
         if len(wake)==4: current.pending.append(0x1E)
     m.event_observer=events
@@ -748,6 +891,9 @@ def lifecycle():
     assert reached and len(wake)==4 and m.cpu.mem_read(0x7C00,4)==b'CDOK'
     assert m.startup_hops.count('option_rom_discovery') == 1
     assert len(m.disk_device.packet_log) > requests
+    assert completed==['post_ui_begin','chipset_late_cache','post_success_tone','post_tone','post_debug_summary']
+    assert m.posts.count(0xFF)==1
+    for hook in completion_hooks:m.cpu.hook_del(hook)
     print('Relocated state, termination, INT18/19 continuation, changed-media/timer/fresh-key CD retry: PASS')
 
 
@@ -766,10 +912,157 @@ def integrity():
     print('Both64-KB systems/128-KB layouts, checksums, VGA inputs, retained OEM region and reset vector: PASS')
 
 
-def native(iso=TARGET, clock=60):
+NATIVE_MENU = ('Start Windows 98 Setup from CD-ROM.',
+               'Start computer with CD-ROM support.')
+
+
+def native_observer(folder, menus):
+    """External ROM observes the real DOS menu without a persistent RAM allocation."""
+    default = rtc.symbol('default_iret')
+    assert (BUILD/'baios-presario800-system.rom').read_bytes()[default] == 0xCF
+    strings = '\n'.join(f'menu{i}: db '+','.join(map(str, text.encode('ascii')))+',0'
+                        for i, text in enumerate(menus))
+    matches = '\n'.join(f'    mov si,menu{i}\n    call find\n    jc tick.loader'
+                        for i in range(len(menus)))
+    source = f'''bits 16
+org 0
+db 0x55,0xAA,4
+jmp init
+init:
+    pushf
+    cli
+    pushad
+    push ds
+    xor ax,ax
+    mov ds,ax
+    cmp word [0x70],{default}
+    jne failed
+    cmp word [0x72],0xF000
+    jne failed
+    mov word [0x70],tick
+    mov word [0x72],cs
+    pop ds
+    popad
+    popf
+    retf
+tick:
+    pushad
+    push ds
+    push es
+    push fs
+    push gs
+    cld
+    xor ax,ax
+    mov ds,ax
+    mov ax,0xB800
+    mov es,ax
+{matches}
+    jmp captured
+.loader:
+    mov si,boot_title
+    call find
+    jc .done
+    mov si,boot_prompt
+    call find
+    jc .done
+    mov ax,[0x41A]
+    cmp ax,[0x41C]
+    jne .done
+    ; The loader can flush typeahead while drawing its first menu.
+    mov cx,0x0332
+    mov ah,5
+    int 0x16
+    test al,al
+    jnz failed
+    mov cx,0x1C0D
+    mov ah,5
+    int 0x16
+    test al,al
+    jnz failed
+.done:
+    pop gs
+    pop fs
+    pop es
+    pop ds
+    popad
+    iret
+captured:
+    ; Restore the prior default owner before the disk service can yield.
+    mov word [0x70],{default}
+    mov word [0x72],0xF000
+    ; Cylinder0/head0/sector32 is LBA31 under the installed BIOS geometry.
+    mov ax,0x0308
+    xor bx,bx
+    mov cx,32
+    mov dx,0x0080
+    int 0x13
+    jc failed
+    mov bl,0x68
+    jmp exit
+failed:
+    mov bl,0x69
+exit:
+    mov dx,0x80
+    mov si,magic
+    mov cx,7
+.magic:
+    cs lodsb
+    out dx,al
+    loop .magic
+    mov dx,0x501
+    mov al,4
+    out dx,al
+    inc dx
+    mov al,bl
+    out dx,al
+    cli
+    hlt
+find:
+    mov bp,si
+    xor di,di
+.next:
+    mov si,bp
+    mov bx,di
+.match:
+    cs lodsb
+    test al,al
+    jz .found
+    cmp al,[es:bx]
+    jne .miss
+    add bx,2
+    cmp bx,4000
+    jb .match
+.miss:
+    add di,2
+    cmp di,4000
+    jb .next
+    stc
+    ret
+.found:
+    clc
+    ret
+boot_title db 'Microsoft Windows 98 CD-ROM Startup Menu',0
+boot_prompt db 'Boot from CD-ROM',0
+magic db '86Box',1,5
+{strings}
+times 2048-($-$$) db 0
+'''
+    asm, binary = folder/'observer.asm', folder/'observer.bin'
+    asm.write_text(source, encoding='ascii')
+    nasm = shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA'])/'bin/NASM/nasm.exe')
+    subprocess.run([nasm, '-w+error', '-f', 'bin', '-o', str(binary), str(asm)], check=True)
+    raw = bytearray(binary.read_bytes())
+    raw[-1] = -sum(raw[:-1]) & 255
+    assert len(raw) == 2048 and sum(raw) & 255 == 0
+    return bytes(raw)+bytes(16384-len(raw))
+
+
+def native(iso=TARGET, clock=60, *, preview=False, timeout=120, menus=NATIVE_MENU):
+    from shared.tools.emulator import run_86box
+    assert all(menu in menus for menu in NATIVE_MENU), 'Both DOS-menu markers are required'
     matrix = importlib.import_module('floppy-matrix')
-    work = BUILD / 'cd-review'
-    work.mkdir(exist_ok=True)
+    work = BUILD/'review/cd-review' if preview else BUILD/'diagnostics/cdboot'/f'vga{clock}{"-contrast" if menus != NATIVE_MENU else ""}'
+    work.mkdir(parents=True, exist_ok=True)
     # A fresh VM avoids inherited CMOS boot order. Do not overwrite an active VM.
     import tempfile
     vm = Path(tempfile.mkdtemp(prefix='win98-', dir=work))
@@ -796,22 +1089,76 @@ def native(iso=TARGET, clock=60):
         'cdrom_01_ide_channel = 0:1\ncdrom_01_type = 86cd\n'
         f'cdrom_01_image_path = {iso.resolve().as_posix()}\n')
     config.write_text(settings)
-    roms = BUILD / f'86box/vga{clock}/roms'
-    wrapper = roms / 'machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin'
+    source_roms = BUILD/f'tests/86box/vga{clock}/roms'
+    wrapper = source_roms/'machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin'
     physical = BUILD / f'baios-presario800-vga{clock}.bin'
     assert wrapper.read_bytes() == physical.read_bytes()
+    roms = vm/'roms'
+    shutil.copytree(source_roms, roms)
+    protected = [physical, wrapper, iso]
+    if not preview:
+        adaptec = ROOT.parent/'tools/86box/roms/scsi/adaptec'
+        protected += [p for p in adaptec.rglob('*') if p.is_file()]
+        shutil.copytree(adaptec, roms/'scsi/adaptec')
+        (roms/'scsi/adaptec/aha1540b320_330.bin').write_bytes(native_observer(work, menus))
+        settings = config.read_text().replace('hdc_1 = ide_isa', 'hdc_1 = ide_isa\nscsicard_1 = aha154xb')
+        settings += '\n[Adaptec AHA-154xB #1]\nbase = 0330\nbios_rev = v3_20\nbios_addr = C8000\n'
+        config.write_text(settings)
     exe = shutil.which('86Box.exe') or str(Path(os.environ['LOCALAPPDATA']) /
         'Microsoft/WinGet/Packages/86Box.86Box_Microsoft.Winget.Source_8wekyb3d8bbwe/86Box.exe')
-    process = subprocess.Popen([exe, '-P', str(vm), '-R', str(roms), '-L', str(vm / '86box.log'), '-N'])
-    (work / 'preview.pid').write_text(str(process.pid))
-    print(f'Production vga{clock}: {hashlib.sha256(physical.read_bytes()).hexdigest()}\n'
-          f'ISO (read-only): {iso}\nPID {process.pid}, profile {vm}', flush=True)
+    if preview:
+        process = subprocess.Popen([exe, '-P', str(vm), '-R', str(roms), '-L', str(vm/'86box.log'), '-N'])
+        (work/'preview.pid').write_text(str(process.pid))
+        print(f'Interactive vga{clock} preview: PID {process.pid}, profile {vm}', flush=True)
+        return vm
+    def digest(path):
+        with path.open('rb') as stream:
+            return hashlib.file_digest(stream, 'sha256').hexdigest()
+    before = {str(p): digest(p) for p in protected}
+    report = dict(status='running', clock=clock, vm=str(vm), menus=list(menus), input_sha256=before)
+    try:
+        print(f'START production vga{clock}, supplied DOS menu: {vm}', flush=True)
+        code = run_86box(vm, roms, timeout=timeout, executable=exe)
+        report['exit'] = code
+        assert code == 0x68, (code, vm)
+        with disk.open('rb') as stream:
+            stream.seek(31*512)
+            screen = stream.read(4000)
+        text = screen[::2].decode('cp437')
+        # The pipeline retains JSON; keep the actual framebuffer with its oracle.
+        report['screen_hex'] = screen.hex()
+        report['screen_text'] = [text[i:i+80].rstrip() for i in range(0,2000,80)]
+        (work/'screen.bin').write_bytes(screen)
+        (work/'screen.txt').write_text('\n'.join(text[i:i+80].rstrip() for i in range(0,2000,80))+'\n', encoding='utf-8')
+        report['menu_found'] = {menu: menu in text for menu in menus}
+        assert all(report['menu_found'].values()), ('Required DOS-menu entries are missing from the retained capture', vm)
+        for name in ('86box.log', 'emulator-output.txt'):
+            if (vm/name).exists(): shutil.copyfile(vm/name, work/name)
+        # Reuse the process, resolved-path and reparse guards for successful VMs.
+        quote = lambda value: "'"+str(value).replace("'", "''")+"'"
+        helper = ROOT.parent/'shared/tools/build-cleanup.ps1'
+        cleanup = '& { [CmdletBinding(SupportsShouldProcess)] param($target,$owner,$helper); . $helper; Initialize-BuildCleanup $owner $PSCmdlet; Remove-Generated $target } '
+        subprocess.run([shutil.which('pwsh') or 'powershell', '-NoProfile', '-Command',
+                        cleanup+' '.join(map(quote,(vm,work,helper)))], check=True, capture_output=True)
+        report.update(status='passed', process_completed=True, vm_retained=False)
+    except Exception as error:
+        report.update(status='failed', error=str(error), process_completed=True, vm_retained=vm.exists())
+        raise
+    finally:
+        report['inputs_unchanged'] = all(digest(Path(name)) == value for name,value in before.items())
+        if not report['inputs_unchanged']:
+            report.update(status='failed', error='Native CD check changed an original input')
+        (work/'native.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
+        assert report['inputs_unchanged'], 'Native CD check changed an original input'
+    print(f'PASS production vga{clock}: supplied ISO second DOS menu, independent VRAM assertions, original inputs unchanged; emulator stopped', flush=True)
+    return report
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--86box', dest='emulator', action='store_true')
-    parser.add_argument('--preview', action='store_true')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--86box', dest='emulator', action='store_true', help='Wait for the supplied ISO DOS menu, verify its captured text and stop.')
+    mode.add_argument('--preview', action='store_true', help='Open an interactive preview and leave it running.')
     parser.add_argument('--iso', type=Path, default=TARGET)
     parser.add_argument('--vga-clock', type=int, choices=(50, 60), default=60)
     cases = dict(settings=settings,catalog=catalog,load=load,packet=packet,boot_keys=boot_keys,
@@ -824,4 +1171,4 @@ if __name__ == '__main__':
             print('START '+name,flush=True)
             cases[name]()
     if args.emulator or args.preview:
-        native(args.iso, args.vga_clock)
+        native(args.iso, args.vga_clock, preview=args.preview)

@@ -14,12 +14,12 @@ $release = $PSBoundParameters.ContainsKey('VgaClockMHz') -or (-not $Vga141 -and 
 if ($release) { $VgaBus07 = $true; $Vga141 = $true }
 if ($VgaBus07 -and -not $release) {
     $Vga141 = $true
-    if ($OutputDirectory -eq 'build') { $OutputDirectory = 'build/ram-presets' }
+    if ($OutputDirectory -eq 'build') { $OutputDirectory = 'build/review/ram-presets' }
 }
-if ($Vga141 -and -not $release -and $OutputDirectory -eq "build") { $OutputDirectory = "build/vga141" }
-if ($FloppyDiagnostic -and $OutputDirectory -eq "build") { $OutputDirectory = "build/floppy-diagnostic" }
-if ($MouseDiagnostic -and $OutputDirectory -eq "build") { $OutputDirectory = "build/mouse-diagnostic" }
-if ($KeyboardDiagnostic -and $OutputDirectory -eq "build") { $OutputDirectory = "build/keyboard-diagnostic" }
+if ($Vga141 -and -not $release -and $OutputDirectory -eq 'build') { $OutputDirectory = 'build/review/vga141' }
+if ($OutputDirectory -eq 'build' -and ($FloppyDiagnostic -or $MouseDiagnostic -or $KeyboardDiagnostic)) {
+    $OutputDirectory = 'build/diagnostics/iteration'
+}
 $root = Split-Path -Parent $PSScriptRoot
 $reference = Join-Path $root "reference/COMPAQ_PROLINEA_MT_05-02-94.BIN"
 $nasm = (Get-Command nasm -ErrorAction SilentlyContinue).Source
@@ -36,9 +36,11 @@ $buildPrefix = $buildRoot.TrimEnd('\') + '\'
 if ($out -ne $buildRoot -and -not $out.StartsWith($buildPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw "OutputDirectory must resolve inside $buildRoot."
 }
-if ($Vga141 -and -not $release -and $out -eq $buildRoot) { throw "VGA 1.41 must use a separate output directory." }
-if ($VgaBus07 -and $out -eq [IO.Path]::GetFullPath((Join-Path $buildRoot 'vga141/bus07'))) {
+if ($out -eq [IO.Path]::GetFullPath((Join-Path $buildRoot 'review/vga141/bus07'))) {
     throw 'RAM candidates must use a separate directory from the active bus07 output.'
+}
+if ($Vga141 -and -not $release -and $out -eq $buildRoot) {
+    throw 'VGA141 candidates require a separate output directory.'
 }
 $vgaBytes = $null
 if ($Vga141) {
@@ -68,16 +70,18 @@ if ($release -and $VgaClockMHz -eq 50) {
     $vgaBytes[32767] = (-$vgaSum) -band 255
 }
 [IO.Directory]::CreateDirectory($out) | Out-Null
+$payloads = Join-Path $out "tests/payloads"
+[IO.Directory]::CreateDirectory($payloads) | Out-Null
 $system = Join-Path $out "baios-presario800-system.rom"
 $physicalName = if ($release) { "baios-presario800-vga$VgaClockMHz.bin" } elseif ($VgaBus07) { 'baios-presario800-vga141-bus07.bin' } else { 'baios-presario800-vga141.bin' }
 $physical = Join-Path $out $physicalName
-$bootTest = Join-Path $out "boot-test.bin"
-$faultTest = Join-Path $out "fault-test.bin"
-$keyboardTest = Join-Path $out "keyboard-test.bin"
-$roms = Join-Path $out "86box/roms"
+$bootTest = Join-Path $payloads "boot-test.bin"
+$faultTest = Join-Path $payloads "fault-test.bin"
+$keyboardTest = Join-Path $payloads "keyboard-test.bin"
+$roms = Join-Path $out "tests/86box/roms"
 $gd5428 = Join-Path $root "reference/86box/video/cirruslogic/5428.bin"
 if ($Vga141) {
-    $roms = Join-Path $out '86box/roms'
+    $roms = Join-Path $out 'tests/86box/roms'
     $privateVideo = Join-Path $roms 'video/cirruslogic/5428.bin'
     [IO.Directory]::CreateDirectory((Split-Path -Parent $privateVideo)) | Out-Null
     Copy-Item -LiteralPath $gd5428 -Destination $privateVideo
@@ -107,15 +111,17 @@ Invoke-Nasm "$diagnosticDefine -f bin -I `"$includePath`" -l `"$listing`" -o `"$
 Invoke-Nasm "$testArguments -f bin -o `"$bootTest`" `"$testSource`"" "Boot-test assembly"
 Invoke-Nasm "$testArguments -D FAULT_TEST -f bin -o `"$faultTest`" `"$testSource`"" "Fault-test assembly"
 Invoke-Nasm "$testArguments -f bin -o `"$keyboardTest`" `"$keyboardSource`"" "Keyboard-test assembly"
-$registerTest = Join-Path $out 'vga-register-test.bin'
+$registerTest = Join-Path $payloads 'vga-register-test.bin'
 $registerSource = Join-Path $root 'tests/vga-register-test.asm'
 $registerDefine = if ($Vga141) { '-D VGA_BIOS_141' } else { '' }
 Invoke-Nasm "$registerDefine -f bin -I `"$includePath`" -I `"$testInclude`" -o `"$registerTest`" `"$registerSource`"" "VGA register-test assembly"
-$vgaTest = Join-Path $out 'VGACHECK.COM'
-$vgaSource = Join-Path $root 'tests/vga-test.asm'
+$diagnostics = Join-Path $out 'diagnostics'
+[IO.Directory]::CreateDirectory($diagnostics) | Out-Null
+$vgaTest = Join-Path $diagnostics 'VGACHECK.COM'
+$vgaSource = Join-Path $root 'diagnostics/vga-test.asm'
 Invoke-Nasm "-f bin -I `"$testInclude`" -o `"$vgaTest`" `"$vgaSource`"" "VGA-test assembly"
-$cacheOff = Join-Path $out 'L1OFF.COM'
-$cacheSource = Join-Path $root 'tests/cache-off.asm'
+$cacheOff = Join-Path $diagnostics 'L1OFF.COM'
+$cacheSource = Join-Path $root 'diagnostics/cache-off.asm'
 Invoke-Nasm "-f bin -o `"$cacheOff`" `"$cacheSource`"" "Cache diagnostic assembly"
 $diagnostics = Join-Path $out 'diagnostics'
 [IO.Directory]::CreateDirectory($diagnostics) | Out-Null
@@ -127,7 +133,7 @@ Invoke-Nasm "-f bin -o `"$rtcCheck`" `"$rtcSource`"" "Read-only RTC diagnostic a
 $rtcSpeedsys = Join-Path $diagnostics 'SPRTC.COM'
 Invoke-Nasm "-D RTC_SPEEDSYS_TEST -f bin -o `"$rtcSpeedsys`" `"$rtcSource`"" "Speedsys RTC diagnostic assembly"
 $hardwareState = Join-Path $diagnostics 'HWSTATE.COM'
-$hardwareSource = Join-Path $root 'tests/hw-state.asm'
+$hardwareSource = Join-Path $root 'diagnostics/hw-state.asm'
 Invoke-Nasm "-f bin -o `"$hardwareState`" `"$hardwareSource`"" "Read-only hardware snapshot assembly"
 
 $systemBytes = [IO.File]::ReadAllBytes($system)
@@ -137,6 +143,11 @@ if ($endLine -lt 0) { throw 'ROM used-space marker was not found.' }
 $paddingLine = $listingLines[($endLine + 1)..($listingLines.Length - 1)] | Where-Object { $_ -match '^\s*\d+\s+([0-9A-F]{8})\s+[0-9A-F]' } | Select-Object -First 1
 if ($paddingLine -notmatch '^\s*\d+\s+([0-9A-F]{8})') { throw 'ROM used-space address was not found.' }
 $usedBytes = [Convert]::ToInt32($Matches[1], 16)
+$cpuEndLine = [Array]::FindIndex($listingLines, [Predicate[string]] { param($line) $line.TrimEnd().EndsWith('presario_cpu_end:') })
+if ($cpuEndLine -lt 0) { throw 'Late CPU catalogue end marker was not found.' }
+$cpuPaddingLine = $listingLines[($cpuEndLine + 1)..($listingLines.Length - 1)] | Where-Object { $_ -match '^\s*\d+\s+([0-9A-F]{8})\s+[0-9A-F]' } | Select-Object -First 1
+if ($cpuPaddingLine -notmatch '^\s*\d+\s+([0-9A-F]{8})') { throw 'Late CPU catalogue end address was not found.' }
+$cpuEnd = [Convert]::ToInt32($Matches[1], 16)
 if ($systemBytes.Length -ne 65536) { throw "System ROM is $($systemBytes.Length) bytes, not 65536." }
 $sum = 0
 for ($i = 0; $i -lt 65535; $i++) { $sum = ($sum + $systemBytes[$i]) -band 0xFF }
@@ -152,9 +163,15 @@ if ($Vga141) { [Array]::Copy($vgaBytes, 0, $physicalBytes, 0, 32768) }
 [IO.File]::WriteAllBytes($physical, $physicalBytes)
 if ($release) { [IO.File]::WriteAllBytes((Join-Path $out 'baios-presario800.bin'), $physicalBytes) }
 
+$identityLine = Select-String -LiteralPath (Join-Path $root 'src/bios.asm') -Pattern '^%define BIOS_VERSION\s+'
+if (-not $identityLine) { throw 'Source version was not found' }
+$sourceVersion = ($identityLine.Line -split '\s+',3)[2].Trim([char[]]@(0x27,0x22))
+& python -B (Join-Path (Split-Path -Parent $root) 'tools/finish-candidate.py') 'presario-800' --record $physical $system --version $sourceVersion | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Build identity recording failed' }
+
 [IO.File]::WriteAllBytes($wrapper, $physicalBytes)
 if ($release) {
-    $clockRoms = Join-Path $out "86box/vga$VgaClockMHz/roms"
+    $clockRoms = Join-Path $out "tests/86box/vga$VgaClockMHz/roms"
     $clockWrapper = Join-Path $clockRoms 'machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin'
     [IO.Directory]::CreateDirectory((Split-Path -Parent $clockWrapper)) | Out-Null
     $clockVideo = Join-Path $clockRoms 'video/cirruslogic/5428.bin'
@@ -176,8 +193,8 @@ if ($release) {
     RtcCheck = $rtcCheck
     CodeUsedBytes = $usedBytes
     CodeFreeBeforeF065 = 0xF065 - $usedBytes
-    CodeFreeAfterF070 = 0xFFF0 - 0xF070
-    SystemFreeBytes = (0xF065 - $usedBytes) + (0xFFF0 - 0xF070)
+    CodeFreeAfterF070 = 0xFFF0 - $cpuEnd
+    SystemFreeBytes = (0xF065 - $usedBytes) + (0xFFF0 - $cpuEnd)
     SystemSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $system).Hash
     PhysicalSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $physical).Hash
 } | Format-List

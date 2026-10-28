@@ -1,1 +1,2 @@
-%include "../../shared/src/setup/chipset-fields.inc"
+%include "shared-owner.inc"
+presario_shared "setup/chipset-fields.inc"

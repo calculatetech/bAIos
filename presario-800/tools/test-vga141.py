@@ -8,7 +8,7 @@ import struct
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-WORK = ROOT / 'build/vga141'
+WORK = ROOT / 'build/review/vga141'
 floppy = importlib.import_module('floppy-matrix')
 MODES = [0, 3, 0x503, 0x603, 0x12, 0x13, 0x101, 0x102, 0x103,
          0x104, 0x105, 0x106, 0x111, 0x112]
@@ -38,9 +38,10 @@ def ps(script, *args, reject=False):
 def integrity():
     retained = ROOT / 'reference/COMPAQ_PROLINEA_MT_05-02-94.BIN'
     new = ROOT / 'reference/gd5428_1-41.bin'
+    bus07 = ROOT / 'reference/baios-presario800-vga141-bus07.bin'
     main = ROOT / 'build/baios-presario800.bin'
     system_main = ROOT / 'build/baios-presario800-system.rom'
-    before = {str(p): digest(p) for p in (retained, new, main, system_main)}
+    before = {str(p): digest(p) for p in (retained, new, bus07, main, system_main)}
     ps('build.ps1', '-Vga141')
     ps('verify-rom.ps1', '-Vga141', '-SelfTest')
     ps('build.ps1', '-Vga141', '-OutputDirectory', str(ROOT / 'build/../build'), reject=True)
@@ -48,17 +49,17 @@ def integrity():
     ps('build.ps1')
     ps('verify-rom.ps1', '-SelfTest')
     for variant, directory, name, entry in (
-            (False, ROOT / 'build', 'baios-presario800.bin', 0x27B7),
+            (False, ROOT / 'build', 'baios-presario800.bin', 0x2897),
             (True, WORK, 'baios-presario800-vga141.bin', 0x2897)):
         image = (directory / name).read_bytes()
         system = (directory / 'baios-presario800-system.rom').read_bytes()
         assert len(image) == 131072 and len(system) == 65536 and sum(system) % 256 == 0
         assert image[65536:] == system and system[0xFFF0:0xFFF5] == bytes.fromhex('ea000000f0')
-        assert image[:32768] == (new.read_bytes() if variant else retained.read_bytes()[:32768])
+        assert image[:32768] == (new.read_bytes() if variant else bus07.read_bytes()[:32768])
         assert image[32768:65536] == retained.read_bytes()[32768:65536]
         assert system[0xF06A:0xF06F] == b'\xea' + struct.pack('<HH', entry, 0xC000)
         assert bytes.fromhex('26c7060801') + struct.pack('<H', entry + 1) in system
-        jump = 0x28E9 if variant else 0x62E9
+        jump = 0x28E9
         assert bytes.fromhex('813e0300') + struct.pack('<H', jump) in system
     assert before == {str(Path(p)): digest(Path(p)) for p in before}, 'Main image or supplied inputs changed'
     print('B1/S1: separate variant, root-output rejection, exact layout, checksum, reset, inputs and default reproducibility PASS', flush=True)
@@ -66,7 +67,7 @@ def integrity():
 
 def snapshots(variant):
     directory = WORK if variant else ROOT / 'build'
-    disk = directory / '86box/vm/boot-test-8g.img'
+    disk = directory / 'tests/86box/vm/boot-test-8g.img'
     result = []
     with disk.open('rb') as source:
         source.seek(31 * 512)
@@ -81,10 +82,10 @@ def snapshots(variant):
                                gfx=list(raw[88:152]), attr=list(raw[152:173]),
                                int10=list(struct.unpack_from('<HH', raw, 174)),
                                int42=list(struct.unpack_from('<HH', raw, 178)), rom_header=raw[182:188].hex()))
-    path = WORK / ('registers-141.json' if variant else 'registers-oem.json')
+    path = WORK / ('registers-141.json' if variant else 'registers-bus07.json')
     path.write_text(json.dumps(result, indent=2) + '\n')
     # Remove only the owned disposable 8 GiB disk after bounded records are saved.
-    assert disk.resolve().parent == (directory / '86box/vm').resolve()
+    assert disk.resolve().parent == (directory / 'tests/86box/vm').resolve()
     disk.unlink()
     return result
 
@@ -117,7 +118,7 @@ def comparison(old, new):
         for key in ('misc', 'dac'):
             if a[key] != b[key]:
                 changed[key] = f'{a[key]:02X}->{b[key]:02X}'
-        rows.append(dict(label=a['label'], changes=changed, oem=timing(a), vga141=timing(b)))
+        rows.append(dict(label=a['label'], changes=changed, bus07=timing(a), vga141=timing(b)))
     assert len(rows) == len(MODES)
     (WORK / 'register-comparison.json').write_text(json.dumps(rows, indent=2) + '\n')
     print(json.dumps(rows, indent=2), flush=True)
@@ -134,10 +135,10 @@ def emulator(transitions_only=False):
         if not transitions_only:
             ps('run-86box.ps1', *args, '-VgaRegisterTest', '-KeepArtifacts', '-TimeoutSeconds', '60')
             records.append(snapshots(variant))
-            print(f'B2/S2, B4/S4, B5/S5: {"1.41" if variant else "OEM"} actual init/INT42, VGA pixels/banks/retrace/IRQ, 1 MiB and upper-half VRAM PASS', flush=True)
+            print(f'B2/S2, B4/S4, B5/S5: {"1.41" if variant else "bus07 release"} actual init/INT42, VGA pixels/banks/retrace/IRQ, 1 MiB and upper-half VRAM PASS', flush=True)
         ps('run-86box.ps1', *args, '-SetupTest', '-TimeoutSeconds', '60')
         ps('run-86box.ps1', *args, '-KeyboardTest', '-TimeoutSeconds', '120')
-        print(f'B3/S3: {"1.41" if variant else "OEM"} real Setup/summary 80x50->80x25, graphics->CtrlAltDel->warm visible text PASS', flush=True)
+        print(f'B3/S3: {"1.41" if variant else "bus07 release"} real Setup/summary 80x50->80x25, graphics->CtrlAltDel->warm visible text PASS', flush=True)
         chipset.emulator(only=['categories', 'post-summary'], vga141=variant)
     if not transitions_only:
         comparison(*records)

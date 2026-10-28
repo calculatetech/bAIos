@@ -15,7 +15,7 @@ ROOT, BUILD = rtc.ROOT, rtc.BUILD
 
 
 def assemble(name, source):
-    work = BUILD / 'legacy-fixtures'
+    work = BUILD / 'tests/legacy-fixtures'
     work.mkdir(parents=True, exist_ok=True)
     asm, binary = work / (name+'.asm'), work / (name+'.bin')
     asm.write_bytes(source.encode())

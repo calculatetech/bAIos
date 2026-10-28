@@ -319,6 +319,7 @@ def geometry():
         struct.pack_into('<HH', bpb, 24, 63, 255)
         bpb[510:] = b'\x55\xAA'
         model.cpu.mem_write(0x7C00, bytes(bpb))
+        model.cpu.mem_write(0x9FC00+0x4A, b'\x80\0')
         assert not model.disk(8)[0]
         actual_heads = model.cpu.reg_read(x.UC_X86_REG_DH) + 1
         actual_sectors = model.cpu.reg_read(x.UC_X86_REG_CL) & 63
@@ -338,6 +339,7 @@ def geometry():
         model = Disk()
         detect(model, b'\x01' + record(translation=mode) + record())
         model.cpu.mem_write(0x7C00, bytes(bpb))
+        model.cpu.mem_write(0x9FC00+0x4A, b'\x80\0')
         assert not model.disk(8)[0]
         assert (model.cpu.reg_read(x.UC_X86_REG_DH) + 1, model.cpu.reg_read(x.UC_X86_REG_CL) & 63) == (
             (255, 63) if mode == 0 else (16, 63) if mode in (1, 2) else (32, 63))
@@ -416,7 +418,61 @@ def geometry():
             assert (0, 0x91) in model.selected_commands
             assert not model.disk(2, al=2, cx=0x0102, dx=0x180)[0]
             assert not model.ata[0x1F6] & 0x40 and model.taskfiles[-2][2] == 86 and model.command_lba == 87
+    geometry_ownership()
     print('S32/S36/S37 explicit/BPB precedence, native CHS, packet exclusion and EDD switch PASS', flush=True)
+
+
+def geometry_ownership():
+    def bpb(jump=0xEB, size=512, reserved=1, sectors=32, heads=128, signature=0xAA55):
+        data=bytearray(512);data[0]=jump
+        struct.pack_into('<H',data,11,size);struct.pack_into('<H',data,14,reserved)
+        struct.pack_into('<HH',data,24,sectors,heads);struct.pack_into('<H',data,510,signature)
+        return data
+    def fixture(kinds=('ata','absent'), explicit=False, capacity=0x1F8000, relocated=False):
+        m=Disk(kinds);m.base,m.segment=0x9FC00,0x9FC0
+        for data in m.payloads: struct.pack_into('<I',data,120,capacity)
+        policy=record(48,1,cylinders=120,heads=4,sectors=17) if explicit else record()
+        detect(m,b'\1'+policy+policy)
+        if relocated:
+            original=m.base;m.base,m.segment=0x8FC00,0x8FC0
+            m.cpu.mem_write(m.base,bytes(m.cpu.mem_read(original,1024)))
+            m.cpu.mem_write(original,b'\xA5'*1024)
+            m.cpu.mem_write(0x40E,struct.pack('<H',m.segment))
+        return m
+    def prove(m,heads,sectors,unit=0,physical=0):
+        assert not m.disk(8,dx=0x80+unit)[0]
+        assert (m.cpu.reg_read(x.UC_X86_REG_DH)+1,m.cpu.reg_read(x.UC_X86_REG_CL)&63)==(heads,sectors)
+        m.cpu.mem_write(0x25A5A,b'\x1E\0'+bytes(28))
+        assert not m.disk(0x48,dx=0x80+unit)[0]
+        assert struct.unpack_from('<II',m.cpu.mem_read(0x25A5A,26),8)==(heads,sectors)
+        expected=(heads+1)*sectors+1 # Independently C=1,H=1,S=2.
+        data=struct.pack('<H',0xB135+unit)*256
+        m.cpu.mem_write(0x21000,data)
+        assert not m.disk(3,cx=0x0102,dx=0x180+unit)[0]
+        assert m.taskfiles[-1][:3]==(physical,0x30,expected)
+        m.cpu.mem_write(0x21000,bytes(512))
+        assert not m.disk(2,cx=0x0102,dx=0x180+unit)[0]
+        assert m.taskfiles[-1][:3]==(physical,0x20,expected)
+        assert m.cpu.mem_read(0x21000,512)==data
+    for explicit,source in ((False,0),(False,0x80),(True,0x80)):
+        m=fixture(explicit=explicit);m.cpu.mem_write(0x7C00,bytes(bpb()))
+        m.cpu.mem_write(m.base+0x4A,bytes((source,0)))
+        prove(m,4 if explicit else 128 if source else 32,17 if explicit else 32 if source else 63)
+    predicates=({}, {'jump':0xE9}, {'jump':0xFA}, {'size':511}, {'reserved':0},
+                {'sectors':0},{'sectors':64},{'heads':0},{'heads':256},{'signature':0})
+    for fields in predicates:
+        m=fixture();m.cpu.mem_write(m.base+0x4A,b'\x80\0');m.cpu.mem_write(0x7C00,bytes(bpb(**fields)))
+        accepted=not fields or fields=={'jump':0xE9}
+        prove(m,128 if accepted else 32,32 if accepted else 63)
+    for capacity,heads in ((0x1F8000,32),(0x1F8001,64),(0x3F0000,64),(0x3F0001,128),(0x7E0000,128),(0x7E0001,255)):
+        m=fixture(capacity=capacity);prove(m,heads,63)
+    for kinds,physical in ((('absent','ata'),1),(('packet','ata'),1),(('ata','ata'),0)):
+        m=fixture(kinds=kinds,relocated=True)
+        m.cpu.mem_write(m.base+0x4A,b'\x80\0');m.cpu.mem_write(0x7C00,bytes(bpb()))
+        prove(m,128,32,physical=physical)
+        if kinds==('ata','ata'): prove(m,32,63,unit=1,physical=1)
+        assert m.cpu.mem_read(0x9FC00,1024)==b'\xA5'*1024
+    print('Auto geometry ownership: source, each BPB predicate, inclusive thresholds, explicit policy, logical first/second, relocated state and actual nonzero I/O PASS',flush=True)
 
 
 def reset_geometry():
@@ -819,12 +875,11 @@ def none_choice():
 
 
 if __name__ == '__main__':
-    settings()
-    transfer()
-    geometry()
-    reset_geometry()
-    ui()
-    presets_and_cancel()
-    availability()
-    policy_choices()
-    none_choice()
+    import argparse
+    cases={'settings':settings,'transfer':transfer,'geometry':geometry,'reset-geometry':reset_geometry,
+           'ui':ui,'presets-and-cancel':presets_and_cancel,'availability':availability,
+           'policy-choices':policy_choices,'none-choice':none_choice}
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--case',action='append',choices=cases)
+    args=parser.parse_args()
+    for name in args.case or cases:cases[name]()

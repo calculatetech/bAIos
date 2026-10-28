@@ -13,9 +13,9 @@ def main():
     (PORT/'build').mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='profile-build-', dir=PORT/'build') as folder:
         port = Path(folder)
-        shutil.copytree(PORT/'tools', port/'tools',
+        shutil.copytree(PORT/'diagnostics', port/'diagnostics',
                         ignore=shutil.ignore_patterns('__pycache__'))
-        command = [sys.executable, '-B', str(port/'tools/build-acc-profile.py')]
+        command = [sys.executable, '-B', str(port/'diagnostics/build-acc-profile.py')]
         subprocess.run(command, cwd=port, check=True)
         out = port/'build/diagnostics'
         result = json.loads((out/'acc-profile-checks.json').read_text())

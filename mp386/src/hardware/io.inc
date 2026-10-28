@@ -184,6 +184,25 @@ board_mouse_platform_read:
     ret
 mp386_mouse_init:
     ret                         ; This AT board has no AUX interface to disable.
+
+mp_fpu_probe_allowed:
+    in al,0x5F
+    test al,0x20                ; OEM8D32: the board can force coprocessor absent.
+    jnz .absent
+    clc
+    ret
+.absent:
+    stc
+    ret
+mp_fpu_configure:
+    mov ah,1
+    test word [0x0410],2
+    jz .commit
+    xor ah,ah
+.commit:
+    mitsubishi_control_write 0x90,ah
+    ret
+
 board_sio_diagnostic_begin:
 board_sio_diagnostic_index:
 board_sio_diagnostic_end:

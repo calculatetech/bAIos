@@ -1,8 +1,26 @@
 %ifndef PC_PROCESSOR_PRIMITIVES
 %include "pc/processor.inc"
 %endif
+%ifndef RAM_TEST_SERVICE_MASK
+%define RAM_TEST_SERVICE_MASK 0x3FFF
+%endif
+%if RAM_TEST_BLOCK_SIZE < 4 || (RAM_TEST_BLOCK_SIZE & (RAM_TEST_BLOCK_SIZE-1))
+    %error RAM burst size must be a power of two of at least four bytes
+%endif
+%if RAM_TEST_SERVICE_MASK < 3 || RAM_TEST_SERVICE_MASK > 0xFFFF || (RAM_TEST_SERVICE_MASK & (RAM_TEST_SERVICE_MASK+1)) || ((RAM_TEST_SERVICE_MASK+1) % RAM_TEST_BLOCK_SIZE)
+    %error RAM service quantum must be a power of two and contain whole blocks
+%endif
+%ifdef RAM_TEST_BUFFER_ABSOLUTE
+%if (RAM_TEST_BUFFER_ABSOLUTE & 3) || RAM_TEST_BUFFER_ABSOLUTE < 0x500 || RAM_TEST_BUFFER_ABSOLUTE < RAM_TEST_SCRATCH_BEGIN || RAM_TEST_BUFFER_ABSOLUTE+RAM_TEST_BLOCK_SIZE > RAM_TEST_SCRATCH_END || RAM_TEST_SCRATCH_END > 0x10000 || RAM_TEST_SCRATCH_END >= RAM_TEST_STACK_TOP
+    %error RAM burst backup exceeds the reserved POST scratch
+%endif
+%if RAM_TEST_BUFFER_ABSOLUTE < (STATE_SEG*16+CFG_PLATFORM_STATE_KIB*1024) && RAM_TEST_BUFFER_ABSOLUTE+RAM_TEST_BLOCK_SIZE > STATE_SEG*16
+    %error RAM burst backup overlaps live firmware state
+%endif
+%else
 %if S_RAM_TEST_BUFFER + RAM_TEST_BLOCK_SIZE > CFG_PLATFORM_STATE_KIB * 1024
     %error RAM burst backup exceeds the reserved firmware state
+%endif
 %endif
 
 %macro ram_block_pattern 1
@@ -116,7 +134,11 @@ chipset_visible_ram_test:
     push edi
     push ecx
     mov esi,edi
+%ifdef RAM_TEST_BUFFER_ABSOLUTE
+    mov edi,RAM_TEST_BUFFER_ABSOLUTE
+%else
     lea edi,[edx+S_RAM_TEST_BUFFER]
+%endif
     a32 rep movsd
     ram_block_pattern 0x55AA55AA
     ram_block_pattern 0xAA55AA55
@@ -158,7 +180,11 @@ chipset_visible_ram_test:
     mov si,sp
     mov ecx,[ss:si]
     mov edi,[ss:si+4]
+%ifdef RAM_TEST_BUFFER_ABSOLUTE
+    mov esi,RAM_TEST_BUFFER_ABSOLUTE
+%else
     lea esi,[edx+S_RAM_TEST_BUFFER]
+%endif
     a32 rep movsd
     add sp,8
     test eax,eax
@@ -172,7 +198,7 @@ chipset_visible_ram_test:
     call .progress
     jmp .continue
 .yield_check:
-    test edi, 0x3FFF          ; Bound IRQ-disabled RAM work to 16 KiB.
+    test edi, RAM_TEST_SERVICE_MASK ; Board-selected keyboard service cadence.
     jnz .continue
     call .yield
 .continue:

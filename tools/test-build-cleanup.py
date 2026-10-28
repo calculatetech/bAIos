@@ -9,7 +9,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / '.agent/test-results'
 SCRIPTS = ('tools/clean-build.ps1', 'shared/tools/build-cleanup.ps1',
-           'presario-800/tools/clean-build.ps1', 'm919/tools/clean-build.ps1')
+           'presario-800/tools/clean-build.ps1', 'm919/tools/clean-build.ps1',
+           'pb430/tools/clean-build.ps1', 'mp386/tools/clean-build.ps1')
 CASES = []
 
 
@@ -43,17 +44,22 @@ def put(folder, path):
 
 def direct_port_checks(fixture, outside):
     for port, current_name in (('presario-800', 'baios-presario800-vga50.bin'),
-                               ('m919', 'baios-m919.bin')):
+                               ('m919', 'baios-m919.bin'), ('pb430', 'baios-pb430.bin'),
+                               ('mp386', 'baios-mp386.bin')):
         repository = fixture / ('direct-' + port)
         for source in ('shared/tools/build-cleanup.ps1', port + '/tools/clean-build.ps1'):
             target = repository / source
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / source, target)
         current = put(repository, port + '/build/' + current_name)
+        candidate = put(repository, port + '/build/review/shared-update/current.bin')
+        if port == 'pb430':
+            put(repository, port + '/build/review/vga50/baios-pb430.bin')
+            put(repository, port + '/build/review/vga60/baios-pb430.bin')
         obsolete = put(repository, port + '/build/obsolete/generated.bin')
         if port == 'm919':
-            put(repository, port + '/build/post-tests/core-cd-secondary/cd.iso')
-            put(repository, port + '/build/post-tests/core-cd-secondary/screen.png')
+            put(repository, port + '/build/tests/post/core-cd-secondary/cd.iso')
+            put(repository, port + '/build/tests/post/core-cd-secondary/screen.png')
         if port == 'presario-800':
             put(repository, port + '/build/tmp/first.bin')
             put(repository, port + '/build/tmp/nested/last.bin')
@@ -65,11 +71,11 @@ def direct_port_checks(fixture, outside):
         CASES[-1].update({'inventory_before': before, 'inventory_after': after})
         ps(port + ' direct stopped apply', command)
         after = inventory(repository)
-        assert not obsolete.exists() and current.exists()
+        assert not obsolete.exists() and current.exists() and candidate.exists()
         expected = {p: value for p, value in before.items()
                     if p != port + '/build/obsolete' and not p.startswith(port + '/build/obsolete/')
                     and not (port == 'presario-800' and p.startswith(port + '/build/tmp/'))
-                    and p != 'm919/build/post-tests/core-cd-secondary/cd.iso'}
+                    and p != 'm919/build/tests/post/core-cd-secondary/cd.iso'}
         assert after == expected
         CASES[-1].update({'inventory_before': before, 'inventory_after': after})
         build = repository / port / 'build'
@@ -100,6 +106,15 @@ def direct_port_checks(fixture, outside):
             ps('Presario remove owned tmp junction', 'Remove-Item -LiteralPath ' + quote(scratch) + ' -Force')
             assert saved_tmp.resolve().is_relative_to(repository.resolve()) and scratch.resolve().is_relative_to(repository.resolve())
             ps('Presario restore owned tmp control', 'Move-Item -LiteralPath ' + quote(saved_tmp) + ' -Destination ' + quote(scratch))
+        if port in ('presario-800','pb430'):
+            legacy = put(repository,port+'/build/'+('presario800-card.vhd' if port=='presario-800' else 'deps/retained.bin'))
+            saved_bytes=legacy.read_bytes();before=inventory(repository)
+            ps(port+' unmigrated input refuses',command,error='Move ')
+            assert inventory(repository)==before and legacy.read_bytes()==saved_bytes
+            replacement=repository/('reference/media/dos/test-card.vhd' if port=='presario-800' else 'tools/deps/retained.bin')
+            replacement.parent.mkdir(parents=True,exist_ok=True);legacy.rename(replacement)
+            ps(port+' relocated input permits cleanup',command)
+            assert replacement.read_bytes()==saved_bytes
         for label, junction in (('child', build / 'obsolete-junction'),
                                 ('nested descendant', build / 'obsolete/nested/child')):
             junction.parent.mkdir(parents=True, exist_ok=True)
@@ -113,6 +128,13 @@ def direct_port_checks(fixture, outside):
             CASES[-1].update({'inventory_before': before, 'inventory_after': after,
                              'outside_before': sentinel_before, 'outside_after': inventory(outside)})
             ps(port + ' remove owned ' + label + ' junction', 'Remove-Item -LiteralPath ' + quote(junction) + ' -Force')
+        embedded=repository/port/'build/source-copy'
+        marker=put(repository,port+'/build/source-copy/.git')
+        unique=put(repository,port+'/build/source-copy/unique.asm')
+        before_unique=unique.read_bytes()
+        ps(port+' embedded repository refuses',command,error='Repository inside generated output')
+        assert marker.exists() and unique.read_bytes()==before_unique
+        marker.unlink();unique.unlink();embedded.rmdir()
         ps(port + ' direct ordinary directory refresh', command)
         # The wrapper must reject its own build ancestor, without the root dispatcher.
         saved = repository / port / 'saved-build'
@@ -146,39 +168,48 @@ def main():
     retained = ('presario-800/build/baios-presario800-vga50.bin',
                 'presario-800/build/baios-presario800-vga60.bin',
                 'presario-800/build/baios-presario800-system.rom',
-                'presario-800/build/presario800-card.vhd',
+                'reference/media/dos/test-card.vhd',
                 'presario-800/build/review/baios-presario800-vga50.bin',
                 'presario-800/build/review/baios-presario800-vga60.bin',
                 'presario-800/build/review/baios-presario800-system.rom',
-                'presario-800/build/chipset-review/current/screen.png',
+                'presario-800/build/review/chipset/current/screen.png',
                 'presario-800/docs/jumpers.pdf', 'presario-800/src/user.asm',
                 'reference/software/speedsys/4.78/SPEEDSYS-code.bin',
                 'm919/build/baios-m919.bin', 'm919/build/baios-m919.lst',
+                'm919/build/review/shared-update/current.bin',
+                'pb430/build/baios-pb430.bin', 'pb430/build/review/shared-update/current.bin',
+                'pb430/build/review/vga50/baios-pb430.bin', 'pb430/build/review/vga60/baios-pb430.bin',
+                'mp386/build/baios-mp386.bin', 'mp386/build/review/shared-update/current.bin',
                 'm919/build/configuration.inc', 'm919/build/rom-checksums.json',
                 'm919/build/diagnostics/current-failed/vm/86box.cfg',
                 'm919/build/diagnostics/current-failed/disk.img',
-                'm919/build/hardware-research/current.json',
-                'm919/build/post-tests/current/screen.png',
-                'm919/build/post-tests/current/output.txt',
-                'm919/build/post-tests/current/86box.cfg',
-                'm919/build/post-tests/current/screen.nvr',
-                'm919/build/post-tests/current/observer.bin',
-                'm919/build/final-display/current.png', '.vscode/user.json')
+                'm919/build/research/hardware/current.json',
+                'm919/build/tests/post/current/screen.png',
+                'm919/build/tests/post/current/output.txt',
+                'm919/build/tests/post/current/86box.cfg',
+                'm919/build/tests/post/current/screen.nvr',
+                'm919/build/tests/post/current/observer.bin',
+                'm919/build/review/final-display/current.png', '.vscode/user.json')
     obsolete = ('presario-800/build/post-ui/obsolete.bin',
                 'presario-800/build/post-ui-50/obsolete.bin',
                 'presario-800/build/later-obsolete/obsolete.bin',
                 'presario-800/build/tmp/old.bin',
-                'presario-800/build/research/old.bin',
+                'presario-800/build/consumed-research/old.bin',
                 'presario-800/build/cd-review/preview.pid',
-                'presario-800/build/chipset-review/completed-vm/86box.cfg',
-                'presario-800/build/chipset-review/completed-vm/disk.img',
+                'presario-800/build/completed-vm/86box.cfg',
+                'presario-800/build/completed-vm/disk.img',
                 'm919/build/physical-core/old.bin', 'm919/build/cache-correction/old.bin',
                 'm919/build/later-obsolete/old.bin', 'm919/build/build-tests/current/old.bin',
-                'm919/build/post-tests/current/vm/86box.cfg',
-                'm919/build/post-tests/current/disk.img', 'm919/build/post-tests/current/cd.iso',
+                'm919/build/tests/post/current/vm/86box.cfg',
+                'm919/build/tests/post/current/disk.img', 'm919/build/tests/post/current/cd.iso',
                 'build/shared-tools-validation/old.bin')
     for path in retained + obsolete:
         put(repository, path)
+    for port in ('presario-800','m919','mp386','pb430'):
+        name=f'baios-{port}-v0.1.1-20261027T123000Z.bin'
+        put(repository,port+'/build/'+name)
+        manifest=repository/port/'build/LATEST.json'
+        manifest.write_text(json.dumps(dict(files=[],completed=dict(files=[dict(name=name)]))))
     before = inventory(repository)
     command = '& ' + quote(repository / SCRIPTS[0])
     ps('all-port preview', command + ' -WhatIf')

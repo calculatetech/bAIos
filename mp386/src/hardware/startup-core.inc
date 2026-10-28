@@ -38,6 +38,9 @@ startup:
     jmp oem_cache_92EB
 .cache_return: dw .cache_held
 .cache_held:
+.cpu_holdoff_begin:
+    mp_cpu_holdoff
+.cpu_holdoff_end:
     ; A hard reset can retain the warm flag and unsafe MCU timings.
     mov al,0xB6
     out 0x70,al

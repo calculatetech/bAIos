@@ -54,7 +54,7 @@ WT uses eight tag bits; WB uses seven plus dirty. L2 remains off if installed RA
 
 The owner excludes live firmware state and the VGA/ROM window. It services the existing keyboard owner every 16 KiB or less and updates progress every 64 KiB. Esc skips, Delete requests Setup, and Pause retains the interrupted test until a fresh make. All exits restore the original machine gates and context before returning or using the existing recovery owner. Presario can adopt this shared implementation in its later refactor.
 
-Run `python -B m919/tools/test-hardware.py --case ram-test` for coverage, randomized restoration, boundaries, failures, address aliases and native interaction checks. The comparison build uses the prior RAM source from Git, without depending on a mutable output from another fixture. Recorded instruction counts and host execution times are software measurements. They do not establish physical POST time or SIMM wiring.
+Run `python -B m919/tools/test-hardware.py --case ram-test` for coverage, randomized restoration, boundaries, failures, address aliases and native interaction checks. The comparison build uses the checked-in RAM baseline, without private Git history or mutable output from another fixture. Recorded instruction counts and host execution times are software measurements. They do not establish physical POST time or SIMM wiring.
 
 The user reports a much faster physical RAM test with responsive keyboard control and working memory detection/bank reporting. The exact flashed image hash was not supplied. This confirms the observed behavior in the tested configuration; it does not establish every socket layout or timing margin.
 

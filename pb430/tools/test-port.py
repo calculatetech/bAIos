@@ -21,7 +21,7 @@ from shared.tools.vga_text import render
 from shared.tools.cd_fixture import disc
 from shared.tools.ram_proof import Listing
 
-EMULATOR = PORT/'build/deps/86box-b10408/86Box.exe'
+EMULATOR = PORT.parent/'tools/deps/86box-b10408/86Box.exe'
 CASES = ('image','native','display','chipset-settings','diagnostics-input','reset','memory',
          'settings-load','clock','setup','shadow','cache','serial','parallel','floppy',
          'disk-services','cd','option-roms','boot-order','ram','build-hygiene','setup-policy','boot-defaults','vga60','slow-refresh','fast-writes')
@@ -47,8 +47,8 @@ def nvram():
 
 
 def _native(name='native', ram=16384, defines=(), positions=(0,), expected=0x60, types=0, cmos=None, dirty_vga=False, dirty_option=False, floppy_media=False, swap=False, cdroms=None, boot_source="native-boot.asm", disk_services=False, cd_media=0, ram_flags=4, runtime_input=False, cpu_family="i486dx", fpu=True, external_video=False, shadow_policy=None, cache_expected="512 KB", option_source=None, option_blob=None, rom_counts=None, warnings=0, mouse="none", missing_floppy=False,saved_ads=None,preserve_boot_order=False,bootable_floppy=False,expected_boot_unit=0x80,vga60=True,saved_refresh=None):
-    result = build('build/test-results/'+name+'/image', defines,vga60=vga60)
-    folder = PORT/'build/test-results'/name
+    result = build('build/tests/results/'+name+'/image', defines,vga60=vga60)
+    folder = PORT/'build/tests/results'/name
     vm,roms = folder/'vm',folder/'roms'
     vm.mkdir(parents=True,exist_ok=True)
     target = roms/'machines/pb430/PB430-Dump-2.bin'
@@ -165,7 +165,7 @@ exit_enabled = 1
 
 
 def native(name='native',**options):
-    folder=PORT/'build/test-results'/name
+    folder=PORT/'build/tests/results'/name
     marker=folder/'.retain-diagnosis'
     try:
         result=_native(name,**options)
@@ -193,18 +193,39 @@ def chipset_record(n,manual=0,cpu=1,l2=1,system=1,video=1,ads=0,fast=0,slow=0,wr
 
 def image_checks(image):
     from build import validate
-    raw=Path(image).read_bytes();folder=PORT/'build/test-results/image';folder.mkdir(parents=True,exist_ok=True)
+    raw=Path(image).read_bytes();folder=PORT/'build/tests/results/image';folder.mkdir(parents=True,exist_ok=True)
     result={'valid':validate(image),'rejected':[]}
     result['cli_selections']=[]
-    for arguments,vga60,relative in (([],True,'build'),(['--stock-vga'],False,'build/stock-vga')):
+    for arguments,vga60,relative,clock in ((['--output','build/tests/results/image/default'],True,'build/tests/results/image/default',60),
+            (['--stock-vga','--output','build/tests/results/image/stock'],False,'build/tests/results/image/stock',60),
+            (['--vga50','--output','build/tests/results/image/vga50-default'],True,'build/tests/results/image/vga50-default',50),
+            (['--vga60','--output','build/tests/results/image/vga60'],True,'build/tests/results/image/vga60',60),
+            (['--vga50','--output','build/tests/results/image/vga50'],True,'build/tests/results/image/vga50',50)):
         output=subprocess.check_output([sys.executable,'-B',str(PORT/'tools/build.py'),*arguments],cwd=REPOSITORY,text=True)
         delivered=json.loads(output)
         selected=PORT/relative/'baios-pb430.bin'
         assert Path(delivered['path'])==selected
-        checked=validate(selected,vga60=vga60)
+        checked=validate(selected,vga60=vga60,vga_clock=clock)
         assert checked['size']==131072
-        if vga60:assert selected.read_bytes()==raw
+        if vga60 and clock==60:assert selected.read_bytes()==raw
+        if clock==50:
+            pair=selected.read_bytes()
+            assert [i for i,(a,b) in enumerate(zip(raw,pair)) if a!=b]==[0x08E7,0x7FFF]
+            assert raw[0x08E7]==0x22 and pair[0x08E7]==0x1C
+            assert raw[65536:]==pair[65536:] and sum(raw[:32768])%256==sum(pair[:32768])%256==0
         result['cli_selections'].append({'arguments':arguments,'checked':checked})
+    from shared.tools.ram_proof import Listing
+    for flag, name in (('--cache-burst','cache-burst'),('--interleave','interleave')):
+        output=subprocess.check_output([sys.executable,'-B',str(PORT/'tools/build.py'),flag],cwd=REPOSITORY,text=True)
+        delivered=json.loads(output)
+        selected=PORT/'build/diagnostics'/name/'baios-pb430.bin'
+        assert Path(delivered['path'])==selected
+        checked=validate(selected)
+        data=selected.read_bytes();listing=Listing(selected.with_suffix('.lst'))
+        assert data[:65536]==raw[:65536] and data[65536:]!=raw[65536:]
+        assert data[0x1F065:0x1F070]==bytes.fromhex('80fc1d7305ea972800c0cf')
+        assert 0xF070 < listing.symbol('pb430_rom_extensions_end') <= listing.symbol('cd_boot_clear') < listing.symbol('cd_boot') < listing.symbol('rom_code_end') < 0xFFEF
+        result['cli_selections'].append({'arguments':[flag],'checked':checked})
     for kind in ('size','vga','padding','reset','checksum'):
         bad=bytearray(raw)
         if kind=='size':bad.pop()
@@ -231,7 +252,7 @@ def memory_checks(image):
     for banks,pattern,mapping,routing in cases:
         rows.append(run(image,banks,pattern,mapping,routing))
         print('MEMORY banks '+str(banks)+' passed',flush=True)
-        (PORT/'build/test-results/memory-bank-results.json').write_text(json.dumps(rows,indent=2))
+        (PORT/'build/tests/results/memory-bank-results.json').write_text(json.dumps(rows,indent=2))
     rows += [run(image,jumper=jumper) for jumper in range(8)]
     rows += [native('memory-native-'+str(ram),ram=ram) for ram in (4096,8192,32768,65536)]
     return rows
@@ -262,7 +283,7 @@ def floppy_checks():
         if disabled:ports_record(n,(1,2,1,2,0,0,1,1))
         name='floppy-'+('disabled' if disabled else 'absent')
         rows.append(native(name,cmos=n,types=0x40,missing_floppy=True,boot_source='native-floppy-failure.asm',expected=0x65,defines=('FLOPPY_DIAGNOSTIC',),warnings=0 if disabled else 2,vga60=False))
-        raw=(PORT/'build/test-results'/name/'vm/disk-0.img').read_bytes()[17*512:18*512]
+        raw=(PORT/'build/tests/results'/name/'vm/disk-0.img').read_bytes()[17*512:18*512]
         ax,flags=struct.unpack_from('<HH',raw,0x50)
         assert ax==(0x100 if disabled else 0x4000)
         rows[-1]['int13_error_ax']=ax
@@ -359,7 +380,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--case',choices=CASES+('all',),required=True)
     args = parser.parse_args()
-    image=build('build/test-results/current/image')['path'];folder=PORT/'build/test-results';folder.mkdir(exist_ok=True)
+    image=build('build/tests/results/current/image')['path'];folder=PORT/'build/tests/results';folder.mkdir(exist_ok=True)
     for case in CASES if args.case=='all' else (args.case,):
         begin=time.monotonic();print('BEGIN '+case,flush=True)
         try:

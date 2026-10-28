@@ -166,9 +166,8 @@ mitsubishi_cache_off_end:
     popf
     ret
 
-; OEM0BEF..0ED7 default policy, using straps instead of private OEM NVRAM.
-; Expand before RAM probing; retain AX for MR's following word-wide delay writes.
-%macro mitsubishi_board_defaults 0
+; OEM0BEF reset classification precedes PIT1; controls0D2F follow it.
+%macro mitsubishi_board_reset_kind 0
     cli
     movzx ecx,ax
     shl ecx,16
@@ -180,7 +179,7 @@ mitsubishi_cache_off_end:
     mov al,0x80
     out 0x8E,al
     xor cx,cx
-    jmp %%controls
+    jmp %%done
 %%kind_one:
     xor al,al
     out 0x8E,al
@@ -201,7 +200,12 @@ mitsubishi_cache_off_end:
     in al,0x5B
     jmp short $+2
     mitsubishi_control_write 0xE6,cl
-%%controls:
+%%done:
+%endmacro
+
+; Keep CL/upperECX from reset classification across the ROM/PIT witnesses.
+; bAIos uses explicit defaults instead of unqualified OEM saved policy.
+%macro mitsubishi_board_controls 0
     mitsubishi_control_write 0x92,0
     mitsubishi_control_write 0xE7,0
     mitsubishi_control_write 0xE1,1

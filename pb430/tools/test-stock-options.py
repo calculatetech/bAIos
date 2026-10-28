@@ -411,7 +411,7 @@ def screens():
 
 def run():
     rows = isa_labels() + isa_menus() + refresh_menus() + isa_choices() + persistence() + serial_pairs() + cache_and_reset() + disk_at_selected_clock() + screens()
-    output = PORT / 'build/test-results/stock-options.json'
+    output = PORT / 'build/tests/results/stock-options.json'
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(rows, indent=2)+'\n')
     print(f'PASS {len(rows)} stock option cases', flush=True)

@@ -21,8 +21,11 @@ org 0
 %define EMULATOR_SETUP_INVALID_NOTICE
 %endif
 
-%include "../../shared/src/pc/state.inc"
-%include "../../shared/src/pc/ram-test-state.inc"
+%include "shared-owner.inc"
+
+presario_shared "pc/processor.inc"
+presario_shared "pc/state.inc"
+presario_shared "pc/ram-test-state.inc"
 
 %macro set_vector 2
     mov word [es:(%1) * 4], %2
@@ -768,8 +771,8 @@ startup:
     call post_clock_alert
 .clock_checked:
     call setup_post_gate
-    call post_success_tone
     call chipset_late_cache
+    call post_success_tone
     mov byte [fs:P_PHASE], 5
     call post_ui_cache
     call post_ui_roms
@@ -778,7 +781,7 @@ startup:
     call post_ui_capture
 %endif
     call post_debug_summary
-    call rtc_sync_ticks
+    call presario_post_complete
 %ifdef EMULATOR_SETUP_TEST
     call setup_test_end
 %endif
@@ -1295,7 +1298,7 @@ keyboard_runtime_failed:
     mov al, 0xEF
     jmp keyboard_halt
 
-%include "../../shared/src/pc/pic-pit.inc"
+presario_shared "pc/pic-pit.inc"
 
 init_at_prerequisites:
     ; OEM cold-start table 8659, pair 8673: enable the VL82C114 PS/2 mode
@@ -1354,9 +1357,9 @@ init_superio:
     out dx, al
     ret
 
-%include "../../shared/src/pc/keyboard-controller.inc"
+presario_shared "pc/keyboard-controller.inc"
 
-%include "../../shared/src/pc/text.inc"
+presario_shared "pc/text.inc"
 
 default_iret:
     iret
@@ -1396,9 +1399,9 @@ int75:
     int 0x02
     iret
 
-%include "../../shared/src/pc/timer.inc"
+presario_shared "pc/timer.inc"
 
-%include "../../shared/src/pc/keyboard-irq.inc"
+presario_shared "pc/keyboard-irq.inc"
 
 warm_reset:
     cli
@@ -1465,17 +1468,14 @@ warm_reset:
     mov al, 0xEE
     jmp keyboard_halt
 
-%include "../../shared/src/pc/keyboard-bios.inc"
+presario_shared "pc/keyboard-bios.inc"
 
 %ifdef KEYBOARD_DIAGNOSTIC
 %include "keyboard-diagnostic.inc"
 %endif
 
-%ifdef EMULATOR_PAUSE_ONLY
-%include "../tests/post-pause-test.inc"
-%endif
 
-%include "../../shared/src/pc/keyboard-tables.inc"
+presario_shared "pc/keyboard-tables.inc"
 
 int12:
     push ds
@@ -1698,7 +1698,6 @@ int13:
     pushad
     push fs
     call load_bios_state
-    call disk_refresh_vector
     mov word [fs:S_BLOCK_SIZE], 512
     cmp dl, 0x80
     je .first_drive
@@ -2342,68 +2341,7 @@ fill_edd_parameters:
     ret
 
 ; Each physical position uses the same disk record layout in the1KiB EBDA.
-ata_identify:
-ata_detect_primary:
-    pushad
-    push ds
-    push fs
-    xor ax, ax
-    mov ds, ax
-    call load_bios_state
-    call ide_apply_controller
-    mov si, C_IDE + 1
-    mov di, S_IDE
-    call ide_copy_record
-    mov si, C_IDE + 1 + IDE_RECORD_SIZE
-    mov di, 0x200 + S_IDE
-    call ide_copy_record
-    mov al, [fs:C_IDE]
-    mov [fs:S_CONTROLLER], al
-    mov [fs:0x200 + S_CONTROLLER], al
-    test al, al
-    jz .detect
-    cmp byte [fs:C_HDD], 1
-    je .reset_bus
-    cmp byte [fs:C_SLAVE], 1
-    jne .detect
-.reset_bus:
-    ; OEM F000:A1AE resets the channel before identifying either position.
-    post_code 0x86
-    call ata_reset_bus
-.detect:
-    mov byte [fs:S_ATA_DEVICE], 0
-    call ata_identify_selected
-    call post_ui_disk
-    mov al, [fs:C_SLAVE]
-    mov [fs:0x200 + C_HDD], al
-    mov ax, fs
-    add ax, 0x20
-    mov fs, ax
-    mov byte [fs:S_ATA_DEVICE], 0x10
-    call ata_identify_selected
-    call post_ui_disk
-    call load_bios_state
-    post_code 0x84
-    call disk_refresh_vector
-    call publish_disk_cmos
-    ; Windows WDCTRL checks that primary IDE IRQ14 is unmasked before its
-    ; geometry validation. Keep POST probing masked, then hand off the
-    ; enabled controller with its standard AT interrupt and cascade armed.
-    cmp byte [fs:S_CONTROLLER], 0
-    je .irq_ready
-    in al, 0xA1
-    and al, 0xBF
-    out 0xA1, al
-    in al, 0x21
-    and al, 0xFB
-    out 0x21, al
-.irq_ready:
-    post_code 0x85
-    pop fs
-    pop ds
-    popad
-    call load_bios_state
-    ret
+presario_shared "pc/primary-ata.inc"
 
 ata_report_device:
     post_code 0x83
@@ -2723,6 +2661,7 @@ ata_identify_wait_drq:
 
 ; Publish the detected drive, not a code pointer masquerading as its table.
 ; Reload the far pointer after EMM386 relocates the EBDA.
+; POST owns publication; option ROMs can reuse these vectors afterward.
 disk_refresh_vector:
     push ax
     push es
@@ -2762,7 +2701,6 @@ disk_refresh_vector:
 publish_disk_table:
     pushad
     push es
-    call disk_refresh_vector
     mov ax, fs
     mov es, ax
     mov di, S_FDPT
@@ -2887,65 +2825,7 @@ ata_no_data_command:
     call ata_delay
     jmp ata_wait_complete
 
-get_chs_geometry:
-    mov ax, [fs:S_GEOMETRY]
-    test ax, ax
-    jnz .return
-    mov ax, 0x3F20
-    cmp dword [fs:S_CAPACITY], 0x001F8000
-    jbe .capacity_done
-    mov al, 64
-    cmp dword [fs:S_CAPACITY], 0x003F0000
-    jbe .capacity_done
-    mov al, 128
-    cmp dword [fs:S_CAPACITY], 0x007E0000
-    jbe .capacity_done
-    mov al, 255
-.capacity_done:
-    ; The boot-sector BPB belongs only to the first logical disk.
-    cmp byte [fs:S_ATA_DEVICE], 0x10
-    jne .bpb
-    push es
-    push ax
-    xor ax, ax
-    mov es, ax
-    mov ax, [es:0x40E]
-    mov es, ax
-    cmp byte [es:S_PRESENT], 1
-    pop ax
-    pop es
-    je .return
-.bpb:
-    push ds
-    push ax
-    xor ax, ax
-    mov ds, ax
-    pop ax
-    cmp byte [0x7C00], 0xEB
-    je .check_bpb
-    cmp byte [0x7C00], 0xE9
-    jne .done
-.check_bpb:
-    cmp word [0x7C0B], 512
-    jne .done
-    cmp word [0x7C0E], 0
-    je .done
-    cmp word [0x7C18], 0
-    je .done
-    cmp word [0x7C18], 63
-    ja .done
-    cmp word [0x7C1A], 0
-    je .done
-    cmp word [0x7C1A], 255
-    ja .done
-    cmp word [0x7DFE], 0xAA55
-    jne .done
-    mov ah, [0x7C18]
-    mov al, [0x7C1A]
-.done:
-    pop ds
-.return:
-    ret
+presario_shared "pc/chs-geometry.inc"
 
 ata_reset:
     push dx
@@ -3510,30 +3390,9 @@ emulator_exit:
 %include "post.inc"
 %include "chipset.inc"
 %include "apm.inc"
+%ifndef FLOPPY_DIAGNOSTIC
 %include "cdboot.inc"
-%ifdef EMULATOR_PORTS_TEST
-%include "../tests/ports-test.inc"
 %endif
-%ifdef EMULATOR_CHIPSET_TEST
-%include "../tests/chipset-test.inc"
-%endif
-%ifdef EMULATOR_SETUP_TEST
-%include "../tests/setup-test.inc"
-%endif
-%ifdef EMULATOR_BOOT_POLICY_TEST
-%include "../tests/boot-policy-test.inc"
-%endif
-%ifdef EMULATOR_BOOT_SETTINGS_RECOVERY
-%include "../tests/boot-policy-test.inc"
-%endif
-%ifdef EMULATOR_POST_SUMMARY_TEST
-%include "../tests/summary-test.inc"
-%else
-%ifdef EMULATOR_TEST
-%include "../tests/summary-test.inc"
-%endif
-%endif
-
 msg_ata         db 'ATA ',0
 msg_atapi       db 'ATAPI ',0
 msg_ide_absent  db 'Not detected',13,10,0
@@ -3558,6 +3417,42 @@ int42_compat:
     jmp VGA_SEGMENT:VGA_INT10_ENTRY
 .unsupported:
     iret
+
+; The guarded name catalogue uses free ROM after the retained INT42 shim.
+presario_shared "pc/cpu.inc"
+presario_cpu_end:
+
+%ifdef FLOPPY_DIAGNOSTIC
+%include "cdboot.inc"
+%endif
+
+; Test observers use late space without changing the production ROM.
+%ifdef EMULATOR_PAUSE_ONLY
+%include "../tests/post-pause-test.inc"
+%endif
+%ifdef EMULATOR_PORTS_TEST
+%include "../tests/ports-test.inc"
+%endif
+%ifdef EMULATOR_CHIPSET_TEST
+%include "../tests/chipset-test.inc"
+%endif
+%ifdef EMULATOR_SETUP_TEST
+%include "../tests/setup-test.inc"
+%endif
+%ifdef EMULATOR_BOOT_POLICY_TEST
+%include "../tests/boot-policy-test.inc"
+%endif
+%ifdef EMULATOR_BOOT_SETTINGS_RECOVERY
+%include "../tests/boot-policy-test.inc"
+%endif
+%ifdef EMULATOR_POST_SUMMARY_TEST
+%include "../tests/summary-test.inc"
+%else
+%ifdef EMULATOR_TEST
+%include "../tests/summary-test.inc"
+%endif
+%endif
+
 
 times 0xFFF0 - ($ - $$) db 0xFF
 reset_vector:

@@ -291,7 +291,7 @@ def run():
         hardware=Hardware(vga_kib=size);row,fixture=compose(hardware);vga.append(hardware.finish(fixture))
     payload={'api':public,'bars':resources(),'bf':bf_modes(),'vga':vga,'irq':interrupts()}
     image=PORT/'build/hardware-tests/geometry/baios-m919.bin';payload['rom_sha256']=hashlib.sha256(image.read_bytes()).hexdigest()
-    path=PORT/'build/hardware-research/pci-proof.json';path.parent.mkdir(parents=True,exist_ok=True)
+    path=PORT/'build/research/hardware/pci-proof.json';path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps(payload,indent=2)+'\n')
     print(f'PCI installed API {len(public)}, BAR {len(payload["bars"])}, BF {len(payload["bf"])}, VGA {len(vga)}: PASS',flush=True)
     return path

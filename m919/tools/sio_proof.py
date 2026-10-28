@@ -237,7 +237,7 @@ mov [0x8502],ax
 def run():
     payload={'collection':collection(),'routing':routing(),'saved_ide':saved_ide(),'fdc_keyboard':fdc_and_keyboard()}
     image=PORT/'build/hardware-tests/geometry/baios-m919.bin';payload['rom_sha256']=hashlib.sha256(image.read_bytes()).hexdigest()
-    path=PORT/'build/hardware-research/sio-proof.json';path.parent.mkdir(parents=True,exist_ok=True)
+    path=PORT/'build/research/hardware/sio-proof.json';path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps(payload,indent=2)+'\n')
     print('SIO collection, routing and INT14/17 transactions: PASS',flush=True)
     return path

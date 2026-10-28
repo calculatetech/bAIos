@@ -25,16 +25,18 @@ def network_check(peer_type, fail):
     responses = []
     with peer_type(payload, fail) as peer, socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
         probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         probe.bind(("", GROUP[1]))
         probe.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
                          socket.inet_aton(GROUP[0]) + socket.inet_aton("0.0.0.0"))
+        probe.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 0)
         probe.settimeout(2)
 
         def exchange(sport, dport, body):
             udp = struct.pack("!HHHH", sport, dport, len(body) + 8, 0) + body
             ip = struct.pack("!BBHHHBBH4s4s", 0x45, 0, 20 + len(udp), 0, 0, 64, 17, 0, CLIENT, SERVER)
             ip = ip[:10] + struct.pack("!H", checksum(ip)) + ip[12:]
-            probe.sendto(b"\xff" * 6 + client_mac + b"\x08\x00" + ip + udp, GROUP)
+            probe.sendto(b"\xff" * 6 + client_mac + b"\x08\x00" + ip + udp, ("127.255.255.255", GROUP[1]))
             while True:
                 data, _ = probe.recvfrom(65536)
                 if data[6:12] == MAC:

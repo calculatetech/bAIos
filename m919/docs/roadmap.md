@@ -1,3 +1,5 @@
+> **Indefinite hardware hold:** defective hardware. No builds, retests, tuning or publication until the user explicitly resumes this port. Preserve current images and evidence.
+
 # M919 roadmap
 
 This is the source of truth for accepted M919 work. Task identifiers are permanent. Never reuse or rename an identifier. Keep at most one task active.
@@ -15,6 +17,10 @@ Status legend:
 - ✅ **Completed**: Implemented and validated work.
 
 ## Active
+
+No active task while the hardware hold remains.
+
+## On hold
 
 - **M919-004: Extend M919 chipset configuration.** Add the supported memory and cache timing options through the existing adapters. Reuse the Presario RAM profile system and preserve its screen, extending the table for M919 bus speeds. Validate L2 immediately after the RAM test, show enabled status only in Summary, and speed up testing with persistent validation until Setup parameters change. Preserve the complete donor firmware, recovery, saved settings, and presentation; justify register mappings with the local manual and AMI code.
 

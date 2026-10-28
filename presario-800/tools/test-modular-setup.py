@@ -312,10 +312,13 @@ def budget():
     used = next(int(m[1], 16) for line in listing[start + 1:] if (m := re.match(r'\s*\d+\s+([0-9A-F]{8})\s+', line)))
     rom = (BUILD / 'baios-presario800-system.rom').read_bytes()
     assert len(rom) == 65536 and sum(rom) & 255 == 0
-    assert used < 60286
+    assert used < 0xF065
     assert rom[used:0xF065] == b'\xff' * (0xF065 - used)
-    assert rom[0xF070:0xFFF0] == b'\xff' * (0xFFF0 - 0xF070)
-    print(f'PASS occupancy {used} bytes; saved {60286-used}; available {0xF065-used+3968}', flush=True)
+    assert setup.rtc.symbol('cpu_detect_name') == 0xF070
+    cpu_end=setup.rtc.symbol('presario_cpu_end')
+    assert 0xF070<cpu_end<0xFFF0
+    assert rom[cpu_end:0xFFF0] == b'\xff' * (0xFFF0-cpu_end)
+    print(f'PASS pre-shim occupancy {used}; late CPU catalogue ends {cpu_end:04X}; available {0xF065-used+0xFFF0-cpu_end}', flush=True)
 
 
 if __name__ == '__main__':

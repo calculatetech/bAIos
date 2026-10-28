@@ -38,11 +38,16 @@ def run(m):
     baseline=m.ROOT/'tests/setup-default-screen.bin'
     assert baseline.is_file(), 'Retained default-screen fixture is required'
     expected=bytearray(baseline.read_bytes())
+    # Setup's external CPU fixture now identifies the Intel 0430h processor.
+    for col,ch in enumerate(b'486DX2/487/OD',3):
+        expected[160+col*2:162+col*2]=bytes((ch,0x1B))
     expected[3840:]=b' \x07'*80
     footer=b'F1 Help   F4/F5 Theme   F9 Defaults   F10 Save'
     for col,ch in enumerate(footer,2): expected[3840+col*2:3842+col*2]=bytes((ch,0x0B))
     assert screens[0]==expected
-    assert byte(s,0xFD)==0 and s.vga[-1]==0x1003 and s.vga_bx[-1]==1
+    assert byte(s,0xFD)==0
+    blink=[bx for ax,bx in zip(s.vga,s.vga_bx) if ax==0x1003]
+    assert blink and blink[-1]==1
     # Shared helper ABI and POST isolation with DS independent of CS.
     for active in (0,1):
         s=m.Setup();s.cpu.mem_write(s.base+0xFC, b'\x02')

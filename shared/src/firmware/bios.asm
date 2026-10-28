@@ -86,6 +86,9 @@ bits 16
     call setup_test_begin     ; Notice Delete enters Setup at the next early gate.
 %endif
     call post_early_setup
+%ifdef BOARD_POST_RAM_CACHE
+    call BOARD_POST_RAM_CACHE
+%endif
     call load_bios_state
     call init_peripherals
 %ifdef EMULATOR_SETUP_TEST
@@ -284,6 +287,10 @@ init_fpu:
     mov bp, sp
     mov word [ss:bp], 0xFFFF
     mov word [ss:bp + 2], 0xFFFF
+%ifdef BOARD_FPU_PROBE_ALLOWED
+    call BOARD_FPU_PROBE_ALLOWED
+    jc .done
+%endif
     fninit
     fnstsw [ss:bp]
     fnstcw [ss:bp + 2]
@@ -301,6 +308,9 @@ init_fpu:
     and al, 0xFB
     out 0x21, al
 .done:
+%ifdef BOARD_FPU_CONFIGURE
+    call BOARD_FPU_CONFIGURE
+%endif
     add sp, 4
     pop ds
     pop bp
@@ -611,7 +621,6 @@ int13:
     pushad
     push fs
     call load_bios_state
-    call disk_refresh_vector
     mov word [fs:S_BLOCK_SIZE], 512
     cmp dl, 0x80
     je .first_drive
@@ -1572,6 +1581,7 @@ ata_identify_wait_drq:
 
 ; Publish the detected drive, not a code pointer masquerading as its table.
 ; Reload the far pointer after EMM386 relocates the EBDA.
+; POST owns publication; option ROMs can reuse these vectors afterward.
 disk_refresh_vector:
     push ax
     push es
@@ -1611,7 +1621,6 @@ disk_refresh_vector:
 publish_disk_table:
     pushad
     push es
-    call disk_refresh_vector
     mov ax, fs
     mov es, ax
     mov di, S_FDPT
@@ -1736,55 +1745,7 @@ ata_no_data_command:
     call ata_delay
     jmp ata_wait_complete
 
-get_chs_geometry:
-    mov ax, [fs:S_GEOMETRY]
-    test ax, ax
-    jnz .return
-    mov ax, 0x3F20
-    cmp dword [fs:S_CAPACITY], 0x001F8000
-    jbe .capacity_done
-    mov al, 64
-    cmp dword [fs:S_CAPACITY], 0x003F0000
-    jbe .capacity_done
-    mov al, 128
-    cmp dword [fs:S_CAPACITY], 0x007E0000
-    jbe .capacity_done
-    mov al, 255
-.capacity_done:
-    ; The boot-sector BPB belongs only to the first logical disk.
-    call hardware_bpb_owner
-    jc .return
-.bpb:
-    push ds
-    push ax
-    xor ax, ax
-    mov ds, ax
-    pop ax
-    cmp byte [0x7C00], 0xEB
-    je .check_bpb
-    cmp byte [0x7C00], 0xE9
-    jne .done
-.check_bpb:
-    cmp word [0x7C0B], 512
-    jne .done
-    cmp word [0x7C0E], 0
-    je .done
-    cmp word [0x7C18], 0
-    je .done
-    cmp word [0x7C18], 63
-    ja .done
-    cmp word [0x7C1A], 0
-    je .done
-    cmp word [0x7C1A], 255
-    ja .done
-    cmp word [0x7DFE], 0xAA55
-    jne .done
-    mov ah, [0x7C18]
-    mov al, [0x7C1A]
-.done:
-    pop ds
-.return:
-    ret
+%include "pc/chs-geometry.inc"
 
 ata_reset:
     push dx
@@ -2210,7 +2171,9 @@ emulator_exit:
 %include "firmware/post.inc"
 %include "hardware/chipset-core.inc"
 %include "firmware/apm.inc"
+%ifndef BOARD_LATE_CDBOOT
 %include "firmware/cdboot.inc"
+%endif
 %ifdef EMULATOR_PORTS_TEST
 %include BOARD_PORTS_TEST
 %endif
@@ -2252,12 +2215,21 @@ legacy_rom_id   db 'Legacy ROM scan token: 1999, BAIOS', 0
 %include "firmware/identity.inc"
 
 ; The board installs INT42 from the actual VGA provider's INT10 vector.
+%ifdef BOARD_LATE_CDBOOT
+%include BOARD_ROM_COMPAT_SOURCE
+%ifdef EMULATOR_SETUP_TEST
+%include "../tests/firmware/setup-test.inc"
+%endif
+%include "firmware/cdboot.inc"
+%endif
 rom_code_end:
+%ifndef BOARD_LATE_CDBOOT
 %ifdef BOARD_ROM_COMPAT_SOURCE
 %include BOARD_ROM_COMPAT_SOURCE
 ; Keep emulator-only Setup observers out of the fixed VGA entry's address range.
 %ifdef EMULATOR_SETUP_TEST
 %include "../tests/firmware/setup-test.inc"
+%endif
 %endif
 %endif
 times CFG_ROM_CHECKSUM_OFFSET-((CFG_ROM_CODE_SEGMENT << 4)-CFG_ROM_BASE)-($-$$) db 0xFF

@@ -16,7 +16,7 @@ def run():
     state=constants(REPOSITORY/'shared/src/pc/state.inc')
     state.update(constants(REPOSITORY/'shared/src/setup/layout.inc'))
     rows=check(Path(result['path']),cfg['rom'],state)
-    path=PORT/'build/hardware-research/cpu-proof.json';path.parent.mkdir(parents=True,exist_ok=True)
+    path=PORT/'build/research/hardware/cpu-proof.json';path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps({'image':result,'cases':rows},indent=2)+'\n')
     print(f'CPU primary identities, guards, full state and actual render: {len(rows)} PASS',flush=True)
     return path

@@ -1,4 +1,5 @@
 """Boot retained ISA ROM providers on the installed d824 86Box model."""
+import json
 import argparse
 import hashlib
 import importlib
@@ -16,6 +17,24 @@ ROOT, BUILD = legacy.ROOT, legacy.BUILD
 
 
 def sector(mixed=False, shadow=False):
+    native = '''    mov eax,[0x118]
+    mov [predecessor],eax
+    xor ax,ax
+    mov dx,0x0080
+    int 0x13
+    jc fail
+    mov ax,0x0201
+    mov bx,0x9000
+    mov cx,1
+    mov dx,0x0080
+    int 0x13
+    jc fail
+    mov eax,[predecessor]
+    cmp eax,[0x118]
+    jne fail
+    cmp byte [0x475],2
+    jne fail
+''' if mixed else ''
     return legacy.assemble('native-mixed' if mixed else 'native-scsi-shadow' if shadow else 'native-scsi', f"""bits 16
 org 0x7C00
     cld
@@ -32,6 +51,7 @@ org 0x7C00
     {'mov fs,[0x40E]' if shadow else ''}
     {'cmp byte [fs:0x75],7' if shadow else ''}
     {'jne fail' if shadow else ''}
+{native}
     mov ax,0x0201
     mov bx,0x8000
     mov cx,2
@@ -75,6 +95,7 @@ exit:
 magic db '86Box',1,5
 magicend:
 bootdrive db 0
+predecessor dd 0
 times 510-($-$$) db 0
 dw 0xAA55
 """)
@@ -85,7 +106,7 @@ def scsi(mixed=False, timeout=180, observe=False, shadow=False):
     provider = inputs/'aha1540b320_330.bin'
     expected = 'f1dbbe110fa60535828d31d1dad384ca3085199616c3b888e285776561036f38'
     assert hashlib.sha256(provider.read_bytes()).hexdigest()==expected
-    private = BUILD/'86box/roms/scsi/adaptec'
+    private = BUILD/'tests/86box/roms/scsi/adaptec'
     private.mkdir(parents=True,exist_ok=True)
     for name in ('aha1540b320_330.bin','aha1540b320_bios.bin','aha1540b320_mcode.bin'):
         if (inputs/name).exists(): shutil.copyfile(inputs/name,private/name)
@@ -196,15 +217,211 @@ def scsi(mixed=False, timeout=180, observe=False, shadow=False):
     return vm
 
 
+def network_stimulus():
+    """An external timer observer quits only at Etherboot's post-error menu."""
+    raw = bytearray(legacy.assemble('native-network-stimulus', """bits 16
+org 0
+db 55h,0AAh,4
+jmp init
+init:
+    pushf
+    pushad
+    push ds
+    xor ax,ax
+    mov ds,ax
+    mov eax,[0x70]
+    mov [0x600],eax
+    mov word [0x604],0
+    mov word [0x606],0x514B
+    mov word [0x70],tick
+    mov word [0x72],cs
+    pop ds
+    popad
+    popf
+    retf
+tick:
+    push ax
+    push ax
+    pushf
+    pushad
+    push ds
+    push es
+    push fs
+    push gs
+    xor ax,ax
+    mov ds,ax
+    mov bp,sp
+    mov ax,[0x600]
+    mov [ss:bp+42],ax
+    mov ax,[0x602]
+    mov [ss:bp+44],ax
+    mov ax,0xB800
+    mov es,ax
+    cld
+    cmp byte [0x604],1
+    je .menu
+    cmp byte [0x604],0
+    jne .done
+    xor di,di
+.find:
+    mov bx,di
+    mov si,error
+.error:
+    mov al,[cs:si]
+    test al,al
+    jz .received
+    cmp al,[es:bx]
+    jne .next
+    inc si
+    add bx,2
+    jmp .error
+.next:
+    add di,2
+    cmp di,4000-2*(error_end-error-1)
+    jbe .find
+    jmp .done
+.received:
+    mov byte [0x604],1
+.menu:
+    cmp byte [0x462],0
+    jne .done
+    movzx ax,byte [0x451]
+    cmp ax,25
+    jae .done
+    imul ax,160
+    movzx cx,byte [0x450]
+    cmp cx,prompt_end-prompt
+    jb .done
+    cmp cx,80
+    jae .done
+    sub cx,prompt_end-prompt
+    shl cx,1
+    add ax,cx
+    mov bx,ax
+    mov si,prompt
+.prompt:
+    mov al,[cs:si]
+    cmp al,[es:bx]
+    jne .done
+    add bx,2
+    inc si
+    cmp si,prompt_end
+    jb .prompt
+    mov cx,0xFFFF
+.ibf:
+    in al,0x64
+    test al,2
+    jz .command
+    loop .ibf
+    jmp .failed
+.command:
+    mov al,0xD2
+    out 0x64,al
+    mov cx,0xFFFF
+.ibf2:
+    in al,0x64
+    test al,2
+    jz .key
+    loop .ibf2
+    jmp .failed
+.key:
+    mov al,0x10
+    out 0x60,al
+    mov byte [0x604],3
+    jmp .restore
+.failed:
+    mov byte [0x604],0x81
+.restore:
+    mov eax,[0x600]
+    mov [0x70],eax
+.done:
+    pop gs
+    pop fs
+    pop es
+    pop ds
+    popad
+    popf
+    retf                       ; Chain the saved timer with the original IRQ frame.
+error db 'TFTP error 1 (Fixture unavailable)',0
+error_end:
+prompt db 'Boot from (N)etwork or (Q)uit? '
+prompt_end:
+times 2048-($-$$) db 0
+"""))
+    raw[-1] = -sum(raw[:-1]) & 255
+    return bytes(raw)
+
+
+def check_network_stimulus(raw):
+    """Execute the observer's gates and restoration, independently of boot policy."""
+    from unicorn import Uc, UC_ARCH_X86, UC_MODE_16, UC_HOOK_INSN
+    from unicorn import x86_const as x
+    error = b'TFTP error 1 (Fixture unavailable)'
+    prompt = b'Boot from (N)etwork or (Q)uit? '
+    for scenario in ('no-error', 'stale-menu', 'active-menu', 'blocked-command', 'blocked-data'):
+        cpu = Uc(UC_ARCH_X86, UC_MODE_16)
+        cpu.mem_map(0, 0x100000)
+        cpu.mem_write(0xC8000, raw)
+        cpu.mem_write(0x70, struct.pack('<HH', 0x1000, 0xF000))
+        cpu.mem_write(0xF1000, b'\x1E\x50\x31\xC0\x8E\xD8\xFE\x06\x08\x06\x58\x1F\xCF')
+        writes = []
+        reads = [0]
+        def port_in(u, port, size, unused):
+            assert (port, size) == (0x64, 1)
+            reads[0] += 1
+            return 2 if scenario == 'blocked-command' or (scenario == 'blocked-data' and writes) else 0
+        cpu.hook_add(UC_HOOK_INSN, port_in, None, 1, 0, x.UC_X86_INS_IN)
+        cpu.hook_add(UC_HOOK_INSN, lambda u,p,s,v,d: writes.append((p,s,v)), None, 1, 0, x.UC_X86_INS_OUT)
+        def execute(ip, interrupt):
+            cpu.mem_write(0x7000, struct.pack('<HHH', 0, 0xE000, 0x446))
+            regs = {reg: 0xABCD1000+i for i,reg in enumerate((
+                x.UC_X86_REG_EAX,x.UC_X86_REG_EBX,x.UC_X86_REG_ECX,x.UC_X86_REG_EDX,
+                x.UC_X86_REG_ESI,x.UC_X86_REG_EDI,x.UC_X86_REG_EBP))}
+            regs.update({x.UC_X86_REG_DS:0x1234,x.UC_X86_REG_ES:0x2345,
+                         x.UC_X86_REG_FS:0x3456,x.UC_X86_REG_GS:0x4567})
+            for reg,value in regs.items(): cpu.reg_write(reg,value)
+            for reg,value in ((x.UC_X86_REG_CS,0xC800),(x.UC_X86_REG_IP,ip),
+                              (x.UC_X86_REG_SS,0),(x.UC_X86_REG_ESP,0xCAFE7000),
+                              (x.UC_X86_REG_EFLAGS,0x446)):
+                cpu.reg_write(reg,value)
+            cpu.emu_start(0xC8000+ip,0xE0000,count=1000000)
+            assert cpu.reg_read(x.UC_X86_REG_CS) == 0xE000, scenario
+            assert all(cpu.reg_read(reg) == value for reg,value in regs.items()), scenario
+            assert cpu.reg_read(x.UC_X86_REG_ESP) == 0xCAFE7000+(6 if interrupt else 4)
+            assert cpu.reg_read(x.UC_X86_REG_EFLAGS) == 0x446
+        execute(3,False)
+        tick = int.from_bytes(cpu.mem_read(0x70,2),'little')
+        assert cpu.mem_read(0x606,2) == b'KQ'
+        screen = bytearray(b' \x07'*2000)
+        for text,row in ((prompt,1),(error,3)):
+            if text == error and scenario == 'no-error': continue
+            for i,value in enumerate(text): screen[(row*80+i)*2] = value
+        cpu.mem_write(0xB8000,bytes(screen))
+        cpu.mem_write(0x450, bytes((len(prompt),1 if scenario != 'stale-menu' else 4)))
+        execute(tick,True)
+        flag = cpu.mem_read(0x604,1)[0]
+        expected = 0 if scenario == 'no-error' else 1 if scenario == 'stale-menu' else 3 if scenario == 'active-menu' else 0x81
+        assert flag == expected, (scenario,flag)
+        assert cpu.mem_read(0x608,1) == b'\x01', 'Old timer did not run'
+        assert writes == ([(0x64,1,0xD2),(0x60,1,0x10)] if scenario == 'active-menu' else
+                          [(0x64,1,0xD2)] if scenario == 'blocked-data' else []), (scenario,writes)
+        if flag in (3,0x81): assert cpu.mem_read(0x70,4) == cpu.mem_read(0x600,4)
+        if scenario == 'active-menu':
+            execute(tick,True)
+            assert len(writes) == 2 and cpu.mem_read(0x608,1) == b'\x02', 'Duplicate Q'
+    print('PASS compiled network observer: gates, once-only Q, bounded IBF, timer/register/stack/flags restoration',flush=True)
+
+
 def network(fail=False,timeout=120):
-    provider=ROOT.parent/'tools/86box/roms/network/ne2000/ne2000.rom'
-    expected='c5ab8f6af709eaa0f550e94607c1f75477de9d61b0d58a31d2c9fb034954d120'
+    provider=ROOT.parent/'reference/software/etherboot-5.4.4/ne.zrom'
+    expected='927a0322dc25339d51f21a57f5b16fa8901808fbb39dcc78c08a4020ae20e29d'
     assert hashlib.sha256(provider.read_bytes()).hexdigest()==expected
-    private=BUILD/'86box/roms/network/ne2000';private.mkdir(parents=True,exist_ok=True)
-    shutil.copyfile(provider,private/provider.name)
+    observer=network_stimulus()
+    check_network_stimulus(observer)
+    private=BUILD/'tests/86box/roms/network/ne2000';private.mkdir(parents=True,exist_ok=True)
     scratch=(BUILD/'tmp').resolve();scratch.mkdir(exist_ok=True)
     vm=Path(tempfile.mkdtemp(prefix='legacy-pxe-fail-' if fail else 'legacy-pxe-ok-',dir=scratch))
-    def endpoint(name,result,signed=False):
+    def endpoint(name,result,capture=False):
         capture="""    mov ax,0x0308
     mov bx,0
     mov cx,32
@@ -238,13 +455,22 @@ def network(fail=False,timeout=120):
     mov cx,31
     mov dx,0x80
     int 0x13
-""" if signed else ''
+""" if capture else ''
         return legacy.assemble(name,f"""bits 16
 org 0x7C00
     xor ax,ax
     mov ds,ax
     mov es,ax
     cld
+    cmp word [0x606],0x514B
+    jne bad
+    cmp byte [0x604],{3 if capture else 0}
+    jne bad
+%if {int(bool(capture))}
+    mov eax,[0x600]
+    cmp eax,[0x70]
+    jne bad
+%endif
 {capture}
     mov dx,0x80
     mov si,magic
@@ -261,32 +487,65 @@ org 0x7C00
     out dx,al
     cli
     hlt
+bad:
+    mov dx,0x501
+    mov al,4
+    out dx,al
+    inc dx
+    mov al,0x69
+    out dx,al
+    cli
+    hlt
 magic db '86Box',1,5
 magicend:
 times 510-($-$$) db 0
-dw {0xAA55 if signed else 0}
+dw 0xAA55
 """)
     payload=endpoint('native-pxe-payload',0x6A)
     disk=vm/'hdd.img'
     with disk.open('xb') as out:out.write(endpoint('native-pxe-fallback',0x6B,True));out.truncate(64*1024*1024)
     roms=matrix.config(vm,disk,0,0,vm/'none-a',vm/'none-b')
+    # Exercise Other before the signed fallback disk, rather than HDD-only.
+    nvr=vm/'nvr/d824.nvr';cmos=bytearray(nvr.read_bytes())
+    record=bytearray((66,56,5,1,4,0,2,0))
+    record[5]=-(sum(record)+cmos[0x10])&255
+    cmos[0x38:0x40]=record;nvr.write_bytes(cmos)
     cfg=(vm/'86box.cfg').read_text().replace('net_01_card = none','net_01_card = novell_ne2k\nnet_01_net_type = nlswitch')
+    cfg=cfg.replace('hdc_1 = ide_isa','hdc_1 = ide_isa\nscsicard_1 = aha154xb')
+    cfg+='\n[Adaptec AHA-154xB #1]\nbase = 0330\nbios_rev = v3_20\nbios_addr = C8000\n'
+    observer_path=roms/'scsi/adaptec/aha1540b320_330.bin'
+    replacements={private/'ne2000.rom':provider.read_bytes(),
+                  observer_path:observer+bytes(16384-len(observer))}
+    originals={path:path.read_bytes() if path.exists() else None for path in replacements}
     cfg+='\n[Novell NE2000 #1]\nbase = 0300\nirq = 3\nmac = 86:86:10\nbios_addr = D0000\n'
     (vm/'86box.cfg').write_text(cfg)
-    exe=shutil.which('86Box.exe') or str(Path(os.environ['LOCALAPPDATA'])/'Microsoft/WinGet/Packages/86Box.86Box_Microsoft.Winget.Source_8wekyb3d8bbwe/86Box.exe')
+    source_exe=ROOT.parent/'tools/deps/86box-b10408/86Box.exe'
+    exe=importlib.import_module('legacy-emulator').prepare(source_exe,vm/'emulator')
+    digest=lambda path:hashlib.sha256(path.read_bytes()).hexdigest()
+    controls=dict(firmware_sha256=digest(BUILD/'baios-presario800.bin'),
+        wrapper_sha256=digest(roms/'machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin'),
+        provider_sha256=expected,cmos_sha256=digest(nvr),disk_sha256=digest(disk),
+        payload_sha256=hashlib.sha256(payload).hexdigest(),observer_sha256=hashlib.sha256(observer).hexdigest())
+    print('Network control inputs '+json.dumps(controls,sort_keys=True),flush=True)
     peer=importlib.import_module('legacy-network-fixture').Peer
-    print(f'START retained iPXE {"failure" if fail else "payload"}: {vm}',flush=True)
+    print(f'START retained Etherboot ISA {"failure" if fail else "payload"}: {vm}',flush=True)
     with peer(payload,fail) as server:
         try:
+            for path,data in replacements.items():path.write_bytes(data)
             result=matrix.run_hidden([exe,'-P',str(vm),'-R',str(roms),'-L',str(vm/'86box.log'),'-N'],timeout=timeout)
         finally:
+            for path,data in originals.items():
+                if data is None:path.unlink(missing_ok=True)
+                else:path.write_bytes(data)
+            assert all(not path.exists() if data is None else path.read_bytes()==data
+                       for path,data in originals.items())
             (vm/'network-events.txt').write_text('\n'.join(server.events))
             print('Local Switch events: '+', '.join(server.events),flush=True)
     assert result.returncode==(0x6B if fail else 0x6A),(result.returncode,vm)
     assert 'OFFER' in server.events and 'ACK' in server.events and 'RRQ:baios.nbp' in server.events
     assert ('ERROR' in server.events)==fail
     assert hashlib.sha256(provider.read_bytes()).hexdigest()==expected
-    print(f'PASS retained iPXE {"TFTP failure -> BIOS signed disk" if fail else "DHCP/TFTP -> distinct NBP endpoint"}',flush=True)
+    print(f'PASS retained Etherboot ISA {"received TFTP error -> explicit Q -> BIOS signed disk" if fail else "DHCP/TFTP -> distinct NBP endpoint"}',flush=True)
     return vm
 
 
@@ -590,7 +849,7 @@ prompt db 'Press any key to retry',0
 magic db '86Box',1,5
 endmagic:
 sector:
-incbin '{(BUILD/'legacy-fixtures/native-retry-sector.bin').as_posix()}'
+incbin '{(BUILD/'tests/legacy-fixtures/native-retry-sector.bin').as_posix()}'
 times 2048-($-$$) db 0
 """)
     image=bytearray(code);image[-1]=-sum(image[:-1])&255

@@ -97,7 +97,9 @@
 %define U_CHIP_SCREEN       0x0278
 %define U_CHIP_VALUE        0x0279
 %define S_RAM_TEST_BUFFER   0x1800 ; Excluded EBDA scratch for nondestructive RAM bursts.
+%ifndef RAM_TEST_BLOCK_SIZE
 %define RAM_TEST_BLOCK_SIZE 0x0800
+%endif
 
 %define KB_FLAGS            0x0017
 %define KB_FLAGS2           0x0018
