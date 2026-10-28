@@ -17,7 +17,7 @@ Status legend:
 
 ## Planned next
 
-No task is planned next.
+- **BAIOS-003: Share cache initialization and transition tests across controllers.** PB430 consumes a shared short SRAM workload and shared interrupted-RAM-test marker policy. Presario and PB430 use the maintained shared firmware owners. The [automated port update pipeline](port-updates.md) builds and validates maintained ports. Preserve each controller's complete reference setup and reset sequence. The complete common cache phase/transition driver and remaining M919 cache migration stay separate unfinished work.See the [cache lifecycle design and migration plan](plans/BAIOS-003-cache-lifecycle.md).
 
 ## Planned later
 
@@ -38,6 +38,8 @@ No residual risk is accepted.
 No task is declined.
 
 ## Completed
+
+- **BAIOS-009: Standardize port organization and candidate identity.** Relocated source checkouts, standardized build and diagnostic paths, protected retained inputs and completed candidates, and added version/UTC naming with latest pointers. All four build folders are clean. The focused checks and final native review passed. M919 remains on indefinite hardware hold.
 
 - **BAIOS-001: Move shared tools and dependencies to repository-root owners.** Moved common emulator resources, dependencies, and helper implementations to root owners. Preserved port overrides, existing commands, original references, and approved Presario ROM bytes. Validation and final review passed.
 

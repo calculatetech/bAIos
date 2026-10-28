@@ -143,7 +143,7 @@ def run():
                      'legacy_provider_retained':True,'one_time_init':True,'boot':boot})
     rom=PORT/'build/hardware-tests/geometry/baios-m919.bin'
     payload={'cases':rows,'rom_sha256':hashlib.sha256(rom.read_bytes()).hexdigest()}
-    path=PORT/'build/hardware-research/pci-rom-proof.json';path.write_text(json.dumps(payload,indent=2)+'\n')
+    path=PORT/'build/research/hardware/pci-rom-proof.json';path.write_text(json.dumps(payload,indent=2)+'\n')
     print(f'PCI ROM deployment: {len(rows)} cases PASS',flush=True)
 
 

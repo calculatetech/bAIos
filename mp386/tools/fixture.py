@@ -23,8 +23,12 @@ class Tiger(setup.Setup):
         image = Path(image)
         self.listing = Listing(image.with_suffix('.lst'))
         self.symbol = functools.lru_cache(None)(self.listing.symbol)
+        holdoff = (self.symbol('.cpu_holdoff_begin', 'startup'),
+                   self.symbol('.cpu_holdoff_end', 'startup'))
         for line in self.listing.lines:
-            if re.match(r'\s*\d+\s+[0-9A-F]{8}\s+[0-9A-F]', line):
+            if match := re.match(r'\s*\d+\s+([0-9A-F]{8})\s+[0-9A-F]', line):
+                if re.search(r'\binvd\b', line) and holdoff[0] <= int(match[1],16) < holdoff[1]:
+                    continue  # Runtime guard still rejects INVD on this386 fixture.
                 assert not re.search(r'\b(?:wbinvd|invd|bswap|rdtsc)\b', line), line
         folder = image.parent/'fixture'
         folder.mkdir(exist_ok=True)
@@ -73,6 +77,9 @@ class Tiger(setup.Setup):
                             unit*256+4: profile, unit*256+5: profile,
                             unit*256+6: 0, unit*256+7: 0})
         self.ti_stage = None
+        self.pit1_count = 0xFF
+        self.pit1_load = []
+        self.pit1_latch = []
         self.ti_trace = {'cold': [], 'warm': []}
         self.probe = False
         self.map_programs = 0
@@ -142,6 +149,12 @@ class Tiger(setup.Setup):
     def port_in(self, cpu, port, size, unused):
         if self.ti_stage:
             self.ti_trace[self.ti_stage].append(('in', port, size, None, cpu.reg_read(x.UC_X86_REG_IP)))
+        if port == 0x41:
+            assert size == 1 and self.pit1_latch
+            value = self.pit1_latch.pop(0)
+            if self.ti_stage:
+                self.ti_trace[self.ti_stage][-1] = ('in', port, size, value, cpu.reg_read(x.UC_X86_REG_IP))
+            return value
         if port == 0x24:
             assert size == 2
             index = self.ti_index
@@ -222,6 +235,18 @@ class Tiger(setup.Setup):
             return
         if self.ti_stage:
             self.ti_trace[self.ti_stage].append(('out', port, size, value, cpu.reg_read(x.UC_X86_REG_IP)))
+        if port == 0x43 and value in (0x70, 0x40, 0x54):
+            if value == 0x40:
+                self.pit1_count = max(0, self.pit1_count-1)
+                self.pit1_latch = [self.pit1_count & 255, self.pit1_count >> 8]
+            else:
+                self.pit1_load = []
+            return
+        if port == 0x41:
+            self.pit1_load.append(value)
+            if len(self.pit1_load) == 2:
+                self.pit1_count = int.from_bytes(bytes(self.pit1_load), 'little')
+            return
         if port == 0x26:
             assert size == 2
             self.ti_index = value
@@ -338,7 +363,7 @@ class Tiger(setup.Setup):
             return
         if any(base <= port < base+8 for base in (0x3E8, 0x2E8)) or any(base <= port < base+3 for base in (0x3BC, 0x278)):
             return
-        if port in (0xEB, 0xED, 0x84, 0x8D, 0x8E, 0x8F, 0x0D, 0x08, 0x0B, 0xDA, 0xD0, 0xD6, 0xD4, 0x41, 0x3B8, 0x3D8, 0x3C0, 0xF0, 0xF1):
+        if port in (0xEB, 0xED, 0x84, 0x8D, 0x8E, 0x8F, 0x0D, 0x08, 0x0B, 0xDA, 0xD0, 0xD6, 0xD4, 0x41, 0x3B8, 0x3D8, 0x3C0, 0x3B4, 0x3B5, 0x3D4, 0x3D5, 0xF0, 0xF1):
             self.delayed = True
             return
         if port == 0xE9:
@@ -464,6 +489,9 @@ class Tiger(setup.Setup):
                 key = (unit, bank, offset % length) if length else None
             else:
                 offset = (entry & 0x7FF)*16384+(address & (0xFFFF if high else 0x3FFF))
+                # Captured onboard geometry aliases bit12 under the temporary36E4 profile.
+                if unit == 0 and self.ti.get(3) == 0x4101 and self.ti.get(4,0) & 0x2000:
+                    offset &= ~0x1000
                 if offset < pair[0]*65536:
                     key = (unit, 0, offset)
                 else:
@@ -559,6 +587,9 @@ class Tiger(setup.Setup):
             cpu.reg_write(x.UC_X86_REG_IP, ip)
             return
         data = bytes(cpu.mem_read(address, size))
+        if data == b'\x9f' and bytes(cpu.mem_read(address-2, 2)) == b'\xf6\xf3':
+            flags = cpu.reg_read(x.UC_X86_REG_EFLAGS)
+            cpu.reg_write(x.UC_X86_REG_EFLAGS, (flags & ~0xD5) | 4)
         assert not data.startswith((b'\x0f\x08', b'\x0f\x09', b'\x0f\x31')), ('486 instruction', hex(address), data.hex())
         if data[:2] == b'\x0f\xa2':
             raise AssertionError('CPUID executed on386 fixture')

@@ -24,12 +24,12 @@ def main():
     nasm = shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA']) / 'bin/NASM/nasm.exe')
     exe = shutil.which('86Box.exe') or str(Path(os.environ['LOCALAPPDATA']) /
         'Microsoft/WinGet/Packages/86Box.86Box_Microsoft.Winget.Source_8wekyb3d8bbwe/86Box.exe')
-    roms = BUILD / '86box/roms'
+    roms = BUILD / 'tests/86box/roms'
     wrapper = roms / 'machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin'
     production = (BUILD / 'baios-presario800.bin').read_bytes()
     (BUILD / 'tmp').mkdir(parents=True, exist_ok=True)
     if preview:
-        work = BUILD / ('86box/cmos-review' if args.invalid_cmos else '86box/ide-review')
+        work = BUILD / ('tests/86box/cmos-review' if args.invalid_cmos else 'tests/86box/ide-review')
         work.mkdir(exist_ok=True)
     try:
         with (nullcontext(work) if preview else tempfile.TemporaryDirectory(prefix='ide-pair-', dir=BUILD / 'tmp')) as name:

@@ -1,10 +1,10 @@
 # Presario 800 bootstrap BIOS
 
-Shared menu, layout, descriptor, and keyboard-diagnostic bodies live in repository-root [`shared/src/`](../shared/README.md). The original source paths forward to those maintained bodies. Keep the existing NASM `src/` include root when assembling this port.
+Generic POST, Setup, disk, floppy, boot/CD, mouse, APM, identity, memory publication, and PC services use repository-root [`shared/src/`](../shared/README.md). The original paths forward to their maintained owners. `src/shared-owner.inc` anchors these includes to this source tree, independently of the shell directory. Keep the existing NASM `src/` include root. The Presario shell retains the complete VLSI memory mapper, cache, startup, shadow, reset, and shutdown transactions.
 
-Generic VHD, FAT16, floppy-image, and network helpers have the same root owner in `shared/tools/`. The original tool paths retain compatibility imports. Emulator source, stock ROMs, and common downloads live under repository-root [`tools/`](../tools/86box/README.md). Presario-specific collection overrides live in `reference/86box/`. Builds use that retained VGA input and write private adapters under `build/86box/`.
+Generic VHD, FAT16, floppy-image, and network helpers have the same root owner in `shared/tools/`. The original tool paths retain compatibility imports. Emulator source, stock ROMs, and common downloads live under repository-root [`tools/`](../tools/86box/README.md). Presario-specific collection overrides live in `reference/86box/`. Builds use that retained VGA input and write private adapters under `build/tests/86box/`.
 
-The physically approved pair uses the source pinned by local branch `presario-800-physical-approved`. Current source includes the pending CD-hook correction. Use a separate `build/` candidate directory when testing it. The existing emulator runner rebuilds the main directory, so use it only when that replacement is intended.
+The physically approved pair uses the source pinned by local branch `presario-800-physical-approved`. Current source includes pending shared-service and CD-hook corrections. Use a separate `build/` candidate directory when testing it. The existing emulator runner rebuilds the main directory, so use it only when that replacement is intended.
 
 This project builds a new 64 KiB system BIOS for the Compaq Presario 800 platform. The physical image is 128 KiB.
 
@@ -219,7 +219,7 @@ Progressive POST uses the summary's blue header and cyan labels. Each group appe
 The screen shows the processor, active L1, RAM Test count, banks and interleave, floppy drives, and both primary IDE device names.
 The RAM count stays left aligned. Passed follows KB by two spaces. Escape skips the remaining bulk test and shows Skipped.
 Mandatory firmware RAM checks remain active. Delete shows Entering setup... and opens Setup at the next safe checkpoint.
-During the bulk RAM test, that checkpoint occurs every 1 KB. Setup discard restores completed groups and resumes POST.
+During the bulk RAM test, that checkpoint occurs every 1 KB. The shared test checks three constant patterns and address witnesses in each block. It restores the block before IRQ service, Pause, Escape, Delete, failure, or retry. Its temporary backup uses physical `0800h..0BFFh` within the reserved POST scratch at `0800h..0FFFh`. ATA identification uses this region later. The EBDA stays 1 KiB and INT12 still reports 639 KiB. Setup discard restores completed groups and resumes POST.
 L2 stays off until the final Setup gate. Its state appears after the late probe, followed by VGA BIOS and System BIOS states.
 Shadow/cache labels describe the complete ROM extent and the active register policy. Partial coverage is explicit.
 Cached means eligible through an active cache, not a measured cache hit. Conflicting primary-region policies can show Cache status unknown.
@@ -231,7 +231,7 @@ New notices remove old message text.
 The summary puts the blue header at row 0 and draws the cyan table in rows 1 through 11.
 The model is at the left, bAIos is centered, and the ROM build is aligned at the right.
 Paired right labels start at zero-based column 40. The IDE rows sit directly above the bottom border.
-POST boots automatically when no error requires input.
+The success tone follows the final cache and RAM qualification. POST emits `FFh` after the summary returns, then synchronizes the clock and enters bootstrap. A fresh boot-retry key retries media without repeating POST or its success tone. POST boots automatically when no error requires input.
 Row 12 is blank. Messages start at row 13, or row 14 after a warning row.
 Clock, floppy, settings, keyboard, expansion ROM, and RAM recovery warnings appear outside the table at row 13.
 Later BIOS messages and OS output use normal full-screen scrolling. The summary can scroll off screen.
@@ -240,7 +240,7 @@ The bank list includes `Interleaved` when the chipset's active interleave mode i
 Each primary ATA/ATAPI position uses one line, with its full 40-character model name followed by `[size MB PIO]` or `[ATAPI PIO]`.
 The brackets use teal. Size, units, and transfer text remain white.
 ATA size uses DOS-style MB (2,048 sectors per MB). Geometry, L1, and option ROM disk counts are omitted from the table.
-The reset signature identifies supported processor models, including Pentium P24T. Unknown signatures show Unknown; CPU MHz is omitted.
+The guarded shared CPU catalogue identifies supported processor models, including Pentium P24T. It checks the vendor, signature, and available CPUID leaves. Without CPUID, it reports the supported processor class. Unknown identities show Unknown. CPU MHz is omitted.
 The existing x87 check supplies FPU status.
 Pause suspends the interrupted caller in IRQ1 until a fresh key resumes it. The resume key is consumed.
 Timer interrupts still run. Code with interrupts disabled pauses when keyboard interrupts become available.
@@ -398,7 +398,7 @@ python -B presario-800/tools/test-chipset.py --case integrity --86box --vga-cloc
 The physical images are `build/baios-presario800-vga50.bin` and `build/baios-presario800-vga60.bin`, each 128 KiB.
 Each release build also updates `build/baios-presario800.bin` to the selected version. Build 60 last to retain it as the main alias.
 The shared system ROM is `build/baios-presario800-system.rom`.
-Each clock has a wrapper under `build/86box/vga50/roms` or `build/86box/vga60/roms`. The generic `build/86box/roms` wrapper follows the last build. Both clocks can be verified after either build order, including the first build before its sibling exists.
+Each clock has a wrapper under `build/tests/86box/vga50/roms` or `build/tests/86box/vga60/roms`. The generic `build/tests/86box/roms` wrapper follows the last build. Both clocks can be verified after either build order, including the first build before its sibling exists.
 Native screenshots are in `build/chipset-review/review.html`; 50 MHz captures use its `vga50` subdirectory.
 Explicit `-Vga141` and `-VgaBus07` without a clock retain their separate legacy build routes.
 Actual-ROM RTC, Setup, chipset, bank, and cache fixtures use `BAIOS_BUILD_DIRECTORY`; its default is `build`.
@@ -423,10 +423,14 @@ pwsh -NoProfile -File presario-800/tools/build.ps1 -OutputDirectory build/review
 pwsh -NoProfile -File presario-800/tools/build.ps1 -OutputDirectory build/review -VgaClockMHz 60
 $env:BAIOS_BUILD_DIRECTORY = 'build/review'
 python -B presario-800/tools/test-cdboot.py
+python -B presario-800/tools/test-cdboot.py --86box --vga-clock 50
+python -B presario-800/tools/test-cdboot.py --86box --vga-clock 60
 python -B presario-800/tools/test-cdboot.py --preview --iso 'presario-800/reference/media/windows98se.iso'
 ```
 
-The preview uses a fresh disposable HDD and CMOS. It leaves the source ISO read-only. Select `Boot from CD-ROM`, then `Start computer with CD-ROM support`. DOS must reach its prompt with MSCDEX assigning the CD drive.
+The bounded `--86box` check selects the initial CD-loader option and waits for both entries in the supplied disc's DOS startup and installation menu. An external diagnostic ROM observes the menu. The host verifies the captured text after the emulator stops. The production BIOS and source ISO remain unchanged. Successful VM files are removed; a failed VM stays for diagnosis.
+
+The interactive `--preview` uses a fresh disposable HDD and CMOS. It leaves the source ISO read-only. Select `Boot from CD-ROM`, then `Start computer with CD-ROM support`. DOS must reach its prompt with MSCDEX assigning the CD drive.
 The installed D824 model needs a saved L2-disabled configuration. This changes the emulator's configuration, not the candidate firmware. Physical tests confirmed CD boot, virtual A, IDE CD access, and displaced physical A at B with the floppy controller enabled.
 
 The supplied startup disk loads IDE and SCSI CD drivers under the same `oemcd001` name. On the tested mixed IDE/SCSI system, skipping ASPI restored IDE CD access and physical B reads. The exact driver interaction is unresolved. `FLASHPT.SYS` produced the observed PCI read error. Use step-by-step startup to skip the unneeded SCSI driver stack when booting the IDE CD. The supplied ISO remains unchanged.
@@ -520,7 +524,8 @@ The expanded RAM checks add 8 MiB emulator runs and a 4 MiB XMS allocation with 
 Run `python -B presario-800/tools/test-memory-banks.py` for the controlled bank decoder checks. This requires the Python `unicorn` package.
 Run `python -B presario-800/tools/test-external-cache.py` for absent, valid, undersized, and corrupt L2 SRAM contrasts and reset-state checks.
 Neither 86Box nor the controlled SRAM fixture proves physical cache-tag timing or coherency. Use hardware memory tests for those results.
-Run `test-emm-reset.ps1 -ImagePath <backup>` for the disposable DOS reset check. Add `-KeypadDelete`, `-ProductionRom`, or `-NegativeControl` for its contrasts.
+Run `test-emm-reset.ps1 -ImagePath <backup>` for the disposable DOS reset check. Add `-KeypadDelete`, `-ProductionRom`, or `-NegativeControl` for its contrasts. Each invocation uses a private directory under the port's protected `build/diagnostics/` directory. The selected build supplies read-only ROM inputs. A failed invocation keeps its ROM, source, guest, VHD and VM state; the command prints that path. A successful invocation removes only its consumed files after the emulator stops. Original ROMs and the retained card backup stay unchanged.
+`test-emm-fixture.py <backup>` checks this host-side lifecycle with the real wrapper, assembler, media producer, runner and cleanup. Only the external emulator process is synthetic. This check does not prove native DOS reset behavior.
 `test-speedsys-rom-id.py` requires the retained unpacked Speedsys 4.78 code at `../reference/software/speedsys/4.78/SPEEDSYS-code.bin`.
 The script checks its SHA-256 before running the original scan against OEM and generated ROM bytes. That application fixture is not part of a fresh checkout.
 
@@ -618,6 +623,7 @@ The system BIOS writes these values to diagnostic port `80h`:
 | `EBh` | The controller did not accept the keyboard reset command. |
 | `EEh` | The warm-reset controller transaction failed. |
 | `EFh` | The keyboard runtime command-byte or enable transaction failed. |
+| `FFh` | POST and its summary completed. The BIOS is preparing the runtime handoff. |
 
 The retained VGA component is opaque. It runs during initialization, mode setting, and banner output. A final value outside this complete table shows retained VGA activity. It does not identify which call stopped or whether startup reached `60h`. A trace-capable observer is necessary to make that distinction.
 
@@ -632,3 +638,5 @@ The board jumper PDF/text remain in `presario-800/docs` and `docs/searchable`. G
 The conversion uses Poppler text extraction first. It uses Tesseract OCR for scanned or empty pages.
 
 Native APM and RTC DOS checks read the source disk image from the `BAIOS_DOS_VHD` environment variable. Set it to your own DOS VHD; tests modify only disposable copies. The CD boot test accepts `--iso` and otherwise looks for `presario-800/reference/media/windows98se.iso`. These inputs are not distributed.
+
+Native network validation uses the private Etherboot 5.4.4 ISA input at reference/software/etherboot-5.4.4/ne.zrom and the retained b10408 runtime. It checks downloaded boot and explicit provider quit after a real TFTP error. The private emulator copy and input requirements are described in [the port update guide](../docs/port-updates.md).

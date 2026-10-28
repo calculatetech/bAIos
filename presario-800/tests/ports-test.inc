@@ -35,9 +35,9 @@ ports_test_tick:
     movzx bx, byte [PT_STEP]
     cmp bx, 2
     jb .send
-    cmp byte [0x484], 49
+    cmp byte [0x484], 24
     jne .done
-    cmp word [0x485], 8
+    cmp word [0x485], 16
     jne .done
     mov ax, 0xB800
     mov es, ax
@@ -192,6 +192,12 @@ ports_test_capture_drain:
     mov ds, ax
     cmp byte [PT_CAPTURE], 1
     jne .done
+    mov al, [fs:P_PHASE]
+    push ax
+    mov byte [fs:P_PHASE], 0 ; Private screenshot export must preserve Setup.
+    call ata_detect_primary
+    pop ax
+    mov [fs:P_PHASE], al
     call setup_test_dump
     mov byte [PT_CAPTURE], 2
 %ifdef EMULATOR_PORTS_SCREEN

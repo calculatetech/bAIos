@@ -25,20 +25,20 @@ if ($modes.Count -gt 1) { throw "Select only one test mode." }
 
 $root = Split-Path -Parent $PSScriptRoot
 $build = Join-Path $root "build"
-$vm = Join-Path $build "86box/vm"
-$roms = Join-Path $build "86box/roms"
+$vm = Join-Path $build "tests/86box/vm"
+$roms = Join-Path $build "tests/86box/roms"
 $release = $PSBoundParameters.ContainsKey('VgaClockMHz') -or -not $Vga141
 if ($Vga141 -and -not $release) {
-    $build = Join-Path $build 'vga141'
-    $vm = Join-Path $build '86box/vm'
-    $roms = Join-Path $build '86box/roms'
+    $build = Join-Path $build 'review/vga141'
+    $vm = Join-Path $build 'tests/86box/vm'
+    $roms = Join-Path $build 'tests/86box/roms'
 }
 $disk = Join-Path $vm "boot-test-8g.img"
 $config = Join-Path $vm "86box.cfg"
 $log = Join-Path $vm "86box.log"
-$bootTest = Join-Path $build "boot-test.bin"
-$faultBootTest = Join-Path $build "fault-test.bin"
-$keyboardBootTest = Join-Path $build "keyboard-test.bin"
+$bootTest = Join-Path $build "tests/payloads/boot-test.bin"
+$faultBootTest = Join-Path $build "tests/payloads/fault-test.bin"
+$keyboardBootTest = Join-Path $build "tests/payloads/keyboard-test.bin"
 $rtcBootTest = Join-Path $build 'diagnostics/rtc-test.bin'
 $referencePath = Join-Path $root "reference/COMPAQ_PROLINEA_MT_05-02-94.BIN"
 $wrapper = Join-Path $roms "machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin"
@@ -122,7 +122,7 @@ try {
             }
 
             if (-not $BadBoot -and -not $IdentifyTimeout -and -not $IdentifyPostBusy -and -not $IdentifyPostError) {
-                $payloadPath = if ($VgaRegisterTest) { Join-Path $build 'vga-register-test.bin' } elseif ($FaultTest) { $faultBootTest } elseif ($KeyboardTest) { $keyboardBootTest } elseif ($RtcTest) { $rtcBootTest } else { $bootTest }
+                $payloadPath = if ($VgaRegisterTest) { Join-Path $build 'tests/payloads/vga-register-test.bin' } elseif ($FaultTest) { $faultBootTest } elseif ($KeyboardTest) { $keyboardBootTest } elseif ($RtcTest) { $rtcBootTest } else { $bootTest }
                 $payload = [IO.File]::ReadAllBytes($payloadPath)
                 if ($payload.Length -ne 8192) { throw "Boot test must be 16 sectors." }
                 $stream.Write($payload, 0, $payload.Length)

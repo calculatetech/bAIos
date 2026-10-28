@@ -70,9 +70,43 @@ class Setup(rtc.Clock):
         self.cpu.hook_add(UC_HOOK_CODE, self.setup_entered,
                           begin=0xF0000+rtc.symbol('setup_main'),
                           end=0xF0000+rtc.symbol('setup_main'))
+        self.target_cpu()
         self.code_hook = self.cpu.hook_add(UC_HOOK_CODE, self.code)
         settings_fixture(self)
         self.call('settings_load')
+
+    def target_cpu(self, signature=0x0430, vendor=b'GenuineIntel', *, id_bit=True, ac_bit=True, cyrix=False, max_leaf=1):
+        """External CPU capabilities; execute the real detector and renderers."""
+        if getattr(self, 'cpu_identity_hook', None) is not None:
+            self.cpu.hook_del(self.cpu_identity_hook)
+        pending, division = [None], [False]
+        def identity(cpu, address, size, unused):
+            if pending[0] is not None:
+                mask = (0 if id_bit else 0x200000) | (0 if ac_bit else 0x40000)
+                flags = cpu.reg_read(x.UC_X86_REG_EFLAGS)
+                cpu.reg_write(x.UC_X86_REG_EFLAGS, (flags & ~mask) | (pending[0] & mask))
+                pending[0] = None
+            if division[0]:
+                flags = cpu.reg_read(x.UC_X86_REG_EFLAGS)
+                cpu.reg_write(x.UC_X86_REG_EFLAGS, (flags & ~0xD5) | (0 if cyrix else 4))
+                division[0] = False
+            raw = bytes(cpu.mem_read(address, size))
+            if raw == b'\x66\x9d': pending[0] = cpu.reg_read(x.UC_X86_REG_EFLAGS)
+            if raw[:1] == b'\xf6' and raw[1] & 0x38 == 0x30: division[0] = True
+            if raw == b'\x0f\xa2':
+                assert id_bit, 'CPUID executed without writable ID'
+                leaf = cpu.reg_read(x.UC_X86_REG_EAX)
+                if leaf == 0:
+                    ebx, edx, ecx = struct.unpack('<III', vendor)
+                    values = (max_leaf, ebx, ecx, edx)
+                else:
+                    assert leaf == 1 and max_leaf >= 1
+                    values = (signature, 0, 0, 0)
+                for name, value in zip(('EAX','EBX','ECX','EDX'), values):
+                    cpu.reg_write(getattr(x,'UC_X86_REG_'+name), value)
+                cpu.reg_write(x.UC_X86_REG_IP, (cpu.reg_read(x.UC_X86_REG_IP)+size)&65535)
+        self.cpu_identity_hook = self.cpu.hook_add(UC_HOOK_CODE, identity, None,
+            0xF0000+rtc.symbol('cpu_detect_name'), 0xF0000+rtc.symbol('cpu_vendors')-1)
 
     def setup_entered(self, cpu, address, size, unused):
         self.setup_entries += 1
@@ -335,6 +369,12 @@ def pause_entry():
 
 
 def text_ui():
+    import re
+    from datetime import datetime
+    source=(ROOT/'src/bios.asm').read_text()
+    version=re.search(r"^%define BIOS_VERSION ['\"]([^'\"]+)['\"]",source,re.M)[1]
+    release=re.search(r"^%define BIOS_RELEASE_DATE ['\"]([^'\"]+)['\"]",source,re.M)[1]
+    short_date=datetime.strptime(release,'%m/%d/%Y').strftime('%m/%d/%y')
     model = Setup()
     seen = []
     def observe(m):
@@ -342,11 +382,11 @@ def text_ui():
             assert m.cpu.mem_read(0x484, 3) == b'\x18\x10\x00'
             assert m.text(0, 3, 19) == 'Compaq Presario 800'
             assert m.text(0, 34, 11) == 'bAIos Setup'
-            assert m.text(1, 3, 7) == 'Unknown'
+            assert m.text(1, 3, 13) == '486DX2/487/OD'
             assert m.text(0, 58, 8) == 'Version:'
-            assert m.text(0, 72, 5) == '0.1.0'
+            assert m.text(0, 72, len(version)) == version
             assert m.text(1, 58, 10) == 'ROM build:'
-            assert m.text(1, 69, 8) == '10/05/26'
+            assert m.text(1, 69, 8) == short_date
             assert bytes(m.cpu.mem_read(0xB8000 + 320, 160))[::2] == b'\xcd' * 20 + b'\xd1' + b'\xcd' * 59
             assert all(a in (0x1B, 0x1F) for a in bytes(m.cpu.mem_read(0xB8000, 320))[1::2])
             assert m.text(15, 24, 47).strip() == ''
@@ -357,12 +397,13 @@ def text_ui():
             seen.append(True)
     model.observer = observe
     model.open([0x3B, 1, 0x50, 28, 15, 0x50, 28, 1, 1, 28])
-    assert seen and model.vga[:3] == [0x1202, 3, 0x1114] and model.vga[-4:] == [0x1202, 3, 0x1114, 0x1003], model.vga
+    assert seen and model.vga[:3] == [0x1202, 3, 0x1114] and model.vga[-5:] == [0x1202, 3, 0x1114, 0x1003, 0x0500], model.vga
     assert model.cpu.mem_read(0x484, 3) == b'\x18\x10\x00'
     assert model.cpu.mem_read(model.base + 0xF4, 1) == b'\x00'
-    for signature, name in ((0x0430, '486DX2'), (0x1532, 'Pentium P24T')):
+    for signature, name in ((0x0430, '486DX2/487/OD'), (0x1532, 'Pentium P24T')):
         model = Setup()
         model.cpu.mem_write(model.base + 0xD4, struct.pack('<H', signature))
+        model.target_cpu(signature)
         seen_cpu = []
         def cpu_header(m):
             assert m.text(1, 3, len(name)) == name
@@ -412,23 +453,23 @@ def context_help():
     for prefix, title, detail in (
         ([], 'Standard Setup', 'System date, time, and detected memory.'),
         ([15], 'System Date', 'Calendar date: 1980-2099.'),
-        ([15, 0x50], 'System Time', '12-hour clock:01:00:00-12:59:59. A/P selects AM/PM.'),
-        ([15,0x50,0x50], 'Time Format', 'Choose12-hour AM/PM or24-hour display.'),
-        ([15,0x50,0x50,0x4D,0x48], 'System Time', '24-hour clock:00:00:00-23:59:59.'),
-        ([0x50], 'Drives', 'Floppy types and primary IDE device policy.'),
-        ([0x50, 0x50], 'Boot', 'Used devices move to the selected position.'),
+        ([15, 0x50], 'System Time', '12-hour clock. Press A for AM or P for PM.'),
+        ([15,0x50,0x50], 'Time Format', 'Choose a 12-hour or 24-hour clock display.'),
+        ([15,0x50,0x50,0x4D,0x48], 'System Time', '24-hour clock: 00:00:00 to 23:59:59.'),
+        ([0x50], 'Drives', 'Choose the installed drives and their settings.'),
+        ([0x50, 0x50], 'Boot', 'Choose which device to try at each boot step.'),
         ([0x50, 15], 'Floppy Drive A', 'Select the installed drive type, or None.'),
         ([0x50, 15, 0x50], 'Floppy Drive B', 'Select the installed drive type, or None.'),
-        ([0x50, 15, 0x50, 0x50], 'Primary IDE Master', 'Auto identifies ATA disks and ATAPI devices at POST.'),
-        ([0x50, 15, 0x50, 0x50, 0x50], 'Primary IDE Slave', 'Auto identifies ATA disks and ATAPI devices at POST.'),
-        ([0x50, 0x50, 15], 'First Boot Device', 'Used devices move to the selected position.'),
-        ([0x50,0x50,15]+[0x50]*3, 'Fourth Boot Device', 'Used devices move to the selected position.'),
-        ([0x50,15]+[0x50]*6, 'Swap Floppy Drives', 'Physical B becomes A at boot; A becomes B.'),
-        ([0x50,0x50,15]+[0x50]*5, 'Boot Num Lock', 'Set Num Lock after cold or warm POST.'),
-        ([0x50,0x50,15]+[0x50]*6, 'Halt On', 'Choose which recoverable errors pause POST.'),
+        ([0x50, 15, 0x50, 0x50], 'Primary IDE Master', 'Auto detects hard disks and CD drives at startup.'),
+        ([0x50, 15, 0x50, 0x50, 0x50], 'Primary IDE Slave', 'Auto detects hard disks and CD drives at startup.'),
+        ([0x50, 0x50, 15], 'First Boot Device', 'Choose which device to try at each boot step.'),
+        ([0x50,0x50,15]+[0x50]*3, 'Fourth Boot Device', 'Choose which device to try at each boot step.'),
+        ([0x50,15]+[0x50]*6, 'Swap Floppy Drives', 'Swap the names of floppy drives A and B.'),
+        ([0x50,0x50,15]+[0x50]*5, 'Boot Num Lock', 'Choose whether Num Lock starts enabled.'),
+        ([0x50,0x50,15]+[0x50]*6, 'Halt On', 'Choose which errors pause startup.'),
         ([0x50,0x50,15]+[0x50]*4, 'Floppy Seek', 'Check drives during POST. Default Enabled.'),
-        ([0x50, 0x50, 0x50, 0x50, 0x50, 15], 'Save and Exit', 'Write drive and boot settings, then restart.'),
-        ([0x50, 0x50, 0x50, 0x50, 0x50, 15, 0x50], 'Discard and Exit', 'Return without saving drive or boot edits.'),
+        ([0x50, 0x50, 0x50, 0x50, 0x50, 15], 'Save and Exit', 'Save your settings and restart the computer.'),
+        ([0x50, 0x50, 0x50, 0x50, 0x50, 15, 0x50], 'Discard and Exit', 'Return without saving your setting changes.'),
         (keys('\t\r01012001'), 'System Date', 'Calendar date: 1980-2099.'),
     ):
         model = Setup()
@@ -1322,6 +1363,7 @@ def summary_grid_limits():
         m.cpu.mem_write(m.base+0x175,bytes((warnings,)));m.cmos[0x36]=0x1A if warnings else 0
         m.cpu.mem_write(0x475,b'\x03')
         for offset,capacity in ((0,0x0FFFFFFF),(0x200,0x0FFFF7FF)):
+            m.cpu.mem_write(m.base+offset+0x25,bytes((0x10 if offset else 0,)))
             m.cpu.mem_write(m.base+offset+0x20,b'\x01')
             m.cpu.mem_write(m.base+offset+0x2E,struct.pack('<I',capacity))
             m.cpu.mem_write(m.base+offset+0x140,b'ABCDEFGHIJKLMN'+b'X'*26+b'\0')
@@ -1344,7 +1386,7 @@ def summary_grid_limits():
                               (4,'L2 cache','Memory Banks'),
                               (6,'Floppy Drive A','COM Ports'),(7,'Floppy Drive B','LPT Ports')):
             put(row,3,left,11);put(row,40,right,11)
-        put(2,20,'Unknown');put(3,20,'Detected');put(4,20,'128');put(4,25,'KB')
+        put(2,20,'486DX2/487/OD');put(3,20,'Detected');put(4,20,'128');put(4,25,'KB')
         put(2,58,'639');put(2,64,'KB')
         put(3,58,'64512');put(3,64,'KB');put(4,58,indices+(', Interleaved' if mode else ''))
         put(6,20,'1.44 MB, 3.5 in');put(7,20,'1.2 MB, 5.25 in')
@@ -1369,12 +1411,13 @@ def summary_grid_limits():
 
 def processor_summary():
     for signature,name in ((0x1531,'Pentium P24T'),(0x1532,'Pentium P24T'),
-                           (0x0521,'Pentium'),(0x1544,'Pentium'),
-                           (0x0430,'486DX2'),(0x0480,'486DX4'),
+                           (0x0521,'Pentium'),(0x1544,'Pentium MMX OD'),
+                           (0x0430,'486DX2/487/OD'),(0x0480,'486DX4'),
                            (0x0000,'Unknown'),(0x0630,'Unknown')):
         for cache,label in ((0,'Not detected'),(0x33,'128'),(0xB6,'1024')):
             model=Setup()
             model.cpu.mem_write(model.base+0xD4,struct.pack('<H',signature))
+            model.target_cpu(signature)
             model.chipset[0x19]=cache
             before=bytes(model.cpu.mem_read(model.base,0x400))
             model.call('post_debug_summary')
@@ -1383,12 +1426,13 @@ def processor_summary():
             assert model.text(4,20,len(label)) == label
             assert bytes(model.cpu.mem_read(model.base,0x400)) == before
     print('Processor/L2 summary: P24T63/83 signatures, other models unchanged, independent register19 size rendering PASS',flush=True)
-    for signature, name in ((0x1532, 'Pentium P24T'), (0x0430, '486DX2'),
+    for signature, name in ((0x1532, 'Pentium P24T'), (0x0430, '486DX2/487/OD'),
                             (0x0000, 'Unknown'), (0x0630, 'Unknown')):
         for cold in (False, True):
             post = production_post_model()
             schema2_fixture(post, types=0, flags=0x13, order=(2, 0, 0))
             post.cpu.mem_write(post.base+0xD4, struct.pack('<H', signature))
+            post.target_cpu(signature)
             post.cpu.reg_write(x.UC_X86_REG_EDX, signature)
             post.startup(reset=cold, production_controls=True, through_boot=True)
             assert bytes(post.cpu.mem_read(post.base+0xD4, 2)) == struct.pack('<H', signature)
@@ -1439,7 +1483,7 @@ def post_summary():
         assert m.idles == idle and not m.script, 'summary waited for input'
         assert m.cpu.mem_read(0x484, 3) == b'\x18\x10\0'
         assert m.text(0,37, 5) == 'bAIos'
-        assert m.text(2,20, 7).strip() == 'Unknown'
+        assert m.text(2,20,13) == '486DX2/487/OD'
         assert m.text(3,20, 8) == 'Detected'
         assert m.text(4,20, 10).strip() == '128  KB'
         assert m.text(2,58, 3) == '639' and m.text(3,58, 4) == '7168'
@@ -1643,7 +1687,7 @@ def run_86box(only=None):
     nasm = shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA']) / 'bin/NASM/nasm.exe')
     exe = shutil.which('86Box.exe') or str(Path(os.environ['LOCALAPPDATA']) /
         'Microsoft/WinGet/Packages/86Box.86Box_Microsoft.Winget.Source_8wekyb3d8bbwe/86Box.exe')
-    roms = build / '86box/roms'
+    roms = build / 'tests/86box/roms'
     wrapper = roms / 'machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin'
     production = (build / 'baios-presario800.bin').read_bytes()
     scratch = build / 'tmp'
@@ -1677,7 +1721,7 @@ def run_86box(only=None):
                         '-L', str(vm / '86box.log'), '-N'], timeout=60)
                     assert result.returncode == 0x67, (boot, hex(result.returncode))
                     saved = nvram.read_bytes()
-                    assert saved[0x10] == 0x40 and saved[0x38:0x3D] == b'B8\x04\x13\x01'
+                    assert saved[0x10] == 0x40 and saved[0x38:0x3D] == b'B8\x05\x13\x01'
                     assert (sum(saved[0x38:0x40]) + saved[0x10]) & 255 == 0
                     assert saved[0x3E:0x40] == b'\x02\0' and not saved[0xE] & 0x80
                     assert saved[7:10] == bytes((1, 1, 0x80)) and saved[0x32] == 0x19
@@ -1748,7 +1792,7 @@ def run_86box(only=None):
                 result = floppy.run_hidden([exe, '-P', str(vm), '-R', str(roms), '-L', str(vm / '86box.log'), '-N'], timeout=60)
                 assert result.returncode == 0x67, ('retained VGA setup fixture', label, hex(result.returncode))
                 if not absent:
-                    evidence = build / 'chipset-review/setup'
+                    evidence = build / 'review/chipset/setup'
                     evidence.mkdir(parents=True, exist_ok=True)
                     with disk.open('rb') as inp:
                         inp.seek(63 * 512)
@@ -1786,7 +1830,7 @@ def run_boot_86box(only=None):
     nasm = shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA']) / 'bin/NASM/nasm.exe')
     exe = shutil.which('86Box.exe') or str(Path(os.environ['LOCALAPPDATA']) /
         'Microsoft/WinGet/Packages/86Box.86Box_Microsoft.Winget.Source_8wekyb3d8bbwe/86Box.exe')
-    roms = build / '86box/roms'
+    roms = build / 'tests/86box/roms'
     wrapper = roms / 'machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin'
     production = (build / 'baios-presario800.bin').read_bytes()
     # order, A type/media/signature, HDD setting/signature, expected endpoint.
@@ -2324,7 +2368,7 @@ def production_post_model(kinds=None, peripherals=False):
                 return 4 | int(bool(self.pending))
             if port == 0x60:
                 return self.pending.pop(0) if self.pending else 0xFF
-            if port == 0x1F0 and self.ata.get(0x1F7) == 0x20:
+            if port == 0x1F0 and self.ata.get(0x1F7) == 0x20 and not getattr(self,'use_disk_media',False):
                 value = int.from_bytes(self.boot_sector[self.disk_word * 2:self.disk_word * 2 + 2], 'little')
                 self.disk_word += 1
                 return value
@@ -2374,6 +2418,10 @@ def production_post_model(kinds=None, peripherals=False):
                 return
             if getattr(self, 'event_observer', None):
                 self.event_observer(self, address)
+            if getattr(self,'external_scans',None) and cpu.mem_read(address,1)==b'\xF4' and cpu.reg_read(x.UC_X86_REG_EFLAGS)&0x200:
+                self.pending.append(self.external_scans.pop(0))
+                rtc.Clock.interrupt(self,cpu,9,None)
+                return
             super().code(cpu, address, size, unused)
     return ProductionPost()
 
@@ -2782,6 +2830,71 @@ def swap_floppy():
             assert {c[1] & 3 for c in reboot.fdc_log if c[0] == 7} == ({1} if enabled else set())
 
 
+def post_completion():
+    rows=[]
+    for event in ('ordinary','delete','pause','cad','save','discard','clock','keyboard'):
+        print('POST completion '+event,flush=True)
+        m=production_post_model()
+        schema2_fixture(m,types=0,flags=0x0B if event=='keyboard' else 3,order=(2,0,0))
+        m.startup_native_owners=('post_success_tone','post_tone','post_ui_roms','presario_post_complete','rtc_sync_ticks')
+        if event=='clock':m.cmos[8]=0
+        if event=='keyboard':m.device_present=False
+        visits=[];in_tone=[False];sent=[];returned=[];hooks=[];tone_pit=[]
+        saved=bytes(m.cmos[0x38:0x40])
+        def boundary(current,name):
+            visits.append(name)
+            if name=='post_notice_wait' and event=='clock' and not sent:
+                current.pending.append(28);sent.append('clock-ack')
+            if name=='chipset_visible_ram_test' and event in ('save','discard') and not sent:
+                current.pending.extend([0xE0,0x53]);sent.append('setup-request')
+            if name=='setup_main' and event in ('save','discard'):
+                current.script=[0x44,28] if event=='save' else [1,28]
+            if name=='post_success_tone':
+                assert 'chipset_late_cache' in visits
+                in_tone[0]=True;tone_pit.append(len(current.pit_writes))
+            if name=='post_ui_roms':in_tone[0]=False
+            if name=='post_debug_summary':
+                sp=current.cpu.reg_read(x.UC_X86_REG_SP)
+                target=0xF0000+int.from_bytes(current.cpu.mem_read(sp,2),'little')
+                def summary_return(cpu,address,size,unused):
+                    assert current.posts.count(0xFF)==0
+                    returned.append('summary-return')
+                hooks.append(current.cpu.hook_add(UC_HOOK_CODE,summary_return,None,target,target))
+            if name=='presario_post_complete':assert returned==['summary-return']
+            if name=='rtc_sync_ticks':
+                assert returned==['summary-return'] and current.posts.count(0xFF)==1
+            if name=='int19':
+                assert current.posts.count(0xFF)==1
+                assert current.cpu.mem_read(0x49E,1)==b'\0'
+        def events(current,address):
+            if not in_tone[0] or sent or event not in ('ordinary','delete','pause','cad'):return
+            if current.cpu.mem_read(address,1)!=b'\xF4':return
+            current.external_scans={'ordinary':[0x1E],'delete':[0xE0,0x53],
+                'pause':[0xE1,0x1D,0x45,0xE1,0x9D,0xC5,0x9E,0xFA,0x1E],
+                'cad':[0x1D,0x38,0xE0,0x53]}[event].copy()
+            sent.append(event)
+        m.startup_observer=boundary;m.event_observer=events
+        try:m.startup(reset=True,production_controls=True,through_boot=True)
+        finally:
+            for hook in hooks:m.cpu.hook_del(hook)
+        assert m.cpu.mem_read(0x7C00,4)==b'BOOT'
+        assert m.posts.count(0xFF)==1 and returned==['summary-return']
+        assert visits.index('setup_post_gate')<visits.index('chipset_late_cache')<visits.index('post_success_tone')
+        assert visits.index('post_success_tone')<visits.index('post_ui_roms')<visits.index('option_rom_discovery')<visits.index('post_debug_summary')<visits.index('presario_post_complete')<visits.index('rtc_sync_ticks')<visits.index('int19')
+        if event in ('clock','keyboard'):assert len(m.pit_writes)==tone_pit[-1]
+        else:assert len(m.pit_writes)>tone_pit[-1]
+        if event=='cad':assert visits.count('init_memory')==2 and visits.count('post_success_tone')==2
+        if event in ('save','discard'):assert m.setup_entries==1
+        elif event=='delete':assert m.setup_entries==0
+        assert not getattr(m,'external_scans',[])
+        assert m.cpu.mem_read(0x4A6,2)==bytes(2)
+        assert m.cmos[0x36]==0
+        if event!='save':assert bytes(m.cmos[0x38:0x40])==saved
+        rows.append({'event':event,'late_cache':visits.count('chipset_late_cache'),'actual_tone':visits.count('post_success_tone'),'final_ff':m.posts.count(0xFF),'boot':True})
+    (rtc.BUILD/'post-completion.json').write_text(__import__('json').dumps(rows,indent=2)+'\n')
+    print('Actual cache/tone/PIT, Setup save/discard, IRQ/Delete/Pause/CAD, summary-return/FF/RTC/runtime/INT19 completion PASS',flush=True)
+
+
 def option_rom_discovery():
     importlib.import_module('test-legacy-boot').discovery()
 
@@ -2793,12 +2906,12 @@ def boot_retry():
 CASES.update({'boot-numlock': boot_numlock, 'halt-on': halt_on,
               'keyboard-absence': keyboard_absence, 'boot-priority-save': boot_priority_save,
               'swap-floppy': swap_floppy, 'option-rom-discovery': option_rom_discovery,
-              'boot-retry': boot_retry, 'processor-summary': processor_summary})
+              'boot-retry': boot_retry, 'processor-summary': processor_summary, 'post-completion': post_completion})
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--case', choices=CASES, action='append')
+    parser.add_argument('--case', choices=('boot-numlock', 'boot-priority-save', 'boot-retry', 'choice-menus', 'clock-alert', 'clock-alert-delete', 'clock-defaults', 'clock-domain', 'clock-repair', 'cmos-recovery', 'context-help', 'floppy-policy', 'halt-on', 'hdd-policy', 'idle-clock', 'immediate-clock', 'keyboard-absence', 'option-rom-discovery', 'partial-clock-repair', 'pause-entry', 'post-completion', 'post-entry', 'post-error-input', 'post-seek-drives', 'post-seek-mechanics', 'post-seek-policy', 'post-summary', 'post-tones', 'processor-summary', 'save-all', 'settings-save', 'settings-validity', 'shared-state', 'swap-floppy', 'text-ui', 'themes', 'unsaved-reset'), action='append')
     parser.add_argument('--86box', action='store_true')
     parser.add_argument('--86box-case', action='append', choices=(
         'hdd', 'clock24', 'no-disk', 'invalid-date', 'power-loss', 'invalid-settings', 'recovery',

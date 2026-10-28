@@ -70,7 +70,7 @@ def validate(image,preprocessed,dependencies,configuration):
 
 def run(image):
     image=Path(image).resolve();configuration=image.with_name('configuration.inc')
-    folder=PORT/'build/test-results/native-inventory';folder.mkdir(exist_ok=True)
+    folder=PORT/'build/tests/results/native-inventory';folder.mkdir(exist_ok=True)
     nasm=shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA'])/'bin/NASM/nasm.exe')
     options=[nasm,'-w+error','-I',str(PORT/'src')+'/','-I',str(ROOT/'shared/src')+'/','-I',str(image.parent)+'/']
     original=PORT/'src/bios.asm'

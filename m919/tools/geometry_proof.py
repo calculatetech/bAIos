@@ -406,8 +406,8 @@ def native_checks():
     for mib in (8,16,128):
         name='geometry-native-'+str(mib)+'m'
         results.append(post.execute(name,{0:65},ram=mib*1024))
-        vm=(PORT/'build/post-tests'/name/'vm').resolve()
-        assert vm.is_relative_to((PORT/'build/post-tests').resolve())
+        vm=(PORT/'build/tests/post'/name/'vm').resolve()
+        assert vm.is_relative_to((PORT/'build/tests/post').resolve())
         import shutil
         shutil.rmtree(vm)
     return results
@@ -415,7 +415,7 @@ def native_checks():
 
 def check(case):
     results=geometry() if case=='geometry' else services()
-    path=PORT/'build/hardware-research/geometry-proof.json'
+    path=PORT/'build/research/hardware/geometry-proof.json'
     path.parent.mkdir(parents=True,exist_ok=True)
     record=json.loads(path.read_text()) if path.exists() else {}
     record[case]=results

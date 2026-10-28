@@ -1,9 +1,9 @@
 ; OEM07C0..092B,0EF0..1027,1D19..1E97,106B..12FC,2414..2452.
 ; This adapter owns discovery/probing/maps without writing OEM0240..02FF records.
-; Restricted to captured oldIDs0000/0100/0200 and ATU0200. Probe profiles:
-; MCU0=4001/10E4/10E4; MCU1/2=4001/36E4/36E4. Normal equal-bank routing adds0100.
+; Restricted to the supported old controllers. Preserve native geometry/probe
+; transactions; forced cold starts without the OEM reset gate use captured profiles.
 ; Six upperGPR halves retain raw bankcounts until qualifiedRAM exists.
-; UpperBP=count/lowerBP=ROMreturn; upperSP=resetidentity. Probe work is16-bit.
+; UpperBP=count, lowerSP=ROMreturn, BP=native continuation; upperSP=resetidentity.
 %define MP_MEMORY_RECORDS 0x0600
 %macro mp_mcu_write 0
     xchg ax,dx
@@ -15,6 +15,22 @@
     mov ax,dx
     out 0x26,ax
     in ax,0x24
+%endmacro
+%macro mp_mcu_native_write 0
+    mov bp,%%done
+    jmp mp_memory_ti_write
+%%done:
+%endmacro
+%macro mp_mcu_native_read 0
+    mov bp,%%done
+    jmp mp_memory_ti_read
+%%done:
+%endmacro
+%macro mp_mcu_native_check 0
+    mov bp,%%done
+    jmp mp_memory_ti_check_begin
+%%done:
+    jc mp_memory_failed
 %endmacro
 %macro mp_mcu_count 1
     ror ebp,16
@@ -57,58 +73,108 @@
     cmp ax,%1
     jbe %%absent
     mov dx,0x8000+(%1*0x1000)
-    mov bx,%2
-    mov ax,bx
-    mp_mcu_write
+    mov si,%2
+    mov ax,si
+    mov bp,%%mapped
+    jmp mp_memory_ti_write
+%%mapped:
+    mov bl,1
+    mov bp,%%first_ok
+    jmp mp_probe_oem_begin
+%%first_ok:
+    jmp near %%first_counted   ; Native failure return skips exactly three bytes.
+%%first_failed:
     xor cx,cx
-    mov word [0],0x5555
-    cmp word [0],0x5555
-    jne %%finished
-    mov word [0xCFFC],0xAAAA
-    cmp word [0xCFFC],0xAAAA
-    jne %%finished
-    mov word [0xCFFC],0
-    inc cx
-%%next:
-    add bx,4
-    mov ax,bx
-    mp_mcu_write
-    cmp word [0],0x5555
-    jne %%new_page
-    mov word [0],0
     jmp %%finished
-%%new_page:
-    mov word [0],0x5555
-    cmp word [0],0x5555
-    jne %%finished
-    mov word [0],0
-    mov word [0xCFFC],0xAAAA
-    cmp word [0xCFFC],0xAAAA
-    jne %%finished
-    mov word [0xCFFC],0
-    inc cx
+%%first_counted:
+    xor bl,bl
+    mov cx,1
+%%next:
     cmp cx,512
-    jb %%next
+    jae %%finished
+    mov ax,si
+    add ax,4
+    or ah,0x80
+    mov bp,%%page_mapped
+    jmp mp_memory_ti_write
+%%page_mapped:
+    mov si,ax                 ; Upper EAX already owns bank0's count.
+    mov bp,%%page_ok
+    jmp mp_probe_oem_begin
+%%page_ok:
+    jmp near %%count_page
+%%page_failed:
+    jmp %%finished
+%%count_page:
+    inc cx
+    and si,0x7FFF
+    jmp %%next
 %%finished:
     xor ax,ax
-    mp_mcu_write
+    mov bp,%%closed
+    jmp mp_memory_ti_write
+%%closed:
     mp_save_bank %3,%4
 %%absent:
+    mov bp,sp
 %endmacro
+
+; OEM1E45..1E97, including every branch between the physical memory accesses.
+mp_probe_oem_begin:
+    xor ax,ax
+    mov ds,ax
+    xor di,di
+    test bl,1
+    jnz .pattern
+    mov ax,[di]
+    cmp ax,0x5555
+    jne .pattern
+    jmp short $+2
+    mov ax,0
+    mov [di],ax
+    jmp short .failed
+    nop
+.pattern:
+    mov ax,0x5555
+    mov [di],ax
+    jmp short $+2
+    mov ax,[di]
+    cmp ax,0x5555
+    jne .failed
+    test bl,1
+    jnz .second
+    jmp short $+2
+    mov ax,0
+    mov [di],ax
+.second:
+    mov ax,0xCFFC
+    mov di,ax
+    mov ax,0xAAAA
+    mov [di],ax
+    jmp short $+2
+    mov ax,[di]
+    cmp ax,0xAAAA
+    jne .failed
+    xor ax,ax
+    mov [di],ax
+    jmp bp
+.failed:
+    add bp,3
+    jmp bp
+mp_probe_oem_end:
+
 tiger_cold:
     mov bp,sp
     and ebp,0xFFFF
     mov sp,.atu_return
     jmp mitsubishi_atu_initialize
-.atu_return: dw .board
-.board:
-mitsubishi_board_defaults_begin:
-    mitsubishi_board_defaults
-mitsubishi_board_defaults_end:
+.atu_return: dw .discover_begin
+.discover_begin:
     mov sp,bp
     mov dx,0x0800
     mp_mcu_read
-    cmp ax,0x0200
+    and ah,3
+    cmp ah,2
     jne mp_memory_failed
     xor bx,bx
     xor si,si
@@ -116,6 +182,7 @@ mitsubishi_board_defaults_end:
     mov dx,si
     mp_mcu_read
     mov cx,si
+    and ah,7
     cmp ah,ch
     jne .not_present
     cmp si,0x0300
@@ -138,41 +205,93 @@ mp_memory_prepare_begin:
     xor si,si
 mp_memory_reset_controller:
     mov dx,si
-    mp_mcu_read
+    mp_mcu_native_read
     mov cx,si
+    and ah,7
     cmp ah,ch
     jne mp_memory_failed
     xor ax,ax
-    mp_mcu_write
+    mp_mcu_native_write
     mov dl,6
     xor ax,ax
-    mp_mcu_write
-    mp_mcu_read
-    test ax,ax
-    jnz mp_memory_failed
+    mp_mcu_native_check
     inc dl
     xor ax,ax
-    mp_mcu_write
-    mp_mcu_read
-    test ax,ax
-    jnz mp_memory_failed
+    mp_mcu_native_check
     in al,0x5E
-    ; Captured normal4/5 profiles replace OEM080B..089B's temporary alias probe.
+    test al,5
+    jnz .geometry
+    ; OEM can retain configuration here; forced bAIos cold discovery cannot.
     mov dl,4
     mov ax,0x36E4
     test si,si
     jnz .profile
     mov ax,0x10E4
 .profile:
-    mp_mcu_write
+    mp_mcu_native_write
     inc dl
-    mp_mcu_write
+    mp_mcu_native_write
+    jmp .prepared
+.geometry:
+    mov dl,3
+    mov ax,0x4101
+    mp_mcu_native_check
+    mov dl,2
+    mov ax,0x8100
+    mov bp,.mode_ready
+    jmp mp_memory_ti_write
+.mode_ready:
+    mov dx,si
+    shl dx,4
+    or dh,0x80
+    mov cx,dx
+    mov ax,0x8000
+    mov bp,.geometry_mapped
+    jmp mp_memory_ti_write
+.geometry_mapped:
+    xor ax,ax
+    mov ds,ax
+    mov dx,si
+    mov dl,4
+    mov ax,0x36E4
+    mov bp,.first_profile
+    jmp mp_memory_ti_write
+.first_profile:
+    inc dl
+    mov bp,.profiles_ready
+    jmp mp_memory_ti_write
+.profiles_ready:
+    mov ax,0x0FF0
+    mov di,ax
+    mov ax,0x1234
+    mov bx,ax
+    mov [di],ax
+    mov ax,0x1FF0
+    mov di,ax
+    mov ax,[di]
+    cmp ax,bx
+    jne .geometry_done
+    mov ax,0x10E4
+    mov bp,.small_second
+    jmp mp_memory_ti_write
+.small_second:
+    dec dl
+    mov bp,.geometry_done
+    jmp mp_memory_ti_write
+.geometry_done:
+    mov dx,cx
+    xor ax,ax
+    mov bp,.geometry_cleared
+    jmp mp_memory_ti_write
+.geometry_cleared:
+    mov dx,si
+.prepared:
     mov dl,3
     mov ax,0x4001
-    mp_mcu_write
+    mp_mcu_native_write
     mov dl,0x0A
     mov ax,0x00FF
-    mp_mcu_write
+    mp_mcu_native_write
     add si,0x0100
     mov ax,si
     shr ax,8
@@ -180,38 +299,39 @@ mp_memory_reset_controller:
     cmp ax,cx
     jb mp_memory_reset_controller
     mov dx,si
-    mp_mcu_read
+    mp_mcu_native_read
     and ah,7
     cmp ah,dh
     je mp_memory_failed
 mp_memory_prepare_end:
+    mov bp,sp
 mp_memory_map_clear_begin:
     xor si,si
 .controller:
     mov dx,si
     mov dl,2
     mov ax,0x8100
-    mp_mcu_write
+    mp_mcu_native_write
     mov dx,si
     shl dx,4
     or dh,0x80
     mov cx,0x40
 .clear_low:
     xor ax,ax
-    mp_mcu_write
+    mp_mcu_native_write
     inc dx
     loop .clear_low
     mov dx,si
     mov dl,2
     mov ax,0x8160
-    mp_mcu_write
+    mp_mcu_native_write
     mov dx,si
     shl dx,4
     or dh,0x80
     mov cx,0x200
 .clear_high:
     xor ax,ax
-    mp_mcu_write
+    mp_mcu_native_write
     add dx,4
     loop .clear_high
     add si,0x0100
@@ -221,34 +341,144 @@ mp_memory_map_clear_begin:
     cmp ax,cx
     jb .controller
 mp_memory_map_clear_end:
+mp_memory_environment_begin:
+    ; OEM0B88..0BE7 hardware environment. OEM FC01/FC10 display state is private.
+    mov al,0x80
+    out 0x70,al
+    mov al,4
+    out 0x08,al
+    out 0xD0,al
+    mov dx,0x3B8
+    mov al,1
+    out dx,al
+    jmp short $+2
+    mov dx,0x3D8
+    xor al,al
+    out dx,al
+    jmp short $+2
+    mov dx,0x3DA
+    in al,dx
+    jmp short $+2
+    mov dx,0x3C0
+    xor al,al
+    out dx,al
+    jmp short $+2
+    mov dx,0x3DA
+    in al,dx
+    jmp short $+2
+    mov dx,0x3B4
+    mov al,0xB9
+    out dx,al
+    jmp short $+2
+    inc dx
+    mov al,0x48
+    out dx,al
+    jmp short $+2
+    mov dx,0x3D4
+    mov al,0xB9
+    out dx,al
+    jmp short $+2
+    inc dx
+    mov al,0x48
+    out dx,al
+    jmp short $+2
+    mov al,0xB0
+    out 0x70,al
+    xor al,al
+    out 0x71,al
+    mov al,0xB1
+    out 0x70,al
+    xor al,al
+    out 0x71,al
+    mov al,0x0C
+    out 0x61,al
+mp_memory_environment_end:
+mitsubishi_board_reset_kind_begin:
+    mitsubishi_board_reset_kind
+mitsubishi_board_reset_kind_end:
+    ; OEM0C88..0CC9: retain the complete ROM-read interval before PIT setup.
+    mov ax,cs
+    mov es,ax
+    xor ax,ax
+    xor bp,bp
+    mov bx,2
+.rom_sum:
+    sub al,[es:bp]
+    sub ah,[es:bp+1]
+    sub bp,bx
+    jnz .rom_sum
+    add al,ah
+    test al,al
+    jnz mp_memory_failed
+mp_memory_refresh_begin:
+    mov al,0x70
+    out 0x43,al
+    mov al,0xFF
+    out 0x41,al
+    xor al,al
+    out 0x41,al
+    mov bx,0xFF00
+.refresh_wait:
+    dec bx
+    jz mp_memory_failed
+    mov al,0x40
+    out 0x43,al
+    in al,0x41
+    cmp al,0xFF
+    setne ah
+    in al,0x41
+    test al,al
+    jnz mp_memory_failed
+    dec ah
+    jnz .refresh_wait
+    mov al,0x54
+    out 0x43,al
+    mov al,0x12
+    out 0x41,al
+mp_memory_refresh_end:
+mitsubishi_board_defaults_begin:
+    mitsubishi_board_controls
+mitsubishi_board_defaults_end:
+    mov bp,sp
     xor ax,ax
     mov ds,ax
     xor si,si
 ; Complete OEM0F2C..0F72 seed sweep, not only the pages eventually counted.
 mp_memory_seed_begin:
+    mp_mcu_count bx
+    xor di,di
+    mov dx,0x8000
 .seed_controller:
-    mov dx,si
-    shl dx,4
-    or dh,0x80
-    mov bx,0x8000
     mov cx,0x200
+    mov ax,0x8000
 .seed:
-    mov ax,bx
-    mp_mcu_write
-    mov word [0],0
-    or ax,0x4000
-    mp_mcu_write
-    mov word [0],0
-    add bx,4
-    loop .seed
+    mov bp,.seed_first
+    jmp mp_memory_ti_write
+.seed_first:
+    shl eax,16
     xor ax,ax
-    mp_mcu_write
-    add si,0x0100
-    mov ax,si
-    shr ax,8
-    mp_mcu_count cx
-    cmp ax,cx
-    jb .seed_controller
+    mov [di],ax
+    shr eax,16
+    or ah,0x40
+    mov bp,.seed_second
+    jmp mp_memory_ti_write
+.seed_second:
+    shl eax,16
+    xor ax,ax
+    mov [di],ax
+    shr eax,16
+    and ah,0xBF
+    add ax,4
+    dec cx
+    jnz .seed
+    xor ax,ax
+    mov bp,.seed_closed
+    jmp mp_memory_ti_write
+.seed_closed:
+    add dh,0x10
+    dec bl
+    jnz .seed_controller
+    mov bp,sp
     and eax,0xFFFF
     and ebx,0xFFFF
     and ecx,0xFFFF
@@ -456,6 +686,20 @@ mp_memory_ti_read:
     cli
     mp_mcu_read
     jmp bp
+; Native OEM1C55..1C69 write/readback, including its transaction spacing.
+mp_memory_ti_check_begin:
+    cli
+    mp_mcu_write
+    mov bx,ax
+    mov ax,dx
+    out 0x26,ax
+    in ax,0x24
+    xor ax,bx
+    jz .matched
+    stc
+.matched:
+    jmp bp
+mp_memory_ti_check_end:
 oem_map_106B:
     mov dx, 0x2dd
 oem_map_106E:

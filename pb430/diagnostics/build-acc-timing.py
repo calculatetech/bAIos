@@ -412,7 +412,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     nasm = shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA']) / 'bin/NASM/nasm.exe')
     image = output / 'ACCPROBE.COM'
-    subprocess.run([nasm, '-w+error', '-f', 'bin', '-o', str(image), str(PORT / 'tools/acc-timing.asm')], check=True)
+    subprocess.run([nasm, '-w+error', '-f', 'bin', '-o', str(image), str(PORT / 'diagnostics/acc-timing.asm')], check=True)
     raw = image.read_bytes()
     tests = check(raw)
     # Exercise the escaped CPU fault on both the normal and failure paths.

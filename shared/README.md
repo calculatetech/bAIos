@@ -17,13 +17,15 @@ The Presario currently consumes these files through forwarding includes at its o
 
 These are shared implementations for a defined firmware contract. They do not promise compatibility with arbitrary state layouts or hardware.
 
-Keep chipset register access and board-specific behavior outside this directory. Standard PC and PCI mechanisms belong here. A new port must provide the same helper/state contract or separate its policy before integration. The menu's policy, availability, formatting, and commit callbacks remain port-owned. Source sharing alone does not establish physical hardware support.
+Keep chipset register access and board-specific behavior outside this directory. Standard PC and PCI mechanisms belong here. A new port must provide the same helper/state contract or separate its policy before integration. The menu's policy, availability, formatting, and commit callbacks remain port-owned. Source sharing alone does not establish physical hardware support. The shared POST cursor call preserves FS, GS and the caller flags across retained VGA execution. Setup restores FS and GS and clears the direction flag before it resumes firmware drawing.
 
 The MP386 extended-RTC adapter selects verified AT checksum acknowledgment through `src/pc/cmos-checksum.inc`. Ordinary RTC ports retain the existing checksum writer. Board-selected processor and A20 primitives omit 486-only operations on the 386 target. Devices can select board-owned drawing and help callbacks while retaining the shared Setup renderer.
 
 The existing `BOARD_BOOT_HANDOFF` callback runs at the INT19 bootstrap entry, including direct software restarts. The MP386 adapter uses it to release its motherboard A20 override. Shared memory services still save and restore the adapter's gate token around extended-memory copies. Other adapters retain their existing hook selection and call sequence.
 
-`src/firmware/ide.inc` initializes accepted native geometry for every CHS-only disk, including Auto detection, before media access and after channel reset. LBA disks skip this command. A rejected initialization retains the existing error path. Presario's remaining private IDE body follows the same rule.
+`src/firmware/ide.inc` initializes accepted native geometry for every CHS-only disk, including Auto detection, before media access and after channel reset. LBA disks skip this command. A rejected initialization retains the existing error path. Presario uses this shared owner through its board adapters.
+
+POST publishes native disk counts and parameter-table vectors before option ROMs initialize. Runtime INT13 services and parameter-table updates leave those published vectors and counts alone. A provider can use a vector as its native BIOS predecessor; the Adaptec AHA154xB uses INT46 this way. Native geometry and table contents still use the current BIOS state.
 
 Port configuration owns vendor/model/revision, BIOS version/date, ROM size/layout, and chipset variants. Shared code must consume variables supplied by that configuration. Do not add system model or firmware-version literals to shared routines.
 
@@ -51,13 +53,13 @@ The primary tables are [Intel AP-485, tables 3/4](https://datasheets.chipdb.org/
 
 M919 `port.json` generates `CFG_*` NASM variables through `shared/tools/rom.py`. Root commands `tools/build-rom.py <port>` and `tools/verify-rom.py <port>` use that configuration. The selected port supplies its assembly entry and hardware owners. Model/version/date literals belong only to port configuration.
 
-M919 consumes the root donor core directly with UMC adapters. The existing Presario source is retained for later adoption. Generic native fixtures live in `shared/tests/firmware/`; board fixtures belong to their ports.
+M919 consumes the root donor core directly with UMC adapters. Presario retains its hardware shell and forwards generic services to the same maintained owners. Its include adapter resolves the current source tree before any shared include. Generic native fixtures live in `shared/tests/firmware/`; board fixtures belong to their ports.
 
 `shared/tests/dos/` owns the unchanged standalone RTC, PC hardware-state and mouse-interface inspection programs. Port commands select their output directory. These utilities do not build a firmware image or replace its native checks.
 
 Board callbacks own A20 transitions, controller command capabilities, disk ports, floppy mapping, and mouse availability. A board without an AUX connector filters only the mouse selector after CMOS validation, preserves other settings, disables editing through the existing availability rule, and rejects INT15/C2 before any controller operation. Serial mice remain UART clients. Temporary physical stage/IRQ/footer tracing is not part of the shared core.
 
-Keep original include paths as forwarding files when existing consumers need them. Before changing a shared body, inspect every port caller and run its relevant checks. Source relocation must preserve complete assembled Presario ROM bytes, including diagnostic builds.
+Keep original include paths as forwarding files when existing consumers need them. Before changing a shared body, inspect every port caller and run its relevant checks. A source-only relocation must preserve emitted behavior, including diagnostic builds. Intentional functional updates need explicit regression proofs. Presario tests pin complete compiled hardware windows, validate each permitted relocation target, and retain every instruction, I/O, stack access, and original POST write.
 
 Shared manual conversion and verification live in `tools/convert-docs.ps1` and `tools/verify-docs.ps1` here. Root commands select generic references; port wrappers add their board documents. Shared `tools/build-cleanup.ps1` owns process, path, reparse and preview safety. Each port owns artifact retention; root `../tools/clean-build.ps1` dispatches maintained port commands.
 
@@ -70,3 +72,7 @@ Shared manual conversion and verification live in `tools/convert-docs.ps1` and `
 `src/pc/processor.inc` selects cache instructions and byte swapping for the configured processor class. `BOARD_CPU_386` omits 486 cache instructions and reserved CR0 cache bits. `BOARD_A20_READ` and `BOARD_A20_WRITE` select board routines with AL as a gate token. The default preserves the existing port92 path. The token's bit0 follows that default's reset convention, so an8042 adapter must translate its opposite reset polarity. The adapter owns queued keyboard input and gate restoration.
 
 `BOARD_RTC_EXTENDED_READ` and `BOARD_RTC_EXTENDED_WRITE` can store logical indexes40h..7Fh outside the physical RTC. The shared RTC helpers retain their flags and interrupt contract. MP386 uses its OEM NVRAM protocol instead of assuming128 physical RTC bytes. `BOARD_SETUP_READONLY_PAGES` bounds selection when a page has no editable field. Other ports retain their assembled default path.
+
+`src/pc/primary-ata.inc` owns the existing two-position primary ATA detector and boot-sector ownership callbacks. `src/pc/chs-geometry.inc` owns the common Auto geometry and BPB validation. Explicit geometry takes precedence. `boot_candidate` clears `B_DRIVE` before each target selection, so a failed HDD cannot lend its source identity to CD or Other. The actual ordinary read then records its drive.
+
+The shared RAM test defaults to 2 KiB blocks in EBDA scratch and a 16 KiB keyboard-service bound. A port can select `RAM_TEST_BLOCK_SIZE`, `RAM_TEST_SERVICE_MASK`, and a phase-owned `RAM_TEST_BUFFER_ABSOLUTE`. Absolute selection also requires scratch start/end and stack-top bounds. Compile guards reject invalid sizes, alignment, ownership, and service intervals. Presario selects 1 KiB blocks, its existing first checkpoint at `10400h`, and low POST scratch. Other ports retain their default emitted path.

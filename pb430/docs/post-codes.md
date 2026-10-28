@@ -1,5 +1,24 @@
 # PB430 POST tracing
 
+Quick lookup for normal images:
+
+| Code | Next area to check |
+| --- | --- |
+| `10` / `20` | Reset classification / cold RAM initialization. |
+| `12` / `1D` | Cache detection / cache data check. |
+| `30` / `34` | BIOS state construction / system shadowing. |
+| `50` / `3C` | VGA initialization / VGA provider selection. |
+| `60` / `C9` | Keyboard initialization / keyboard enabled. |
+| `7B` / `7C`, before IDE | Selected-timing RAM test begins / returned. |
+| `70` / `84` / `85` | IDE probing / both slots probed / disk publication and IRQ handoff returned. |
+| `CA` / `7F`, after IDE | Final Setup gate / late stock-cache parent. |
+| `64` / `69` | L2 activation begins / controller returned to normal mode. |
+| `FF` | Summary completed. Later `5D`/`5E`/`5F` mark clock sync and boot handoff. |
+| `E4`, after `FF` | No successful boot target; fresh-key retry wait. |
+
+The card shows the last marker reached, which can remain during the following work. For detailed ATA/ATAPI and keyboard stages, see [shared device codes](../../docs/post-codes.md). Other boards: [Presario](../../presario-800/docs/post-codes.md), [MP386](../../mp386/docs/post-codes.md), [M919](../../m919/docs/post-codes.md).
+
+
 Codes are hexadecimal bytes written to port 80. The most recent code identifies the active operation. A following completion code proves that the preceding owner returned. RAM, cache and shadow details use the existing POST mechanism; the screen layout is unchanged. A stopped machine needs the last code and its preceding sequence because shared device codes can overlap board codes in other phases.
 
 | Code | Meaning |
@@ -19,13 +38,11 @@ Codes are hexadecimal bytes written to port 80. The most recent code identifies 
 | 7A / 7B / 7C in cache-burst image | Stock pattern ready / burst readback accepted / L1 enabled and read verification begins |
 | 7D / 7E in cache-burst image | Both patterns passed / experiment skipped by cache policy or RAM size |
 | E9 / EC / ED / EF in cache-burst image | Burst clear failed / enable rejected / cached read failed / unexpected starting state |
-| 76 / 77 / 78 after cache return | Fast Memory Writes begins / timing readback accepted / enabled option skipped because prerequisites do not match |
-| E8 in write-timing application or reset restoration | Write-timing register readback failed |
 | 21 | Supported map and routing written |
 | 22 | Protected alias-aware count begins |
 | 23 | Conventional 640 KiB span responded |
 | 26 | First extended 64 KiB clear completed; omitted at 1 MiB |
-| 24 | First absent/aliased span bounded the physical count |
+| 24 | Physical count complete: absent/aliased span or the 64 MiB limit |
 | 25 | Low workspace and actual first-stack region passed |
 | 30 | EBDA, BDA and public vectors constructed |
 | 12 | SRAM presence probe begins |

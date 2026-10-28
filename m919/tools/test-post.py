@@ -45,7 +45,7 @@ def nvram(types=0,valid=True,clock='valid',boot=2,l1=False,swap=False):
 def fixture(name,disks,ram=16384,types=0,valid=True,clock='valid',defines=(),cdroms=(),dirty_display=False,cpu=None,ram_flags=4,l1=False,missing_floppy=False,legacy_mouse=False,bpb_heads=16,dirty_vga_init=False,no_errors_clock=False,failed_provider=False):
     _,c=configuration(PORT)
     r=build(PORT,'build/full-core/'+name,defines)
-    folder=PORT/'build/post-tests'/name;vm=folder/'vm';roms=folder/'roms'
+    folder=PORT/'build/tests/post'/name;vm=folder/'vm';roms=folder/'roms'
     vm.mkdir(parents=True,exist_ok=True)
     em=dict(c['emulator']);em.update(cpu or {})
     for f in em['rom_files']:
@@ -381,7 +381,7 @@ def dos(warm=False,swap=False,himem=False,keyboard=False):
         source_com=folder/'keyboard-probe.asm'
         source_com.write_text('%define EMULATOR_DMA_TEST 1\n%include "core-emm-keyboard.asm"\n')
         assemble(source_com,folder/'kiot.com',[PORT/'tests'])
-    shutil.copyfile(REPOSITORY/'presario-800/build/presario800-card.vhd',disk)
+    shutil.copyfile(REPOSITORY/'reference/media/dos/test-card.vhd',disk)
     f=Fat16(disk)
     assert f.vhd.sector(1)==bytes(512),'Independent second-sector CHS oracle'
     with disk.open('r+b') as out:
@@ -506,7 +506,9 @@ def main():
     else:
         results.append(dos(warm=case=='warm',swap=case=='floppy-swap',himem=case=='himem',keyboard=case=='keyboard'))
         if case=='warm':results.append(floppy_warm())
-    record=REPOSITORY/'.agent/test-results/m919-post.json';data=json.loads(record.read_text())
+    record=REPOSITORY/'.agent/test-results/m919-post.json'
+    record.parent.mkdir(parents=True,exist_ok=True)
+    data=json.loads(record.read_text()) if record.exists() else {}
     data.setdefault('physical_iteration',{}).setdefault('full_core_checks',{})[args.case]=results
     record.write_text(json.dumps(data,indent=2)+'\n')
 

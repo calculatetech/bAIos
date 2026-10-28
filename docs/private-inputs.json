@@ -78,5 +78,10 @@
     "path": "presario-800/reference/mrbiosvlsi401-compaq94-compaq-ramdetect-vga-setup-stack-fix.bin",
     "size": 131072,
     "sha256": "ae3bd9dde545c4bc69b889fa4d5cec0aa36be85af8a37efb34363ca4bf8fdf97"
+  },
+  {
+    "path": "reference/software/etherboot-5.4.4/ne.zrom",
+    "size": 32768,
+    "sha256": "927a0322dc25339d51f21a57f5b16fa8901808fbb39dcc78c08a4020ae20e29d"
   }
 ]

@@ -26,7 +26,7 @@ def run_hidden(args, **kwargs):
 
 def config(vm, disk, a, b, fa, fb, geometry=(32, 4, 1024), turbo=False, protected=False, boot=2, seek=True):
     s, h, c = geometry
-    roms = BUILD / "86box/roms"
+    roms = BUILD / "tests/86box/roms"
     nvr = vm / "nvr"
     nvr.mkdir()
     cmos = bytearray(256)
@@ -119,7 +119,7 @@ def main():
     nasm = shutil.which("nasm") or str(Path(os.environ["LOCALAPPDATA"]) / "bin/NASM/nasm.exe")
     exe = shutil.which("86Box.exe") or str(Path(os.environ["LOCALAPPDATA"]) /
         "Microsoft/WinGet/Packages/86Box.86Box_Microsoft.Winget.Source_8wekyb3d8bbwe/86Box.exe")
-    wrapper = BUILD / '86box/roms/machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin'
+    wrapper = BUILD / 'tests/86box/roms/machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin'
     production = wrapper.read_bytes()
     (BUILD / 'tmp').mkdir(exist_ok=True)
     try:

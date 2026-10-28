@@ -426,7 +426,7 @@ def main():
     (OUT/'shadow-alias-rom.inc').write_text('\n'.join(lines)+'\n')
     nasm = Path(os.environ['LOCALAPPDATA'])/'bin/NASM/nasm.exe'
     subprocess.run([str(nasm),'-w+error','-f','bin','-I',str(OUT)+os.sep,
-                    '-l',str(OUT/'TGSHADOW.lst'),'-o',str(OUT/'TGSHADOW.COM'),str(PORT/'tools/shadow-alias.asm')],check=True)
+                    '-l',str(OUT/'TGSHADOW.lst'),'-o',str(OUT/'TGSHADOW.COM'),str(PORT/'diagnostics/shadow-alias.asm')],check=True)
     raw = (OUT/'TGSHADOW.COM').read_bytes()
     offset = Listing(OUT/'TGSHADOW.lst').symbol('write_map')
     assert raw[offset:offset+6] == bytes.fromhex('92 E7 26 92 E7 24'), 'Existing mp_mcu_write sequence changed'
@@ -446,7 +446,7 @@ def main():
     print(results[2]['output'])
     assert hashlib.sha256(raw).hexdigest() == '918870b2b4bac53391b098eb912e7121b4d81ce4c2917d0b7962b65a98a58f71', 'Validated TGSHADOW changed'
     subprocess.run([str(nasm),'-w+error','-f','bin','-DMP386_RAM_BACKING','-I',str(OUT)+os.sep,
-                    '-l',str(OUT/'TGBACK.lst'),'-o',str(OUT/'TGBACK.COM'),str(PORT/'tools/shadow-alias.asm')],check=True)
+                    '-l',str(OUT/'TGBACK.lst'),'-o',str(OUT/'TGBACK.COM'),str(PORT/'diagnostics/shadow-alias.asm')],check=True)
     ram = (OUT/'TGBACK.COM').read_bytes()
     cases = [check(ram,shape,firmware=p,chain=chain,physical=True) for p in FIRMWARES
              for chain in ('direct','jump','call') for shape in ('rom','shadow_alias')]
@@ -460,7 +460,7 @@ def main():
     print(cases[0]['output'])
     assert hashlib.sha256(ram).hexdigest() == '49326a776eddfc679bb09ce841929f90e80d4fedb3a2294f5111863bdb6f92fb', 'Bench TGBACK changed'
     subprocess.run([str(nasm),'-w+error','-f','bin','-DMP386_RAM_BACKING','-DMP386_APERTURE_ADDRESS','-I',str(OUT)+os.sep,
-                    '-l',str(OUT/'TGADDR.lst'),'-o',str(OUT/'TGADDR.COM'),str(PORT/'tools/shadow-alias.asm')],check=True)
+                    '-l',str(OUT/'TGADDR.lst'),'-o',str(OUT/'TGADDR.COM'),str(PORT/'diagnostics/shadow-alias.asm')],check=True)
     addr = (OUT/'TGADDR.COM').read_bytes()
     addresses = [check(addr,shape,chain=chain,firmware=p,physical=True,address_only=True) for p in FIRMWARES
                  for chain in ('direct','jump','call') for shape in ('relative','last_source','no_effect','identical','empty')]
@@ -482,7 +482,7 @@ def main():
         f'%macro ALIAS_ROM_ROWS 0\ndd 0x{zero_sum:08X}\n%endmacro\n')
     subprocess.run([str(nasm),'-w+error','-f','bin','-DMP386_RAM_BACKING','-DMP386_ZERO_BASE',
                     '-I',str(zero_out)+os.sep,'-l',str(zero_out/'TGZERO.lst'),
-                    '-o',str(zero_out/'TGZERO.COM'),str(PORT/'tools/shadow-alias.asm')],check=True)
+                    '-o',str(zero_out/'TGZERO.COM'),str(PORT/'diagnostics/shadow-alias.asm')],check=True)
     zero = (zero_out/'TGZERO.COM').read_bytes()
     contexts = [check(zero,shape,firmware=zero_image,chain=chain,physical=True,zero_base=True)
                 for chain in ('direct','jump','call') for shape in ('rom','shadow_alias')]
@@ -498,7 +498,7 @@ def main():
     assert hashlib.sha256(zero).hexdigest() == '6c2a74510044398937a8ff69e620b7255d788a158c10acc642d897c7f9a90f6e', 'Bench TGZERO changed'
     subprocess.run([str(nasm),'-w+error','-f','bin','-DMP386_RAM_BACKING','-DMP386_ZERO_BASE','-DMP386_UPPER_ALIAS',
                     '-I',str(zero_out)+os.sep,'-l',str(zero_out/'TGUPPER.lst'),
-                    '-o',str(zero_out/'TGUPPER.COM'),str(PORT/'tools/shadow-alias.asm')],check=True)
+                    '-o',str(zero_out/'TGUPPER.COM'),str(PORT/'diagnostics/shadow-alias.asm')],check=True)
     upper = (zero_out/'TGUPPER.COM').read_bytes()
     listing = Listing(zero_out/'TGUPPER.lst')
     read = listing.symbol('upper_read')+3
@@ -521,7 +521,7 @@ def main():
     assert hashlib.sha256(upper).hexdigest() == '852c9990e2647b6cf20d74a7b7b7cc30977556435e6e5d14b2d5e7f7f9403975', 'Bench TGUPPER changed'
     subprocess.run([str(nasm),'-w+error','-f','bin','-DMP386_RAM_BACKING','-DMP386_ZERO_BASE','-DMP386_TAIL_SAMPLES',
                     '-I',str(zero_out)+os.sep,'-l',str(zero_out/'TGTAIL.lst'),
-                    '-o',str(zero_out/'TGTAIL.COM'),str(PORT/'tools/shadow-alias.asm')],check=True)
+                    '-o',str(zero_out/'TGTAIL.COM'),str(PORT/'diagnostics/shadow-alias.asm')],check=True)
     tail = (zero_out/'TGTAIL.COM').read_bytes()
     cases = [check(tail,firmware=zero_image,chain=chain,physical=True,zero_base=True,tail_samples=True)
              for chain in ('direct','jump','call')]

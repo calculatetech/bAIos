@@ -9,7 +9,7 @@ import struct
 import subprocess
 import zlib
 
-from unicorn import Uc, UC_ARCH_X86, UC_MODE_16, UC_HOOK_CODE, UC_HOOK_INSN, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE, UC_HOOK_INTR
+from unicorn import Uc, UC_ARCH_X86, UC_MODE_16, UC_HOOK_CODE, UC_HOOK_INSN, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE, UC_HOOK_INTR, UC_MEM_WRITE
 from unicorn import x86_const as x
 
 setup = importlib.import_module('test-setup')
@@ -199,7 +199,7 @@ class Chipset(setup.Setup):
             hooks.append(alert_hook[0])
         try:
             self.cpu.emu_start(start, 0xFFFFFF, count=100000000)
-            assert hops[-1:] == [terminal], hops
+            assert hops[-1:] == [terminal], hops[-64:]
             self.startup_hops = hops
             if halt or before_restart or stop_at_notice or boot_failure:
                 return
@@ -1078,12 +1078,13 @@ def ram_faults(m, stages):
             return
         ip = cpu.reg_read(x.UC_X86_REG_IP)
         opcode = bytes(cpu.mem_read(0xF0000+ip, 4))
-        if opcode[:3] not in (b'\x67\x66\x39', b'\x67\x66\x3b', b'\x67\x66\x8b'):
+        if stage[0] != 'visible' and opcode[:3] not in (b'\x67\x66\x39', b'\x67\x66\x3b', b'\x67\x66\x8b'):
             return
         if stage[0] == 'final' and (opcode != b'\x67\x66\x8b\x07' or
                 bytes(cpu.mem_read(address, 4)) not in (b'\xaa\x55\xaa\x55', b'\x55\xaa\x55\xaa')):
             return
-        if stage[0] == 'visible' and int.from_bytes(cpu.mem_read(address, 4), 'little') not in (point ^ 0x55AA55AA, point ^ 0xAA55AA55):
+        if stage[0] == 'visible' and (opcode[-1:] != b'\xaf' or
+                cpu.reg_read(x.UC_X86_REG_EAX) not in (0x55AA55AA, 0xAA55AA55, 0)):
             return
         hit.append((pending.pop(0), address))
         cpu.mem_write(address, bytes(4))
@@ -1119,6 +1120,98 @@ def ram_pause():
     assert bytes(m.cmos[0x10:]) == saved[0x10:]
     assert bytes(m.cpu.mem_read(0x4A6, 2)) == b'\0\0'
     print('Protected RAM Pause: first1KiB yield, frozen walker, consumed resume, retained data/CMOS PASS', flush=True)
+
+
+def ram_bursts():
+    listing=(BUILD/'baios-presario800-system.lst').read_text().splitlines()
+    compares={int(match[1],16) for line in listing if 'repe scasd' in line and
+              (match:=re.match(r'\s*\d+\s+([0-9A-F]{8})\s+[0-9A-F]',line))}
+    assert compares
+    patterns=(0x55AA55AA,0xAA55AA55,0)
+    cases=[('pass',None,None)]+[('fault',pattern,position) for pattern in patterns for position in (0,512,1020)]+[('alias',bit,None) for bit in range(2,10)]+[(key,region,None) for key in ('escape','delete') for region in (0,0x100000)]
+    for kind,selector,position in cases:
+        extended=kind in ('escape','delete') and selector==0x100000
+        input_floor=0x100400 if extended else 0x10400
+        m=Chipset();m.cpu.hook_del(m.code_hook)
+        m.cpu.mem_write(m.base+0xD0,struct.pack('<H',64 if extended else 0))
+        m.cpu.mem_write(m.base+0x78,bytes(2))
+        m.cpu.mem_write(m.base+0x51,bytes((int(kind in ('escape','delete')),)))
+        data=bytes((i*7+3)&255 for i in range(0x9FC00-0x10000))
+        if kind=='alias':data=b'\x11'*1024+data[1024:]
+        m.cpu.mem_write(0x10000,data)
+        high=bytes((i*11+5)&255 for i in range(65536))
+        if extended:m.cpu.mem_write(0x100000,high)
+        m.cpu.mem_write(0x500,b'G'*0x300);m.cpu.mem_write(0xC00,b'H'*(0x6000-0xC00))
+        low=bytes(m.cpu.mem_read(0,0x6000));state=bytes(m.cpu.mem_read(m.base,1024));saved=bytes(m.cmos)
+        injected=[];services=[];terminal=[];writes=dict.fromkeys(patterns,0);reads=dict.fromkeys(patterns,0)
+        coverage=bytearray(len(data)//4);low_stack=[0x7000]
+        external=([1] if kind=='escape' else [0xE0,0x53]) if kind in ('escape','delete') else []
+        if external:
+            def irq(cpu,address,size,unused):
+                if external and services and services[-1]>=input_floor:
+                    m.pending.append(external.pop(0))
+                    setup.rtc.Clock.interrupt(m,cpu,9,None)
+            address=0xF0000+setup.rtc.symbol('post_keyboard_wait')
+            m.cpu.hook_add(UC_HOOK_CODE,irq,None,address,address)
+        def memory(cpu,access,address,size,value,unused):
+            if access==UC_MEM_WRITE:
+                if address<0x10000:
+                    assert 0x800<=address and address+size<=0xC00 or 0x6000<=address and address+size<=0x7000 or 0x400<=address and address+size<=0x500, ('unowned low write',hex(address),size)
+                    if 0x6000<=address<0x7000:low_stack[0]=min(low_stack[0],address)
+                if kind=='alias' and 0x10000<=address<0x10400:
+                    cpu.mem_write(address^(1<<selector),value.to_bytes(size,'little'))
+                if kind=='pass' and 0x10000<=address<0x9FC00 and value in patterns:
+                    writes[value]+=1;coverage[(address-0x10000)//4]|={patterns[0]:1,patterns[1]:2,0:4}[value]
+            elif 0x10000<=address<0x9FC00 and cpu.reg_read(x.UC_X86_REG_IP) in compares:
+                pattern=cpu.reg_read(x.UC_X86_REG_EAX)
+                if kind=='pass':reads[pattern]+=1
+                if kind=='fault' and not injected and address==0x10000+position and pattern==selector:
+                    cpu.mem_write(address,bytes(v^255 for v in cpu.mem_read(address,size)));injected.append(address)
+        m.cpu.hook_add(UC_HOOK_MEM_READ|UC_HOOK_MEM_WRITE,memory)
+        keyboard=setup.rtc.symbol('chipset_visible_ram_test')
+        start=next(i for i,line in enumerate(listing) if re.search(r'\bchipset_visible_ram_test:\s*$',line))
+        row=next(i for i in range(start,len(listing)) if re.search(r'\.keyboard:\s*$',listing[i]))
+        service_address=next(int(match[1],16) for line in listing[row+1:] if (match:=re.match(r'\s*\d+\s+([0-9A-F]{8})\s+[0-9A-F]',line)))
+        def service(cpu,address,size,unused):
+            assert cpu.mem_read(0x10000,1024)==data[:1024], 'block not restored before IRQ service'
+            if extended:assert cpu.mem_read(0x100000,1024)==high[:1024], 'extended block not restored before IRQ service'
+            services.append(cpu.reg_read(x.UC_X86_REG_EDI))
+        m.cpu.hook_add(UC_HOOK_CODE,service,None,0xF0000+service_address,0xF0000+service_address)
+        for name in ('controlled_defaults_restart','hard_halt'):
+            address=0xF0000+setup.rtc.symbol(name)
+            m.cpu.hook_add(UC_HOOK_CODE,lambda cpu,a,n,u,name=name:(terminal.append(name),cpu.emu_stop()),None,address,address)
+        for reg,value in ((x.UC_X86_REG_CS,0xF000),(x.UC_X86_REG_DS,0),(x.UC_X86_REG_ES,0),(x.UC_X86_REG_FS,m.segment),(x.UC_X86_REG_SS,0),(x.UC_X86_REG_SP,0x6FFE),(x.UC_X86_REG_EFLAGS,2)):
+            m.cpu.reg_write(reg,value)
+        m.cpu.mem_write(0x6FFE,b'\xff\xff')
+        m.cpu.emu_start(0xF0000+keyboard,0xFFFFF,count=50000000)
+        assert m.cpu.mem_read(0x10000,len(data))==data, (kind,selector,position,'restoration')
+        if extended:assert m.cpu.mem_read(0x100000,len(high))==high, (kind,'extended restoration')
+        assert m.cpu.mem_read(0,0x400)==low[:0x400]
+        assert m.cpu.mem_read(0x500,0x300)==low[0x500:0x800]
+        assert m.cpu.mem_read(0xC00,0x5400)==low[0xC00:0x6000]
+        assert low_stack[0]>=0x6000
+        if kind in ('fault','alias'):
+            assert terminal==['controlled_defaults_restart'],(kind,selector,terminal)
+            assert m.cmos[0x69]==0xD2 and m.cmos[0x36]==0x1A
+            if kind=='fault':assert injected
+        else:
+            assert not terminal and bytes(m.cmos)==saved
+            assert services[0]==0x10400
+            if kind=='pass':
+                assert coverage==bytes((7,))*len(coverage)
+                assert writes==reads==dict.fromkeys(patterns,len(data)//4)
+            else:
+                assert services[-1]==input_floor, (kind,selector,services)
+                assert [at for at in services if at>0x100000]==([0x100400] if extended else []), (kind,selector,services)
+                if not extended:assert services==[0x10400], (kind,services)
+                assert m.cpu.mem_read(m.base+0x50,1)==b'\2'
+                assert m.cpu.mem_read(m.base+0xF4,1)==bytes((kind=='delete',))
+        after=bytearray(m.cpu.mem_read(m.base,1024))
+        for offset in (0x50,0xF4):after[offset]=state[offset]
+        assert after==state, (kind,'live EBDA changed')
+        assert m.a20==0 and m.speaker==0xA0
+    ram_pause()
+    print('Burst RAM: every constant at every dword, first/middle/last mismatches, tied low address bits, restored service/exit/restart, low/stack guards, first1KiB conventional/extended Escape/Delete and conventional Pause PASS',flush=True)
 
 
 def ram_test():
@@ -1341,7 +1434,7 @@ def integrity():
 
 def emulator(preview=False, only=None, vga141=False, bus07=False, vga_clock=None):
     floppy=importlib.import_module('floppy-matrix')
-    work=(BUILD if bus07 or BUILD != ROOT/'build' else ROOT/('build/vga141' if vga141 else 'build'))/'chipset-review'
+    work=(BUILD if bus07 or BUILD != ROOT/'build' else ROOT/('build/review/vga141' if vga141 else 'build'))/'review/chipset'
     if vga_clock == 50: work = work/'vga50'
     work.mkdir(parents=True,exist_ok=True)
     roms=work/'roms'
@@ -1350,7 +1443,7 @@ def emulator(preview=False, only=None, vga141=False, bus07=False, vga_clock=None
         (roms/relative).mkdir(parents=True,exist_ok=True)
     shutil.copyfile(source/'video/cirruslogic/5428.bin',roms/'video/cirruslogic/5428.bin')
     wrapper=roms/'machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin'
-    physical_path=BUILD/'baios-presario800-vga141-bus07.bin' if bus07 else ROOT/('build/vga141/baios-presario800-vga141.bin' if vga141 else 'build/baios-presario800.bin')
+    physical_path=BUILD/'baios-presario800-vga141-bus07.bin' if bus07 else ROOT/('build/review/vga141/baios-presario800-vga141.bin' if vga141 else 'build/baios-presario800.bin')
     if vga_clock: physical_path = BUILD/f'baios-presario800-vga{vga_clock}.bin'
     physical=physical_path.read_bytes()
     nasm=shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA'])/'bin/NASM/nasm.exe')
@@ -1474,7 +1567,7 @@ def emulator(preview=False, only=None, vga141=False, bus07=False, vga_clock=None
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--case',action='append',choices=('profiles','profile-locks','policy','ui','ram','controls','integrity'))
+    parser.add_argument('--case',action='append',choices=('profiles','profile-locks','policy','ui','ram','ram-bursts','controls','integrity'))
     parser.add_argument('--86box',dest='emulator',action='store_true')
     parser.add_argument('--screen',action='append')
     parser.add_argument('--preview',action='store_true')
@@ -1482,7 +1575,7 @@ def main():
     parser.add_argument('--vga-bus07',action='store_true')
     parser.add_argument('--vga-clock',type=int,choices=(50,60))
     args=parser.parse_args()
-    cases={'profiles':profiles,'profile-locks':profile_locks,'policy':cmos_and_policy,'ui':ui,'ram':ram_test,'controls':production_controls,'integrity':integrity}
+    cases={'profiles':profiles,'profile-locks':profile_locks,'policy':cmos_and_policy,'ui':ui,'ram':ram_test,'ram-bursts':ram_bursts,'controls':production_controls,'integrity':integrity}
     for case in args.case or cases:
         cases[case]()
     if args.emulator or args.preview:

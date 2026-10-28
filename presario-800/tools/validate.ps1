@@ -5,14 +5,14 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $buildRoot = [IO.Path]::GetFullPath((Join-Path $root "build"))
-$left = Join-Path $buildRoot "repro-a"
-$right = Join-Path $buildRoot "repro-b"
+$left = Join-Path $buildRoot "tests/repro-a"
+$right = Join-Path $buildRoot "tests/repro-b"
 $artifacts = @(
     "baios-presario800-system.rom",
     "baios-presario800.bin",
-    "boot-test.bin",
-    "fault-test.bin",
-    "keyboard-test.bin",
+    "tests/payloads/boot-test.bin",
+    "tests/payloads/fault-test.bin",
+    "tests/payloads/keyboard-test.bin",
     "diagnostics/rtc-test.bin",
     "diagnostics/RTCCHECK.COM",
     "diagnostics/SPRTC.COM"
@@ -26,8 +26,8 @@ foreach ($directory in @($left, $right)) {
     }
 }
 
-& (Join-Path $PSScriptRoot "build.ps1") -OutputDirectory "build/repro-a" | Out-Null
-& (Join-Path $PSScriptRoot "build.ps1") -OutputDirectory "build/repro-b" | Out-Null
+& (Join-Path $PSScriptRoot "build.ps1") -OutputDirectory "build/tests/repro-a" | Out-Null
+& (Join-Path $PSScriptRoot "build.ps1") -OutputDirectory "build/tests/repro-b" | Out-Null
 foreach ($name in $artifacts) {
     $leftHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $left $name)).Hash
     $rightHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $right $name)).Hash
@@ -75,6 +75,7 @@ if (-not $knownEmulator) {
 if (-not $knownEmulator -and (Test-Path -LiteralPath $wingetEmulator)) { $knownEmulator = $wingetEmulator }
 if (-not $knownEmulator -or -not (Test-Path -LiteralPath $knownEmulator)) { throw "86Box was not found for selector validation." }
 $knownEmulator = (Resolve-Path -LiteralPath $knownEmulator).Path
+$pythonDirectory = Split-Path -Parent (Get-Command python -ErrorAction Stop).Source
 $nasm = Get-Command nasm -ErrorAction SilentlyContinue
 $nasmPath = if ($nasm) { $nasm.Source } else { Join-Path $originalLocalAppData "bin/NASM/nasm.exe" }
 if (-not (Test-Path -LiteralPath $nasmPath)) { throw "NASM was not found for selector validation." }
@@ -85,7 +86,8 @@ $selectorPackage = Join-Path $selectorPackageParent "86Box.86Box_Microsoft.Winge
 $pathEmulatorDirectory = Join-Path $selectorLocalAppData "path-emulator"
 $nasmFixtureDirectory = Join-Path $selectorLocalAppData "nasm"
 $emulatorFixtureDirectory = Join-Path $selectorLocalAppData "emulator"
-$spacedRepository = Join-Path $selectorLocalAppData "repository with spaces"
+# Keep the space-path fixture shallow enough for NASM on Windows.
+$spacedRepository = Join-Path $buildRoot ("s " + [IO.Path]::GetRandomFileName())
 $missingLocalAppData = Join-Path $selectorLocalAppData "missing-localappdata"
 $missingMessage = "86Box was not found. Put 86Box.exe on PATH or pass -EmulatorPath <path>."
 $selectorRoot = [IO.Path]::GetFullPath($selectorLocalAppData)
@@ -120,14 +122,19 @@ try {
     if ($spacedOutput -notcontains "86Box selected: $knownEmulator") { throw "86Box failed through a repository path that contains spaces." }
 
     $env:BAIOS_NASM = $nasmPath
-    $env:Path = "$nasmFixtureDirectory;$pathEmulatorDirectory"
+    $env:Path = "$nasmFixtureDirectory;$pathEmulatorDirectory;$pythonDirectory"
     $env:LOCALAPPDATA = $selectorLocalAppData
     Test-EmulatorSelector $knownEmulator $knownEmulator
 
     Test-EmulatorSelector (Join-Path $pathEmulatorDirectory "86Box.exe") ""
 
-    $env:Path = $nasmFixtureDirectory
-    Test-EmulatorSelector (Join-Path $selectorPackage "86Box.exe") ""
+    $env:Path = "$nasmFixtureDirectory;$pythonDirectory"
+    if (Test-Path -LiteralPath $wingetEmulator) {
+        $env:LOCALAPPDATA = $originalLocalAppData
+        Test-EmulatorSelector $wingetEmulator ""
+    } else {
+        Test-EmulatorSelector (Join-Path $selectorPackage "86Box.exe") ""
+    }
 
     $env:LOCALAPPDATA = $missingLocalAppData
     $missingSelectorRejected = $false

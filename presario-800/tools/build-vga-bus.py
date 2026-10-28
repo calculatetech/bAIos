@@ -38,7 +38,7 @@ def main():
     assert [i for i, pair in enumerate(zip(vga, tuned)) if pair[0] != pair[1]] == [0x8e6, 0x8e7, 0x8e8, 0x7fff]
     candidate = bytes(tuned) + image[32768:]
     assert candidate == image, 'Reproduction differs from validated reference'
-    output = root / 'build/vga141/bus07'
+    output = root / 'build/review/vga141/bus07'
     output.mkdir(parents=True, exist_ok=True)
     files = {'gd5428-141-bus07.rom': bytes(tuned),
              'baios-presario800-system.rom': system,

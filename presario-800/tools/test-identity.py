@@ -3,6 +3,8 @@ import hashlib
 import importlib
 import os
 import struct
+import re
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,6 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     build = ROOT / os.environ.get('BAIOS_BUILD_DIRECTORY', 'build')
     rom = (build / 'baios-presario800-system.rom').read_bytes()
+    source = (ROOT/'src/bios.asm').read_text()
+    version = re.search(r"^%define BIOS_VERSION ['\"]([^'\"]+)['\"]",source,re.M)[1]
+    release = re.search(r"^%define BIOS_RELEASE_DATE ['\"]([^'\"]+)['\"]",source,re.M)[1]
+    short_date = datetime.strptime(release,'%m/%d/%Y').strftime('%m/%d/%y')
     entries = [i for i in range(0, len(rom), 16) if rom[i:i+4] == b'_SM_']
     assert len(entries) == 1
     offset = entries[0]
@@ -38,11 +44,11 @@ def main():
     bios, system, end = records
     assert bios[3][4:10] == bytes((1, 2, 0, 0xF0, 3, 1))
     assert bios[3][10:] == bytes((8,)) + bytes(8)
-    assert bios[4] == [b'bAIos', b'0.1.0', b'10/05/2026']
+    assert bios[4] == [b'bAIos', version.encode(), release.encode()]
     assert system[3][4:8] == bytes((1, 2, 0, 0))
     assert system[3][8:24] == bytes(16) and system[3][24] == 2
     assert system[4] == [b'Compaq', b'Presario 800'] and not end[4]
-    assert rom[0xFFF5:0xFFFD] == b'10/05/26' and rom[0xFFFE] == 0xFC
+    assert rom[0xFFF5:0xFFFD] == short_date.encode() and rom[0xFFFE] == 0xFC
     # Execute the retained descriptor interface and original Speedsys scanner.
     setup = importlib.import_module('test-setup')
     model = setup.Setup()
@@ -56,7 +62,7 @@ def main():
     assert model.cpu.mem_read(descriptor, 10) == bytes.fromhex('08 00 FC 01 00 74 40 00 00 00')
     seen = []
     def observe(m):
-        assert m.text(0, 72, 5) == '0.1.0' and m.text(1, 69, 8) == '10/05/26'
+        assert m.text(0, 72, len(version)) == version and m.text(1, 69, 8) == short_date
         seen.append(True)
         m.observer = None
     model.observer = observe

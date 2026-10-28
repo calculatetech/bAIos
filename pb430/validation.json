@@ -1,0 +1,487 @@
+{
+  "schema": 1,
+  "resources": [
+    "reference",
+    "tools/86box/source",
+    "tools/86box/roms",
+    "tools/deps",
+    "pb430/reference",
+    "tools/deps/86box-b10408"
+  ],
+  "prepare": [
+    {
+      "id": "build",
+      "argv": [
+        "python",
+        "pb430/tools/build.py"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "acc-cmos",
+      "argv": [
+        "python",
+        "pb430/diagnostics/build-acc-registers.py",
+        "--cmos"
+      ]
+    },
+    {
+      "id": "acc-order",
+      "argv": [
+        "python",
+        "pb430/diagnostics/build-acc-order.py"
+      ]
+    },
+    {
+      "id": "acc-profile",
+      "argv": [
+        "python",
+        "pb430/diagnostics/build-acc-profile.py"
+      ]
+    },
+    {
+      "id": "acc-profile-build",
+      "argv": [
+        "python",
+        "pb430/tools/test-acc-profile-build.py"
+      ]
+    },
+    {
+      "id": "acc-registers",
+      "argv": [
+        "python",
+        "pb430/diagnostics/build-acc-registers.py"
+      ]
+    },
+    {
+      "id": "acc-timing",
+      "argv": [
+        "python",
+        "pb430/diagnostics/build-acc-timing.py"
+      ]
+    },
+    {
+      "id": "ata-chs",
+      "argv": [
+        "python",
+        "pb430/tools/test-ata-chs.py",
+        "--image",
+        "pb430/build/baios-pb430.bin"
+      ]
+    },
+    {
+      "id": "boot-source",
+      "argv": [
+        "python",
+        "pb430/tools/test-boot-source.py",
+        "--image",
+        "pb430/build/baios-pb430.bin"
+      ]
+    },
+    {
+      "id": "cache-check",
+      "argv": [
+        "python",
+        "pb430/tools/test-cache-check.py",
+        "pb430/build/baios-pb430.bin"
+      ]
+    },
+    {
+      "id": "cache-transitions",
+      "argv": [
+        "python",
+        "pb430/tools/test-cache-transitions.py"
+      ]
+    },
+    {
+      "id": "experimental-cache-burst-build",
+      "argv": [
+        "python",
+        "pb430/tools/build.py",
+        "--cache-burst",
+        "--output",
+        "build/diagnostics/firmware-cache-burst"
+      ]
+    },
+    {
+      "id": "experimental-interleave-build",
+      "argv": [
+        "python",
+        "pb430/tools/build.py",
+        "--interleave",
+        "--output",
+        "build/diagnostics/firmware-interleave"
+      ]
+    },
+    {
+      "id": "firmware-boot-defaults",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "boot-defaults"
+      ]
+    },
+    {
+      "id": "firmware-boot-order",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "boot-order"
+      ]
+    },
+    {
+      "id": "firmware-build-hygiene",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "build-hygiene"
+      ]
+    },
+    {
+      "id": "firmware-cache",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "cache"
+      ]
+    },
+    {
+      "id": "firmware-cd",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "cd"
+      ]
+    },
+    {
+      "id": "firmware-chipset-settings",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "chipset-settings"
+      ]
+    },
+    {
+      "id": "firmware-clock",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "clock"
+      ]
+    },
+    {
+      "id": "firmware-diagnostics-input",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "diagnostics-input"
+      ]
+    },
+    {
+      "id": "firmware-disk-services",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "disk-services"
+      ]
+    },
+    {
+      "id": "firmware-display",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "display"
+      ]
+    },
+    {
+      "id": "firmware-fast-writes",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "fast-writes"
+      ]
+    },
+    {
+      "id": "firmware-floppy",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "floppy"
+      ]
+    },
+    {
+      "id": "firmware-image",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "image"
+      ]
+    },
+    {
+      "id": "firmware-memory",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "memory"
+      ]
+    },
+    {
+      "id": "firmware-native",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "native"
+      ]
+    },
+    {
+      "id": "firmware-option-roms",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "option-roms"
+      ]
+    },
+    {
+      "id": "firmware-parallel",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "parallel"
+      ]
+    },
+    {
+      "id": "firmware-ram",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "ram"
+      ]
+    },
+    {
+      "id": "firmware-reset",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "reset"
+      ]
+    },
+    {
+      "id": "firmware-serial",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "serial"
+      ]
+    },
+    {
+      "id": "firmware-settings-load",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "settings-load"
+      ]
+    },
+    {
+      "id": "firmware-setup",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "setup"
+      ]
+    },
+    {
+      "id": "firmware-setup-policy",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "setup-policy"
+      ]
+    },
+    {
+      "id": "firmware-shadow",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "shadow"
+      ]
+    },
+    {
+      "id": "firmware-slow-refresh",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "slow-refresh"
+      ]
+    },
+    {
+      "id": "firmware-vga60",
+      "argv": [
+        "python",
+        "pb430/tools/test-port.py",
+        "--case",
+        "vga60"
+      ]
+    },
+    {
+      "id": "post-layout",
+      "argv": [
+        "python",
+        "pb430/tools/test-post-layout.py",
+        "pb430/build/baios-pb430.bin"
+      ]
+    },
+    {
+      "id": "ram-order",
+      "argv": [
+        "python",
+        "pb430/tools/test-ram-order.py"
+      ]
+    },
+    {
+      "id": "reference-map",
+      "argv": [
+        "python",
+        "pb430/tools/map_reference_roms.py"
+      ],
+      "inputs": [
+        "pb430/reference/maps/entries.json"
+      ]
+    },
+    {
+      "id": "refresh-dependencies",
+      "argv": [
+        "python",
+        "pb430/tools/test-refresh-dependencies.py"
+      ]
+    },
+    {
+      "id": "required-refresh",
+      "argv": [
+        "python",
+        "pb430/tools/test-required-refresh.py"
+      ]
+    },
+    {
+      "id": "stock-options",
+      "argv": [
+        "python",
+        "pb430/tools/test-stock-options.py",
+        "pb430/build/baios-pb430.bin"
+      ]
+    },
+    {
+      "id": "timing-recovery",
+      "argv": [
+        "python",
+        "pb430/tools/test-timing-recovery.py",
+        "pb430/build/baios-pb430.bin"
+      ]
+    },
+    {
+      "id": "timing-reset-edges",
+      "argv": [
+        "python",
+        "pb430/tools/test-timing-setup.py",
+        "--reset-edges"
+      ]
+    },
+    {
+      "id": "timing-setup",
+      "argv": [
+        "python",
+        "pb430/tools/test-timing-setup.py"
+      ]
+    },
+    {
+      "id": "write-burst",
+      "argv": [
+        "python",
+        "pb430/tools/test-write-burst.py"
+      ]
+    }
+  ],
+  "case_sets": [
+    {
+      "script": "pb430/tools/test-port.py",
+      "variable": "CASES"
+    }
+  ],
+  "historical_checks": [],
+  "candidates": [
+    {
+      "id": "candidate-50",
+      "argv": [
+        "python",
+        "pb430/tools/build.py",
+        "--vga50",
+        "--output",
+        "build/pipeline-candidate/vga50"
+      ]
+    },
+    {
+      "id": "candidate-60",
+      "argv": [
+        "python",
+        "pb430/tools/build.py",
+        "--vga60",
+        "--output",
+        "build/pipeline-candidate/vga60"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "pb430/build/pipeline-candidate/vga50/baios-pb430.bin",
+      "name": "baios-pb430-vga50.bin",
+      "size": 131072,
+      "physical": true
+    },
+    {
+      "path": "pb430/build/pipeline-candidate/vga60/baios-pb430.bin",
+      "name": "baios-pb430-vga60.bin",
+      "size": 131072,
+      "physical": true
+    },
+    {
+      "path": "pb430/build/pipeline-candidate/vga60/baios-pb430-system.bin",
+      "name": "baios-pb430-system.bin",
+      "size": 65536,
+      "physical": false
+    }
+  ],
+  "coverage_notes": [
+    "--stock-vga retains the original OEM provider. The delivered 50/60 MHz pair uses the same VGA1.41 provider and system BIOS.",
+    "Builders execute their assembled diagnostic checks directly. The profile-build test also proves a fresh standalone diagnostic build."
+  ],
+  "wrapped_tests": {
+    "pb430/tools/stock_cache_proof.py": [
+      "firmware-cache"
+    ]
+  }
+}

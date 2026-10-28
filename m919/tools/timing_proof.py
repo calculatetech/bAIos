@@ -191,7 +191,9 @@ def control_categories():
     parity_memory.saved_cmos=f[1].saved_cmos
     reload,g=composed(memory=parity_memory)
     r=g[1].registers
-    assert r[0x51]&0xF1==0x90 and r[0x50]&0x70==0x70
+    # Disabled L2 keeps WT mode without activating the saved WB choice.
+    assert not reload['enabled'] and not reload['l1']
+    assert r[0x51]&0xF1==0x91 and r[0x50]&0xF0==0x30
     assert r[0x5D]&0x90==0x90 and r[0x61]&0xC8==0xC8 and r[0x5A]&0x10
     assert r[0x52]&0x80 and r[0x53]&0xC0==0xC0
     assert r[0x52]&0x7F==reload['hb52'] and r[0x53]&0x3F==reload['hb53']&0x3F
@@ -262,7 +264,7 @@ def ui_review():
     assert b'Page 1  / 1' in cells[3*160:4*160:2],cells[3*160:4*160:2]
     assert cells[10*160+98:10*160+106:2]==b'0   '
     from shared.tools.vga_text import render
-    output=PORT/'build/hardware-research'
+    output=PORT/'build/research/hardware'
     (output/'timing-review-cells.bin').write_bytes(cells)
     font=(REPOSITORY/'tools/86box/roms/video/cirruslogic/5446bv.vbi').read_bytes()[0x6E5F:0x7E5F]
     render(cells,font,output/'timing-review-memory.png')
@@ -422,7 +424,7 @@ def persistence():
     d=f[1]
     assert row['enabled'] and 'cache_qualify' in row['post_visits'] and active(f)[10]==0xA5
     first_work=d.cache_interval_instructions
-    repeat,g=composed(kib=128,memory=d)
+    repeat,g=composed(kib=64,memory=d)
     assert repeat['enabled'] and 'cache_qualify' not in repeat['post_visits'] and not any(d.coverage[n]-set(range(0x100000,0x110000,4)) for n in d.coverage)
     assert d.cache_interval_instructions<first_work
     results.append(dict(row,repeat=repeat,first_work=first_work,repeat_work=d.cache_interval_instructions))
@@ -430,44 +432,44 @@ def persistence():
     for name,keys in (('discard',menu()+[RIGHT,1,1,1,ENTER]),('unchanged-save',SAVE),
                       ('cancel-defaults',[0x43,1]+SAVE),('theme-save',[0x3F]+SAVE)):
         before=d.saved_cmos
-        edit,h=composed(kib=128,memory=d,keys=keys)
+        edit,h=composed(kib=64,memory=d,keys=keys)
         assert 'cache_qualify' not in edit['post_visits']
         assert bytes(h[4][0x75:0x80])+bytes(h[4][0x33:0x36])==before[0x75:0x80]+before[0x33:0x36]
-        reload,j=composed(kib=128,memory=d)
+        reload,j=composed(kib=64,memory=d)
         assert reload['enabled'] and 'cache_qualify' not in reload['post_visits']
         results.append(dict(edit,operation=name,reload=reload))
     # Accepted clock edit invalidates before reset; a new pass publishes success.
-    edit,h=composed(kib=128,memory=d,keys=menu()+[RIGHT]+SAVE)
+    edit,h=composed(kib=64,memory=d,keys=menu()+[RIGHT]+SAVE)
     assert h[4][0x75]==0
-    reload,j=composed(kib=128,memory=d)
+    reload,j=composed(kib=64,memory=d)
     assert reload['enabled'] and 'cache_qualify' in reload['post_visits'] and j[4][0x75]==0xA5
     results.append(dict(edit,operation='changed-memory-setting',reload=reload))
     # A changed native-discovery input disqualifies the old certificate.
     for name,change in (('RAM map',lambda: d.modules.__setitem__(0,(8,False,False))),
                         ('cache banks',lambda: setattr(d,'banks',2))):
         change()
-        reload,j=composed(kib=128,memory=d)
+        reload,j=composed(kib=64,memory=d)
         assert 'cache_qualify' in reload['post_visits'] and reload['enabled']
         results.append(dict(reload,operation=name))
     for name,inputs in (('CPU identity',{'cpu_signature':0xDEAD0430}),('ROM contents',{'cpu_signature':0xDEAD0430,'rom_change':True})):
-        reload,j=composed(kib=128,memory=d,**inputs)
+        reload,j=composed(kib=64,memory=d,**inputs)
         assert 'cache_qualify' in reload['post_visits'] and reload['enabled']
         results.append(dict(reload,operation=name))
-    defaults,h=composed(kib=128,memory=d,keys=[0x43,ENTER]+SAVE)
+    defaults,h=composed(kib=64,memory=d,keys=[0x43,ENTER]+SAVE)
     assert h[4][0x75]==0
-    reload,j=composed(kib=128,memory=d)
+    reload,j=composed(kib=64,memory=d)
     assert 'cache_qualify' in reload['post_visits'] and reload['enabled']
     results.append(dict(defaults,operation='accepted-defaults',reload=reload))
-    edit,h=composed(kib=128,memory=d,keys=menu()+[RIGHT]+SAVE)
+    edit,h=composed(kib=64,memory=d,keys=menu()+[RIGHT]+SAVE)
     assert h[4][0x75]==0
     d.ordinary_fault=0x103
-    failure,j=composed(kib=128,memory=d)
+    failure,j=composed(kib=64,memory=d)
     assert failure['terminal']=='reset' and j[4][0x69]==0xD2 and not failure['enabled']
     assert not any(active(j)[10:])
     d.ordinary_fault=None
-    retry,j=composed(kib=128,memory=d,keys=menu(1)+[DOWN,0x4B]+SAVE)
+    retry,j=composed(kib=64,memory=d,keys=menu(1)+[DOWN,0x4B]+SAVE)
     assert retry['terminal']=='reset' and j[4][0x69]==0x56 and j[4][0x75]==0
-    healed,j=composed(kib=128,memory=d)
+    healed,j=composed(kib=64,memory=d)
     assert healed['enabled'] and 'cache_qualify' in healed['post_visits'] and j[4][0x75]==0xA5
     results.append(dict(failure,repaired_retry=retry,healed=healed))
     results.extend(crc())
@@ -630,16 +632,17 @@ def speed():
     return results
 
 
+CASES={'timing-settings':profiles,'timing-review':ui_review,'timing-controls':control_categories,'timing-order':order,'cache-wt-regression':wt_regression,'cache-wb-transition':wb_transition,'cache-persistence':persistence,'cache-writeback':writeback,'timing-crc':crc,'timing-parity':parity,'cache-speed':speed,'fast-restoration':fast_restoration}
+
+
 def check(case):
-    cases={'timing-settings':profiles,'timing-review':ui_review,'timing-controls':control_categories,'timing-order':order,'cache-wt-regression':wt_regression,'cache-wb-transition':wb_transition,'cache-persistence':persistence,'cache-writeback':writeback,'timing-crc':crc,'timing-parity':parity,'cache-speed':speed}
-    cases['fast-restoration']=fast_restoration
-    result={'cases':cases[case]()}
+    result={'cases':CASES[case]()}
     sources=('m919/port.json','m919/tools/timing_proof.py','m919/tools/cache_proof.py','m919/tools/geometry_proof.py',
              'm919/src/hardware/cache.inc','m919/src/hardware/chipset-core.inc','m919/src/hardware/timing.inc',
              'm919/src/hardware/cache-validation.inc','m919/src/hardware/chipset-data.inc','m919/src/hardware/chipset-ui.inc',
              'shared/src/setup/enum-ui.inc','shared/src/pc/crc32.inc','shared/src/firmware/bios.asm')
     result['source_sha256']={p:hashlib.sha256((REPOSITORY/p).read_bytes()).hexdigest() for p in sources}
-    target=PORT/'build/hardware-research'/f'{case}.json'
+    target=PORT/'build/research/hardware'/f'{case}.json'
     target.parent.mkdir(parents=True,exist_ok=True)
     target.write_text(json.dumps(result,indent=2)+'\n')
     print(f'{case}: {len(result["cases"])} cases PASS; {target}',flush=True)

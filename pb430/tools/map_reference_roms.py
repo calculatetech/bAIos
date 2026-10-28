@@ -182,7 +182,7 @@ def map_rom(name, output, extra_seeds):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output', type=Path, default=PORT/'build/reference-maps')
+    parser.add_argument('--output', type=Path, default=PORT/'build/research/reference-maps')
     parser.add_argument('--entries', type=Path, default=PORT/'reference/maps/entries.json')
     args = parser.parse_args()
     output = args.output.resolve()

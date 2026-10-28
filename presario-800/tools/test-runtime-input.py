@@ -106,7 +106,7 @@ def main():
 
 def windows_ebios():
     """Run the retained Windows EBIOS real initializer against actual BIOS owners."""
-    backup = rtc.ROOT / 'build/presario800-card.vhd'
+    backup = rtc.ROOT.parent / 'reference/media/dos/test-card.vhd'
     if not backup.exists():
         print('Retained Windows EBIOS fixture absent: skipped')
         return

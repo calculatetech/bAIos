@@ -1,1 +1,2 @@
-%include "../../shared/src/pc/rtc.inc"
+%include "shared-owner.inc"
+presario_shared "pc/rtc.inc"

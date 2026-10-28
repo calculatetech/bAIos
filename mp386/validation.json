@@ -1,0 +1,465 @@
+{
+  "schema": 1,
+  "resources": [
+    "reference",
+    "tools/86box/source",
+    "tools/86box/roms",
+    "tools/deps",
+    "mp386/reference"
+  ],
+  "prepare": [
+    {
+      "id": "build",
+      "argv": [
+        "python",
+        "mp386/tools/build.py"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "a20-handoff",
+      "argv": [
+        "python",
+        "mp386/tools/test-a20-handoff.py",
+        "--image",
+        "mp386/build/baios-mp386.bin"
+      ]
+    },
+    {
+      "id": "ata-chs",
+      "argv": [
+        "python",
+        "mp386/tools/test-ata-chs.py",
+        "--image",
+        "mp386/build/baios-mp386.bin"
+      ]
+    },
+    {
+      "id": "boot-source",
+      "argv": [
+        "python",
+        "mp386/tools/test-boot-source.py",
+        "--image",
+        "mp386/build/baios-mp386.bin"
+      ]
+    },
+    {
+      "id": "cache-boot",
+      "argv": [
+        "python",
+        "mp386/tools/test-cache.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "boot"
+      ]
+    },
+    {
+      "id": "cache-checksum",
+      "argv": [
+        "python",
+        "mp386/tools/test-cache.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "checksum"
+      ]
+    },
+    {
+      "id": "cache-guards",
+      "argv": [
+        "python",
+        "mp386/tools/test-cache.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "guards"
+      ]
+    },
+    {
+      "id": "cache-instructions",
+      "argv": [
+        "python",
+        "mp386/tools/test-cache.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "instructions"
+      ]
+    },
+    {
+      "id": "cache-policy",
+      "argv": [
+        "python",
+        "mp386/tools/test-cache.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "policy"
+      ]
+    },
+    {
+      "id": "cache-qualification",
+      "argv": [
+        "python",
+        "mp386/tools/test-cache.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "qualification"
+      ]
+    },
+    {
+      "id": "controls",
+      "argv": [
+        "python",
+        "mp386/tools/test-controls.py",
+        "--image",
+        "mp386/build/baios-mp386.bin"
+      ]
+    },
+    {
+      "id": "memory-boot",
+      "argv": [
+        "python",
+        "mp386/tools/test-memory.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "boot"
+      ]
+    },
+    {
+      "id": "memory-cache-off",
+      "argv": [
+        "python",
+        "mp386/tools/test-memory.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "cache-off"
+      ]
+    },
+    {
+      "id": "memory-mapper",
+      "argv": [
+        "python",
+        "mp386/tools/test-memory.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "mapper"
+      ]
+    },
+    {
+      "id": "memory-original",
+      "argv": [
+        "python",
+        "mp386/tools/test-memory.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "original"
+      ]
+    },
+    {
+      "id": "memory-ram",
+      "argv": [
+        "python",
+        "mp386/tools/test-memory.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "ram"
+      ]
+    },
+    {
+      "id": "memory-reject",
+      "argv": [
+        "python",
+        "mp386/tools/test-memory.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "reject"
+      ]
+    },
+    {
+      "id": "memory-routing",
+      "argv": [
+        "python",
+        "mp386/tools/test-memory.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "routing"
+      ]
+    },
+    {
+      "id": "port-boot",
+      "argv": [
+        "python",
+        "mp386/tools/test-port.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "boot"
+      ]
+    },
+    {
+      "id": "port-disk",
+      "argv": [
+        "python",
+        "mp386/tools/test-port.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "disk"
+      ]
+    },
+    {
+      "id": "port-image",
+      "argv": [
+        "python",
+        "mp386/tools/test-port.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "image"
+      ]
+    },
+    {
+      "id": "port-ram",
+      "argv": [
+        "python",
+        "mp386/tools/test-port.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "ram"
+      ]
+    },
+    {
+      "id": "port-recovery",
+      "argv": [
+        "python",
+        "mp386/tools/test-port.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "recovery"
+      ]
+    },
+    {
+      "id": "port-reference",
+      "argv": [
+        "python",
+        "mp386/tools/test-port.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "reference"
+      ]
+    },
+    {
+      "id": "port-setup",
+      "argv": [
+        "python",
+        "mp386/tools/test-port.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "setup"
+      ]
+    },
+    {
+      "id": "post",
+      "argv": [
+        "python",
+        "mp386/tools/test-post.py",
+        "--image",
+        "mp386/build/baios-mp386.bin"
+      ]
+    },
+    {
+      "id": "rom-window",
+      "argv": [
+        "python",
+        "mp386/tools/test-rom-window.py",
+        "--image",
+        "mp386/build/baios-mp386.bin"
+      ]
+    },
+    {
+      "id": "setup-controls",
+      "argv": [
+        "python",
+        "mp386/tools/test-setup-controls.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--boot"
+      ]
+    },
+    {
+      "id": "shadow-boot",
+      "argv": [
+        "python",
+        "mp386/tools/test-shadow.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "boot"
+      ]
+    },
+    {
+      "id": "shadow-failures",
+      "argv": [
+        "python",
+        "mp386/tools/test-shadow.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "failures"
+      ]
+    },
+    {
+      "id": "shadow-prepare",
+      "argv": [
+        "python",
+        "mp386/tools/test-shadow.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "prepare"
+      ]
+    },
+    {
+      "id": "shadow-records",
+      "argv": [
+        "python",
+        "mp386/tools/test-shadow.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "records"
+      ]
+    },
+    {
+      "id": "cpu-upgrade",
+      "argv": [
+        "python",
+        "mp386/tools/test-cpu-upgrade.py",
+        "--image",
+        "mp386/build/baios-mp386.bin"
+      ]
+    },
+    {
+      "id": "memory-sequence",
+      "argv": [
+        "python",
+        "mp386/tools/test-memory.py",
+        "--case",
+        "sequence",
+        "--image",
+        "mp386/build/baios-mp386.bin"
+      ]
+    }
+  ],
+  "case_sets": [
+    {
+      "script": "mp386/tools/test-port.py",
+      "argument": "--case",
+      "exclude": [
+        "retained"
+      ]
+    },
+    {
+      "script": "mp386/tools/test-memory.py",
+      "argument": "--case"
+    },
+    {
+      "script": "mp386/tools/test-cache.py",
+      "argument": "--case"
+    },
+    {
+      "script": "mp386/tools/test-shadow.py",
+      "argument": "--case"
+    }
+  ],
+  "historical_checks": [
+    {
+      "id": "historical-cache-state",
+      "argv": [
+        "python",
+        "mp386/tools/test-cache-state.py"
+      ],
+      "inputs": [
+        "mp386/build/oem-cache",
+        "mp386/build/cache-state-recovery",
+        "mp386/build/cmos-cache"
+      ],
+      "reason": "Frozen bench utility tied to superseded checksum/cache-qualification ROMs. Current firmware removed the CMOS cache qualifier; preserve original test and inputs without repinning."
+    },
+    {
+      "id": "historical-shadow-alias",
+      "argv": [
+        "python",
+        "mp386/tools/test-shadow-alias.py"
+      ],
+      "inputs": [
+        "mp386/build/oem-cache",
+        "mp386/build/cache-state-recovery",
+        "mp386/build/cmos-cache",
+        "mp386/build/zero-base"
+      ],
+      "reason": "Frozen upper-memory-recovery probes. The user retired recovery of the last2MiB and accepted the OEM memory boundary; current firmware does not claim this historical configuration."
+    },
+    {
+      "id": "port-retained",
+      "argv": [
+        "python",
+        "mp386/tools/test-port.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "retained"
+      ],
+      "reason": "Frozen a8d0542 whole-ROM equivalence reverses only the former Auto CHS repair. Current shared adoption intentionally changes emitted generic code; retain the original pins and classify this source-only comparison as historical."
+    }
+  ],
+  "candidates": [
+    {
+      "id": "candidate",
+      "argv": [
+        "python",
+        "mp386/tools/build.py",
+        "--output",
+        "build/pipeline-candidate"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "mp386/build/pipeline-candidate/baios-mp386.bin",
+      "name": "baios-mp386.bin",
+      "size": 65536,
+      "physical": true
+    },
+    {
+      "path": "mp386/build/pipeline-candidate/baios-mp386-even.bin",
+      "name": "baios-mp386-even.bin",
+      "size": 32768,
+      "physical": true
+    },
+    {
+      "path": "mp386/build/pipeline-candidate/baios-mp386-odd.bin",
+      "name": "baios-mp386-odd.bin",
+      "size": 32768,
+      "physical": true
+    }
+  ],
+  "coverage_notes": [
+    "Every current firmware case and reproducible read-only ROM-window utility check is active. The two retired bench probes and the frozen a8d0542 whole-ROM equivalence case remain explicit historical checks. --historical attempts their original conditions without repinning."
+  ]
+}

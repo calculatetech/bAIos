@@ -13,10 +13,10 @@ def main():
     out = PORT / 'build/diagnostics'
     out.mkdir(parents=True, exist_ok=True)
     nasm = shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA'])/'bin/NASM/nasm.exe')
-    source = PORT/'tools/acc-timing.asm'
+    source = PORT/'diagnostics/acc-timing.asm'
     image = out/'ACCPROF.COM'
     subprocess.run([nasm, '-w+error', '-f', 'bin', '-DACC_PROFILE',
-                    '-I'+str(PORT/'tools')+'/', '-o', str(image), str(source)], check=True)
+                    '-I'+str(PORT/'diagnostics')+'/', '-o', str(image), str(source)], check=True)
     raw = image.read_bytes()
     cases = ['trial05', 'trial-128', 'bad-ram', 'bad-a20', 'bad-ticks',
              'bad-argument', 'v86', 'xms', 'little-memory', 'wrong-cache',
@@ -34,7 +34,7 @@ def main():
             continue
         temporary = out/(name+'-unchanged.COM')
         subprocess.run([nasm, '-w+error', '-f', 'bin', *defines,
-                        '-I'+str(PORT/'tools')+'/', '-o', str(temporary), str(source)], check=True)
+                        '-I'+str(PORT/'diagnostics')+'/', '-o', str(temporary), str(source)], check=True)
         assert temporary.read_bytes() == retained.read_bytes(), name
         temporary.unlink()
         unchanged.append(name)

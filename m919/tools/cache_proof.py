@@ -1138,7 +1138,7 @@ def live():
         expected=set(range(0x100000,0x180000,4))
         coverage={k:{'count':len(v),'missing':len(expected-v),'extra':len(v-expected),
                      'missing_examples':sorted(expected-v)[:8],'extra_examples':sorted(v-expected)[:8]} for k,v in d.coverage.items()}
-        progress=PORT/'build/hardware-research/cache-live-progress.json'
+        progress=PORT/'build/research/hardware/cache-live-progress.json'
         progress.write_text(json.dumps({'case':row,'coverage':coverage},indent=2)+'\n')
         print('Live raw coverage: '+json.dumps(coverage),flush=True)
         assert row['terminal']=='POST FF' and row['measured_code']==4,row
@@ -1204,14 +1204,17 @@ def enable_live():
     return [row]
 
 
+CASES={'cache-recovery-boundaries-live':recovery_boundaries_live,'cache-location-report-live':location_report_live,'cache-pattern-report-live':pattern_report_live,'cache-ami-diagnostic-live':ami_diagnostic_live,'cache-a20-live':a20_live,'cache-failure-report-live':failure_report_live,'cache-recovery-live':recovery_live,'cache-early-live':early_discovery,'cache-enable-live':enable_live,'cache-live':live,'cache-discovery':discovery,'cache-policy':policy,'cache-settings':settings,'cache-dma':dma}
+
+
 def check(case):
-    result={'cases':{'cache-recovery-boundaries-live':recovery_boundaries_live,'cache-location-report-live':location_report_live,'cache-pattern-report-live':pattern_report_live,'cache-ami-diagnostic-live':ami_diagnostic_live,'cache-a20-live':a20_live,'cache-failure-report-live':failure_report_live,'cache-recovery-live':recovery_live,'cache-early-live':early_discovery,'cache-enable-live':enable_live,'cache-live':live,'cache-discovery':discovery,'cache-policy':policy,'cache-settings':settings,'cache-dma':dma}[case]()}
+    result={'cases':CASES[case]()}
     sources=('m919/src/hardware/cache.inc','m919/src/hardware/startup-core.inc','m919/src/hardware/chipset-core.inc',
              'm919/src/hardware/board-definition.inc','m919/src/hardware/post-core.inc','m919/tools/cache_proof.py','m919/tools/geometry_proof.py',
              'm919/src/hardware/timing.inc','m919/src/hardware/cache-validation.inc','m919/src/hardware/chipset-data.inc',
              'shared/src/firmware/bios.asm','shared/src/pc/crc32.inc')
     result['source_sha256']={p:hashlib.sha256((REPOSITORY/p).read_bytes()).hexdigest() for p in sources}
-    target=PORT/'build/hardware-research'/f'{case}.json'
+    target=PORT/'build/research/hardware'/f'{case}.json'
     target.parent.mkdir(parents=True,exist_ok=True)
     if case=='cache-policy':
         result['dma_complete']=False

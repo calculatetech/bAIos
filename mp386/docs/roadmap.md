@@ -4,7 +4,7 @@ This roadmap owns MP386 port work. The root roadmap owns shared repository work.
 
 ## Active
 
-No task is active.
+- **MP386-004: Restore OEM cold-memory prerequisites and investigate the 3Com stop.** The reported board stops at `11` with a 3C509B or 3C509TP but completes POST with the OEM BIOS. Restore the OEM DMA-disable, NMI/parity and PIT1 test/refresh ordering before destructive bank probing. Preserve later common AT setup and memory/cache mappings. Software checks must prove the prerequisites before the first seed access and bound PIT failures. Confirming the 3Com result still requires hardware that is currently unavailable.
 
 ## Planned next
 

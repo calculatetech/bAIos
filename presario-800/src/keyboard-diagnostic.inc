@@ -1,1 +1,2 @@
-%include "../../shared/src/keyboard-diagnostic.inc"
+%include "shared-owner.inc"
+presario_shared "keyboard-diagnostic.inc"

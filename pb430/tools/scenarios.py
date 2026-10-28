@@ -617,7 +617,7 @@ def input_irq_policy(image,seed):
 def diagnostic_callbacks(image,seed):
     from build import run
     # Combined diagnostic text uses the supported stock-VGA layout's extra space.
-    diagnostic=run('build/test-results/diagnostics-composed/image',('KEYBOARD_DIAGNOSTIC','FLOPPY_DIAGNOSTIC','MOUSE_DIAGNOSTIC'),vga60=False)['path']
+    diagnostic=run('build/tests/results/diagnostics-composed/image',('KEYBOARD_DIAGNOSTIC','FLOPPY_DIAGNOSTIC','MOUSE_DIAGNOSTIC'),vga60=False)['path']
     rows=[]
     for disabled,aux in ((False,True),(False,False),(True,False)):
         n=seed();ports_record(n,(1,2,1,2,0,int(not disabled),int(not disabled),1))
@@ -999,7 +999,7 @@ def setup_actions(image,seed):
             import importlib
             cold_result=importlib.import_module('test-port').native('setup-saved-cold',cmos=m.cmos,saved_ads=False)
             assert cold_result['terminal']==0x60;cold=True
-            assert (PORT/'build/test-results/setup-saved-cold/vm/nvr/pb430.nvr').read_bytes()[0x69:0x80]==bytes(m.cmos[0x69:0x80])
+            assert (PORT/'build/tests/results/setup-saved-cold/vm/nvr/pb430.nvr').read_bytes()[0x69:0x80]==bytes(m.cmos[0x69:0x80])
         # Runtime keyboard after UI/reset: same installed INT16 owns next input.
         m.cpu.mem_write(0x49E,b'\x02');m.scans([0x1E]);result,_=m.public(0x16,0x0000);assert result==0x1E61
         rows.append({'action':action,'saved':action=='save','defaults_draft_observed':bool(defaults_seen),'discard_hardware_preserved':action!='save','actual_cold_reload':cold,'runtime_int16':result})

@@ -102,26 +102,56 @@ def mapper_instructions(image, raw):
                 identical_except_relocations=True)
 
 
+def native_probe_instructions(image, raw, checked=False):
+    model=Tiger(image)
+    candidate=Path(image).read_bytes()
+    first,last=(0x1C55,0x1C6B) if checked else (0x1E45,0x1E99)
+    prefix='mp_memory_ti_check' if checked else 'mp_probe_oem'
+    start,end=model.symbol(prefix+'_begin'),model.symbol(prefix+'_end')
+    decoder=Cs(CS_ARCH_X86,CS_MODE_16)
+    def instructions(data,base):
+        rows=[]
+        for instruction in decoder.disasm(data,base):
+            operand=instruction.op_str
+            if instruction.mnemonic.startswith('j') and operand.startswith('0x'):
+                operand=hex((int(operand,16)-base)&65535)
+            rows.append((instruction.mnemonic,operand,instruction.size))
+        return rows
+    old=instructions(raw[first:last],first)
+    new=instructions(candidate[start:end],start)
+    assert old == new,('native probe instructions',old,new)
+    assert end-start == last-first
+    return dict(window=f'OEM{first:04X}..{last-2:04X} complete instructions',instructions=len(old),
+                complete_branches_and_memory_operations=True)
+
+
 def oem_controller_policy(image):
     raw = oem_image()
     assert hashlib.sha256(raw).hexdigest() == OEM_SHA256
     pairs = ((16,16),(64,64),(64,64))
-    old, new = Tiger(image, controllers=pairs), Tiger(image, controllers=pairs)
-    writes = []
-    window(old, 0x07C0, 0x08B7, raw=raw, record_writes=writes)
-    window(new, new.symbol('mp_memory_prepare_begin'), new.symbol('mp_memory_prepare_end'),
-           ((x.UC_X86_REG_EBP, len(pairs) << 16),))
-    assert writes == [(0x2DD,3)]
-    expected, unit = [], 0
-    for row in old.ti_trace['cold']:
-        expected.append(row[:4])
-        if row[0] == 'in' and row[1] == 0x5E:
-            profile = 0x10E4 if unit == 0 else 0x36E4
-            expected += [('out',0x26,2,unit*256+4),('out',0x24,2,profile),
-                         ('out',0x26,2,unit*256+5),('out',0x24,2,profile)]
-            unit += 1
-    assert unit == 3
-    assert expected == [row[:4] for row in new.ti_trace['cold']], 'Complete OEM prepare order'
+    cases=[]
+    for gate in (0,1,4):
+        old, new = (Tiger(image,controllers=pairs,dirty_maps=not gate) for _ in range(2))
+        old.board_switches=new.board_switches=gate
+        writes=[]
+        window(old,0x07C0,0x08B7,raw=raw,record_writes=writes)
+        window(new,new.symbol('mp_memory_prepare_begin'),new.symbol('mp_memory_prepare_end'),
+               ((x.UC_X86_REG_EBP,len(pairs)<<16),))
+        assert writes == [(0x2DD,3)]
+        expected,unit=[],0
+        for row in old.ti_trace['cold']:
+            expected.append(row[:4])
+            if row[:2] == ('in',0x5E):
+                if not gate:
+                    profile=0x10E4 if unit == 0 else 0x36E4
+                    expected += [('out',0x26,2,unit*256+4),('out',0x24,2,profile),
+                                 ('out',0x26,2,unit*256+5),('out',0x24,2,profile)]
+                unit+=1
+        assert unit == 3
+        assert expected == [row[:4] for row in new.ti_trace['cold']],('Complete OEM prepare order',gate)
+        assert old.memory_trace == new.memory_trace,('Native geometry RAM operations',gate)
+        assert [(new.ti[u*256+4],new.ti[u*256+5]) for u in range(3)] == [(0x10E4,0x10E4),(0x36E4,0x36E4),(0x36E4,0x36E4)]
+        cases.append(dict(reset_gate=gate,IO=len(expected),memory=len(new.memory_trace)))
     old, new = Tiger(image, controllers=pairs), Tiger(image, controllers=pairs)
     window(old, 0x08C4, 0x092D, ((x.UC_X86_REG_ECX,3),(x.UC_X86_REG_EBX,0)), raw)
     window(new, new.symbol('mp_memory_map_clear_begin'), new.symbol('mp_memory_map_clear_end'),
@@ -129,15 +159,15 @@ def oem_controller_policy(image):
     assert hardware_trace(old) == hardware_trace(new), 'Complete OEM map-clear order'
     assert old.maps == new.maps
     return dict(window='OEM07C0..08B4 then08B7..092B', controllers=3,
-                complete_prepare_IO=len(expected), complete_map_clear_IO=len(hardware_trace(old)),
-                identical=True, adaptations=['Captured4/5 profiles replace080B..089B probe',
+                prepare_cases=cases, complete_map_clear_IO=len(hardware_trace(old)),
+                identical=True, adaptations=['Captured4/5 fallback only when native geometry gate is clear',
                     'Controller count held inCPU state instead of privateOEM NV02DD'])
 
 
 def original_windows(image):
     raw = oem_image()
     assert hashlib.sha256(raw).hexdigest() == OEM_SHA256
-    rows = [oem_controller_policy(image), mapper_instructions(image, raw)]
+    rows = [oem_controller_policy(image), native_probe_instructions(image,raw), mapper_instructions(image, raw)]
     pairs = ((16, 64), (64, 16), (0, 0))
     # Complete native seed sweep, including every address beyond installed RAM.
     old, new = configured(image, pairs), configured(image, pairs)
@@ -264,6 +294,10 @@ def reset_reference(image):
     pairs = ((16,16),(64,64),(64,64))
     m = port_tests.machine(image,controllers=pairs,cache=False)
     names = ['startup','tiger_cold','mp_memory_prepare_begin','mp_memory_map_clear_begin',
+             'mp_memory_environment_begin','mp_memory_environment_end',
+             'mitsubishi_board_reset_kind_begin','mitsubishi_board_reset_kind_end',
+             'mp_memory_refresh_begin','mp_memory_refresh_end',
+             'mitsubishi_board_defaults_begin','mitsubishi_board_defaults_end',
              'mp_memory_seed_begin']+[f'mp_memory_bank{i}_begin' for i in range(6)]+[
              'mp_memory_normal_begin','mp_memory_normal_end','mp_memory_scratch_ready',
              'oem_map_106B','mp_memory_scratch_teardown_begin',
@@ -279,6 +313,17 @@ def reset_reference(image):
                 continue
             events.append(name)
             states[name] = (len(mm.ti_trace['cold']),len(mm.memory_trace),dict(mm.ti),dict(mm.maps))
+            if name == 'mp_memory_seed_begin':
+                assert not mm.memory_trace, 'RAM touched before early refresh completed'
+                assert not mm.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 0x200
+                trace = [row[:4] for row in mm.ti_trace['cold']]
+                first=states['mp_memory_refresh_begin'][0]
+                last=states['mp_memory_refresh_end'][0]
+                assert trace[first:last] == [
+                    ('out',0x43,1,0x70),
+                    ('out',0x41,1,0xFF),('out',0x41,1,0),('out',0x43,1,0x40),
+                    ('in',0x41,1,0xFE),('in',0x41,1,0),
+                    ('out',0x43,1,0x54),('out',0x41,1,0x12)]
             if name == 'oem_map_106B':
                 states['records'] = bytes(mm.cpu.mem_read(0x600,256))
             if name == '.ram_ready':
@@ -321,7 +366,7 @@ def reset_reference(image):
             assert m.memory_trace[a[1]:b[1]] == old.memory_trace,(first,'RAM operations')
         comparisons.append(dict(window=first,complete_IO=len(actual),native_match=True))
     compare('mp_memory_prepare_begin','mp_memory_map_clear_begin',0x07C0,0x08B7,prepare=True)
-    compare('mp_memory_map_clear_begin','mp_memory_seed_begin',0x08C4,0x092D,
+    compare('mp_memory_map_clear_begin','mp_memory_environment_begin',0x08C4,0x092D,
             ((x.UC_X86_REG_ECX,3),(x.UC_X86_REG_EBX,0)))
     compare('mp_memory_seed_begin','mp_memory_bank0_begin',0x0F2C,0x0F74,
             ((x.UC_X86_REG_BX,3),(x.UC_X86_REG_DI,0)))
@@ -346,6 +391,65 @@ def reset_reference(image):
     assert m.booted
     return dict(reset_order=names,native_windows=comparisons,six_bank_inventory=True,
                 scratch_teardown=True,warm_payload_retained=True,signed_boot=True)
+
+
+def probe_bound_check(image):
+    m=Tiger(image,controllers=((512,0),))
+    m.ram_banks[0,0][:]=bytes(len(m.ram_banks[0,0]))  # The production seed clears sentinels first.
+    initial=tuple((reg,0x77770000) for reg in (x.UC_X86_REG_EAX,x.UC_X86_REG_EBX,
+                  x.UC_X86_REG_ECX,x.UC_X86_REG_EDX,x.UC_X86_REG_ESI,x.UC_X86_REG_EDI))
+    calls=[]
+    def leaf(cpu,address,size,unused): calls.append(address)
+    address=0xF0000+m.symbol('mp_probe_oem_begin')
+    hook=m.cpu.hook_add(UC_HOOK_CODE,leaf,begin=address,end=address)
+    window(m,m.symbol('mp_memory_bank0_begin'),m.symbol('mp_memory_bank0_end'),
+           initial+((x.UC_X86_REG_EBP,1<<16),))
+    m.cpu.hook_del(hook)
+    assert len(calls) == m.cpu.reg_read(x.UC_X86_REG_CX) == 512
+    assert m.cpu.reg_read(x.UC_X86_REG_EAX)>>16 == 512
+    assert all(m.cpu.reg_read(reg)>>16 == 0x7777 for reg,value in initial[1:])
+    return dict(explicit_page_cap=512,leaf_calls=len(calls),other_upper_bank_counts_preserved=True)
+
+
+def identity_masks_checks(image):
+    rows=[]
+    # These non-ID bits are masked by OEM; true wrong identities must still stop.
+    for atu,mcu,rejected in ((0x1200,0x1000,None),(0x0100,0,'atu'),(0x0200,0x0300,'mcu')):
+        m=Tiger(image,controllers=((16,16),))
+        m.ti[0x800],m.ti[0]=atu,mcu
+        stop=m.symbol('mitsubishi_atu_failed' if rejected == 'atu' else 'mp_memory_failed') if rejected else m.symbol('.count_memory','startup')
+        window(m,m.symbol('.cold','startup'),stop)
+        rows.append(dict(ATU=hex(atu),MCU=hex(mcu),rejection=rejected,OEM_ID_masks_preserved=True))
+    return rows
+
+
+def geometry_boot_check(image,cache=False):
+    # Execute the restored geometry path from reset through signed boot.
+    m=port_tests.machine(image,controllers=((16,16),(64,64),(64,64)),dirty_maps=False,cache=cache)
+    m.board_switches=1
+    decoder=m.ram_key
+    m.ram_key=lambda address: None if 0xFE0000 <= address < 0x1000000 else decoder(address)
+    m.code_observer=lambda mm,a: mm.pending.append(1) if a == 0xF0000+mm.symbol('chipset_visible_ram_test') else None
+    m.boot(count=5000000)
+    assert m.booted and m.ti[4] == m.ti[5] == 0x10E4
+    assert struct.unpack('<6H',m.cpu.mem_read(m.base+0x1010,12)) == (16,16,64,64,64,64)
+    assert struct.unpack('<H',m.cpu.mem_read(m.base+0xD0,2))[0] == 15232
+    if cache:
+        assert m.controls[0xE0] == 0x6B
+    return dict(native_geometry_reset_to_signed_boot=True,six_bank_inventory=True,cache_enabled=cache)
+
+
+def early_rom_checksum_check(image):
+    m=Tiger(image)
+    m.rom[0xFFF5]^=1
+    window(m,m.symbol('mitsubishi_board_reset_kind_end'),m.symbol('mp_memory_failed'))
+    return dict(corrupt_ROM_read_rejected_before_refresh=True)
+
+
+def early_sequence_checks(image):
+    return [native_probe_instructions(image,oem_image(),checked=True),probe_bound_check(image),
+            *identity_masks_checks(image),early_rom_checksum_check(image),
+            geometry_boot_check(image),geometry_boot_check(image,cache=True)]
 
 
 def normal_policy_checks(image):
@@ -442,15 +546,15 @@ def boot_checks(image):
 
 def rejection_checks(image):
     rows = []
-    for fault in ('fourth', 'hole', 'revision', 'atu'):
+    for fault in ('fourth', 'hole', 'identity', 'atu'):
         pairs = ((16,16),)* (4 if fault == 'fourth' else 3)
         m = port_tests.machine(image, controllers=pairs, cache=True)
         if fault == 'hole':
             m.ti[0x100] = 0xFFFF
-        elif fault == 'revision':
-            m.ti[0] = 0x1000
+        elif fault == 'identity':
+            m.ti[0] = 0x0300
         elif fault == 'atu':
-            m.ti[0x800] = 0x1200
+            m.ti[0x800] = 0x1100
         try:
             m.boot(count=1000000)
         except AssertionError as error:
@@ -581,9 +685,10 @@ def cache_off_checks(image):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--image', type=Path, default=PORT/'build/expansion-init/baios-mp386.bin')
-    parser.add_argument('--case', choices=('original', 'mapper', 'routing', 'boot', 'reject', 'ram', 'cache-off'), required=True)
+    parser.add_argument('--case', choices=('original', 'sequence', 'mapper', 'routing', 'boot', 'reject', 'ram', 'cache-off'), required=True)
     args = parser.parse_args()
     tests = {'original': original_windows,
+             'sequence':lambda p: [oem_controller_policy(p),*early_sequence_checks(p),reset_reference(p)],
              'mapper': lambda p: [mapper_comparison(p, ((16,16),(64,64),(64,64))),
                                   mapper_comparison(p, ((16,16),(0,0),(64,16)))],
              'routing': normal_policy_checks,

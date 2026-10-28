@@ -253,21 +253,22 @@ finished:
     return results
 
 
+CASES={'profiles':profiles,'masks':masks,'checksums':checksums,'persistence':persistence,
+       'parity-halt':parity_halt,'tag-range':tag_range}
+
+
 def check(case):
-    functions={'profiles':profiles,'masks':masks,'checksums':checksums,'persistence':persistence,
-               'parity-halt':parity_halt,'tag-range':tag_range}
-    result={'cases':functions[case]()}
+    result={'cases':CASES[case]()}
     sources=('m919/tools/timing_boundaries.py','m919/tools/timing_proof.py','m919/tools/cache_proof.py',
              'm919/tools/geometry_proof.py','m919/src/hardware/chipset-core.inc','m919/src/hardware/timing.inc',
              'm919/src/hardware/cache-validation.inc','m919/src/hardware/cache.inc',
              'm919/src/hardware/chipset-ui.inc','m919/src/hardware/chipset-data.inc','shared/src/firmware/bios.asm')
     result['source_sha256']={p:hashlib.sha256((REPOSITORY/p).read_bytes()).hexdigest() for p in sources}
-    target=PORT/'build/hardware-research'/f'timing-boundaries-{case}.json'
+    target=PORT/'build/research/hardware'/f'timing-boundaries-{case}.json'
     target.write_text(json.dumps(result,indent=2)+'\n')
     print(f'timing-boundaries-{case}: {len(result["cases"])} cases PASS; {target}',flush=True)
 
 
 if __name__=='__main__':
-    for case in (('profiles','masks','checksums','persistence','parity-halt','tag-range')
-                 if sys.argv[1]=='all' else (sys.argv[1],)):
+    for case in (CASES if sys.argv[1]=='all' else (sys.argv[1],)):
         check(case)

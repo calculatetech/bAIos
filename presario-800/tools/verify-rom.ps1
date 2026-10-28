@@ -11,9 +11,10 @@ $release = $PSBoundParameters.ContainsKey('VgaClockMHz') -or (-not $Vga141 -and 
 if ($release) { $VgaBus07 = $true; $Vga141 = $true }
 if ($VgaBus07 -and -not $release) {
     $Vga141 = $true
-    if ($BuildDirectory -eq 'build') { $BuildDirectory = 'build/ram-presets' }
+    if ($BuildDirectory -eq 'build') { $BuildDirectory = 'build/review/ram-presets' }
 }
-if ($Vga141 -and -not $release -and $BuildDirectory -eq 'build') { $BuildDirectory = 'build/vga141' }
+if ($Vga141 -and -not $release -and $BuildDirectory -eq 'build') { $BuildDirectory = 'build/review/vga141' }
+
 $root = Split-Path -Parent $PSScriptRoot
 $buildRoot = [IO.Path]::GetFullPath((Join-Path $root "build"))
 $candidate = if ([IO.Path]::IsPathRooted($BuildDirectory)) { $BuildDirectory } else { Join-Path $root $BuildDirectory }
@@ -26,9 +27,9 @@ $reference = [IO.File]::ReadAllBytes((Join-Path $root "reference/COMPAQ_PROLINEA
 $system = [IO.File]::ReadAllBytes((Join-Path $out "baios-presario800-system.rom"))
 $physicalName = if ($release) { "baios-presario800-vga$VgaClockMHz.bin" } elseif ($VgaBus07) { 'baios-presario800-vga141-bus07.bin' } else { 'baios-presario800-vga141.bin' }
 $physical = [IO.File]::ReadAllBytes((Join-Path $out $physicalName))
-$roms = Join-Path $out '86box/roms'
+$roms = Join-Path $out 'tests/86box/roms'
 $genericRoms = $roms
-if ($release) { $roms = Join-Path $out "86box/vga$VgaClockMHz/roms" }
+if ($release) { $roms = Join-Path $out "tests/86box/vga$VgaClockMHz/roms" }
 $wrapper = [IO.File]::ReadAllBytes((Join-Path $roms "machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin"))
 $expectedRetainedHash = "BC30502F33C1EA19D29134B23BBBB04B3494F055B479DA954B367243A13CA030"
 
@@ -69,7 +70,7 @@ function Expect-Failure([scriptblock]$action, [string]$name) {
 }
 
 function Assert-PostLegend([string]$readme) {
-    $expected = @('10', '20', '11', '30', '21', '22', '23', '24', '25', '26', '27', '28', '29', '2A', '2B', '2C', '2D', '2E', '18', '19', '1A', '1B', '1C', '1D', '1E', '12', '13', '14', '15', '16', '40', '48', '50', '60', '70', '80', '90', '91', '94', 'A1', 'A2', 'A4', 'A5', 'A6', 'A7', 'A8', 'AF', 'B0', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'BA', 'C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'CA', 'D0', 'D1', 'D2', 'D3', 'D4', 'E0', 'E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'EA', 'EB', 'EE', 'EF')
+    $expected = @('10', '20', '11', '30', '21', '22', '23', '24', '25', '26', '27', '28', '29', '2A', '2B', '2C', '2D', '2E', '18', '19', '1A', '1B', '1C', '1D', '1E', '12', '13', '14', '15', '16', '40', '48', '50', '60', '70', '80', '90', '91', '94', 'A1', 'A2', 'A4', 'A5', 'A6', 'A7', 'A8', 'AF', 'B0', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'BA', 'C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'CA', 'D0', 'D1', 'D2', 'D3', 'D4', 'E0', 'E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'EA', 'EB', 'EE', 'EF', 'FF')
     $actual = @([regex]::Matches($readme, '(?m)^\| `([0-9A-F]{2})h` \|') | ForEach-Object {
         $_.Groups[1].Value.ToUpperInvariant()
     })
@@ -152,7 +153,7 @@ function Assert-Keyboard([string]$boardSource, [string]$biosSource, [string]$gue
     if ($irq -match 'cmp bl, 0xAA') { throw "Runtime AAh must remain left-Shift break, not a BAT filter." }
     if ($biosSource -notmatch '(?s)call init_keyboard\s+post_code 0x48\s+call arm_keyboard_runtime\s+jc keyboard_runtime_failed\s+mov byte \[0x0400 \+ KB_POST_STATE\], 1\s+sti' -or
         ([regex]::Matches($biosSource, '(?m)^\s*call arm_keyboard_runtime\s*$')).Count -ne 1 -or
-        $biosSource -notmatch '(?s)call init_mouse\s+(?:%ifdef EMULATOR_PORTS_TEST\s+call ports_test_observe\s+%endif\s+)?in al, 0x21\s+and al, 0xF9\s+out 0x21, al\s+cli\s+call init_fpu\s+(?:;[^\n]*\n\s*)*post_code 0xCA.*?call post_keyboard_wait.*?call setup_post_gate\s+call post_success_tone\s+call chipset_late_cache\s+mov byte \[fs:P_PHASE\], 5\s+call post_ui_cache\s+call post_ui_roms\s+call option_rom_discovery\s+(?:%ifdef EMULATOR_CHIPSET_POST_UI\s+call post_ui_capture\s+%endif\s+)?call post_debug_summary\s+call rtc_sync_ticks\s+(?:%ifdef EMULATOR_SETUP_TEST\s+call setup_test_end\s+%endif\s+)?(?:%ifdef EMULATOR_BOOT_POLICY_TEST\s+call boot_policy_ready\s+%endif\s+)?mov byte \[0x0400 \+ KB_POST_STATE\], 0\s+sti\s+int 0x19' -or
+        $biosSource -notmatch '(?s)call init_mouse\s+(?:%ifdef EMULATOR_PORTS_TEST\s+call ports_test_observe\s+%endif\s+)?in al, 0x21\s+and al, 0xF9\s+out 0x21, al\s+cli\s+call init_fpu\s+(?:;[^\n]*\n\s*)*post_code 0xCA.*?call post_keyboard_wait.*?call setup_post_gate\s+call chipset_late_cache\s+call post_success_tone\s+mov byte \[fs:P_PHASE\], 5\s+call post_ui_cache\s+call post_ui_roms\s+call option_rom_discovery\s+(?:%ifdef EMULATOR_CHIPSET_POST_UI\s+call post_ui_capture\s+%endif\s+)?call post_debug_summary\s+call presario_post_complete\s+(?:%ifdef EMULATOR_SETUP_TEST\s+call setup_test_end\s+%endif\s+)?(?:%ifdef EMULATOR_BOOT_POLICY_TEST\s+call boot_policy_ready\s+%endif\s+)?mov byte \[0x0400 \+ KB_POST_STATE\], 0\s+sti\s+int 0x19' -or
         $biosSource -notmatch '(?s)init_pic_pit:\s+mov al, 0x11\s+out 0x20, al\s+out 0x84, al\s+out 0xA0, al\s+out 0x84, al.*?mov al, 0xFC\s+out 0x21, al\s+out 0x84, al\s+mov al, 0xFF\s+out 0xA1, al\s+out 0x84, al' -or
         $biosSource -notmatch '(?s)arm_keyboard_runtime:.*?mov al, 0x20\s+call kbc_command.*?call kbc_read_data.*?or al, 0x41\s+and al, 0xCF.*?mov al, 0x60\s+call kbc_command.*?call kbc_write_data.*?mov al, 0xAE\s+call kbc_command' -or
         $biosSource -notmatch '(?s)keyboard_runtime_failed:\s+mov al, 0xEF\s+jmp keyboard_halt' -or
@@ -253,8 +254,11 @@ function Assert-PostTrace([string]$boardSource, [string]$biosSource) {
         '(?s)call VGA_SEGMENT:VGA_ENTRY.*?cmp word \[es:0x0042\], VGA_SEGMENT\s+jne video_failed\s+post_code 0x60\s+mov ax, 0x0003\s+int 0x10\s+%ifdef VGA_BIOS_141\s+(?:;[^\n]*\n\s*)*pushad\s+push ds\s+push es\s+mov ax, 0x1203\s+mov bx, 0x10A4\s+xor cx, cx\s+xor dx, dx\s+int 0x10\s+pop es\s+pop ds\s+popad\s+%endif\s+; Video is available for failure diagnostics, not a keyboard prerequisite\.\s+call init_keyboard\s+post_code 0x48.*?call arm_keyboard_runtime.*?sti\s+;[^\n]*\n\s+call load_bios_state\s+mov byte \[fs:P_PHASE\], 0\s+mov byte \[fs:P_ROM_COUNT\], 0[^\n]*\n\s+call post_ui_begin',
         '(?s)\.initialization_verified:\s+%endif\s+%endif\s+call init_floppy\s+mov byte \[fs:P_PHASE\], 3\s+call post_ui_floppy\s+call post_early_setup\s+call post_floppy_seek\s+call post_early_setup\s+%ifdef FLOPPY_DIAGNOSTIC\s+call floppy_diagnostics\s+%endif.*?call post_keyboard_wait.*?post_code 0x70\s+call ata_detect_primary',
         '(?s)call ata_detect_primary\s+call post_keyboard_wait\s+mov byte \[fs:P_PHASE\], 4\s+call post_ui_disks\s+call post_early_setup\s+cmp byte \[0x0475\], 0\s+je \.common_post\s+post_code 0x80',
-        '(?s)\.common_post:.*?call init_mouse.*?call init_fpu.*?call setup_post_gate\s+call post_success_tone\s+call chipset_late_cache\s+mov byte \[fs:P_PHASE\], 5\s+call post_ui_cache\s+call post_ui_roms\s+call option_rom_discovery\s+(?:%ifdef EMULATOR_CHIPSET_POST_UI\s+call post_ui_capture\s+%endif\s+)?call post_debug_summary\s+call rtc_sync_ticks.*?int 0x19'
+        '(?s)\.common_post:.*?call init_mouse.*?call init_fpu.*?call setup_post_gate\s+call chipset_late_cache\s+call post_success_tone\s+mov byte \[fs:P_PHASE\], 5\s+call post_ui_cache\s+call post_ui_roms\s+call option_rom_discovery\s+(?:%ifdef EMULATOR_CHIPSET_POST_UI\s+call post_ui_capture\s+%endif\s+)?call post_debug_summary\s+call presario_post_complete.*?int 0x19'
     )
+    if ($biosSource -notmatch '(?s)presario_post_complete:\s+post_code 0xFF\s+jmp rtc_sync_ticks') {
+        throw "POST completion must emit FFh once before the RTC handoff."
+    }
     foreach ($anchor in $anchors) {
         if ($biosSource -notmatch $anchor) { throw "A POST code moved away from its startup stage." }
     }
@@ -276,7 +280,7 @@ function Assert-PostTrace([string]$boardSource, [string]$biosSource) {
         '(?s)\.vga_mapping_failed:\s+pop es\s+pop ds\s+mov dx, POST_PORT\s+mov al, 0xE5\s+out dx, al\s+jmp hard_halt',
         '(?s)\.vga_shadow_failed:\s+pop es\s+pop ds\s+mov dx, POST_PORT\s+mov al, 0xE6\s+out dx, al\s+jmp hard_halt',
         '(?s)no_disk:.*?mov dx, POST_PORT\s+mov al, 0xE3\s+out dx, al.*?jmp halt_forever',
-        '(?s)boot_retry:\s+boot_context\s+mov byte \[0x0400\+KB_POST_STATE\], 2.*?\.flush:\s+sti[^\r\n]*\s+nop\s+cli\s+call keyboard_poll.*?mov \[0x041A\], ax\s+mov si, msg_boot_unavailable\s+call print_string\s+mov si, msg_boot_retry\s+call print_string\s+post_code 0xE4\s+%ifdef EMULATOR_BOOT_RETRY_EXIT\s+mov al, EMULATOR_BOOT_RETRY_EXIT\s+call emulator_exit[^\r\n]*\s+%endif\s+\.wait:.*?sti\s+hlt\s+cli\s+jmp \.wait\s+\.key:.*?int 0x16.*?boot_context.*?sti\s+int 0x19[^\r\n]*\s+jmp boot_retry'
+        '(?s)boot_retry:\s+boot_context\s+mov byte \[0x0400\+KB_POST_STATE\], 2.*?\.flush:\s+sti[^\r\n]*\s+nop\s+cli\s+call keyboard_poll.*?mov \[0x041A\], ax\s+mov si, msg_boot_unavailable\s+call print_string\s+mov si, msg_boot_retry\s+call print_string\s+post_code 0xE4\s+%ifdef EMULATOR_BOOT_RETRY_EXIT\s+%ifdef BOARD_BOOT_RETRY_TEST_SOURCE\s+call core_boot_retry_observe\s+%else\s+mov al, EMULATOR_BOOT_RETRY_EXIT\s+call emulator_exit[^\r\n]*\s+%endif\s+%endif\s+\.wait:.*?sti\s+hlt\s+cli\s+jmp \.wait\s+\.key:.*?int 0x16.*?boot_context.*?sti\s+int 0x19[^\r\n]*\s+jmp boot_retry'
     )
     foreach ($terminal in $terminalPatterns) {
         if ($biosSource -notmatch $terminal) { throw "A terminal POST code or halt owner changed." }
@@ -356,14 +360,15 @@ function Assert-MouseExclusion([string]$mouseSource) {
         throw "Mouse INT15 entry must clear IF before claiming the controller."
     }
 }
-$mouse = Get-Content -Raw (Join-Path $root "src/mouse.inc")
+$mouse = Get-Content -Raw (Join-Path $root "../shared/src/firmware/mouse.inc")
 Assert-MouseExclusion $mouse
 $bios = Get-Content -Raw (Join-Path $root "src/bios.asm")
 # Expand maintained owners in assembly order for the source invariants.
-$bios = $bios.Replace('%include "boot.inc"', (Get-Content -Raw (Join-Path $root "src/boot.inc")))
-foreach ($include in [regex]::Matches($bios, '(?m)^%include "(../../shared/src/pc/[^"]+)"')) {
-    $bios = $bios.Replace($include.Value, (Get-Content -Raw (Join-Path $root "src/$($include.Groups[1].Value)")))
+$bios = $bios.Replace('%include "boot.inc"', (Get-Content -Raw (Join-Path $root "../shared/src/firmware/boot.inc")))
+foreach ($include in [regex]::Matches($bios, '(?m)^presario_shared "([^"]+)"')) {
+    $bios = $bios.Replace($include.Value, (Get-Content -Raw (Join-Path $root "../shared/src/$($include.Groups[1].Value)")))
 }
+$bios += "`n" + (Get-Content -Raw (Join-Path $root "src/hardware/adapters.inc"))
 $bios = $bios.Replace("`r`n", "`n")
 foreach ($constant in @('KBC_OUTPUT_PORT_VALUE', 'KBC_INITIAL_COMMAND_BYTE')) {
     $value = [regex]::Match($source, "(?m)^%define $constant\s+(0x[0-9A-Fa-f]+)\b").Groups[1].Value
@@ -529,6 +534,9 @@ if ($SelfTest) {
     }
 
     Expect-Failure { Assert-PostTrace $source ($bios.Replace('jmp boot_retry', 'jmp hard_halt')) } "retry replaced by a fatal halt"
+    $earlyTone = $bios.Replace("    call chipset_late_cache`n    call post_success_tone", "    call post_success_tone`n    call chipset_late_cache")
+    Expect-Failure { Assert-PostTrace $source $earlyTone } "success tone before late cache qualification"
+    Expect-Failure { Assert-PostTrace $source ($bios.Replace("    post_code 0xFF", "    post_code 0xFE")) } "missing late POST completion"
     Expect-Failure { Assert-NoTemporaryDiagnostics ($bios + "`n    post_code 0xCB") } "runtime IRQ tracing"
     $missingLegendCode = [regex]::Replace($readme, '(?m)^\| `E6h`.*\r?\n', '', 1)
     Expect-Failure { Assert-SystemShadow ($bios.Replace('repe cmpsw', 'rep movsw')) } "a missing system shadow comparison"

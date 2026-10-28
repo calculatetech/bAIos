@@ -107,7 +107,7 @@ def main():
     nasm = shutil.which("nasm") or str(Path(os.environ["LOCALAPPDATA"]) / "bin/NASM/nasm.exe")
     image = output / ("ACCCMOS.COM" if cmos else "ACCDUMP.COM")
     subprocess.run([nasm, "-w+error", "-f", "bin", *(["-DACC_CMOS"] if cmos else []), "-o", str(image),
-                    str(PORT / "tools/acc-registers.asm")], check=True)
+                    str(PORT / "diagnostics/acc-registers.asm")], check=True)
     raw = image.read_bytes()
     checks = check(raw, cmos)
     result = {"path": str(image), "size": len(raw), "sum32": f"{sum(raw):08X}",

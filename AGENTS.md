@@ -70,23 +70,14 @@ Write all Setup help in plain, human-friendly language. Explain what the setting
 
 All user-visible choice lists must be sorted by their displayed values. Use ascending numeric order for numbers and alphabetical order for text. Show each value once. Mark the existing value as Default instead of adding a duplicate entry. Map display positions to stored values so that sorting does not change saved settings or hardware behavior.
 
-## Build hygiene
+## Repository layout and build hygiene
 
-Run Python with `-B`. Keep generated files under the system's `build/` directory or the ignored task-result directory.
+<!-- cpk-rule-route-only: repository-layout -->
+[Repository layout, candidate naming, versioning and cleanup](docs/repository-layout.md)
 
-At task handoff, remove completed disposable VMs, disk copies, and Python caches. Stop task-owned emulator processes when they are no longer needed. Keep a failed VM only while it is needed for the current diagnosis. Keep a visible preview while the user is reviewing it.
+## Execution basics
 
-Preserve current ROMs, their system ROMs, current comparison results and review screenshots. Preserve original references, manuals, source files, the retained card VHD and installed dependencies. Untracked source files are not junk.
-
-Use `tools/clean-build.ps1 -WhatIf` before applying cleanup after emulators stop. Purge obsolete builds, old archives and disposable media. Do not create rollback or evidence archives; Git is the version history. Check resolved paths before deletion or moves, and verify current ROM hashes after cleanup.
-
-Remove completed plans and captures after their required consumers finish. Make sure their original sources remain reachable in Git before deletion. Delete consumed task logs, traces, and temporary helpers. Preserve unresolved decisions before removing their last working record.
-
-Port-specific documents and files belong in the port directory. Generic chipset/controller manuals, standards and shared permanent test inputs belong in categorized root `reference/`. Keep permanent inputs out of build directories. Root `docs/` owns only project-wide documentation and the central roadmap.
-
-The central `docs/roadmap.md` tracks only repository-wide tasks. Each port's `docs/roadmap.md` owns its port tasks. This user-required repository rule overrides the skill's root-only roadmap guidance.
-
-Each maintained port owns its `tools/clean-build.ps1` retention policy. Shared cleanup mechanics must check the running-emulator guard and resolved paths, ancestors and descendants for reparse points before deletion. Root cleanup discovers maintained port commands; it must not contain port-specific model or artifact names. Current failed-diagnosis output belongs in protected diagnostics and is retained until its consumer finishes.
+Run Python with `-B`. Stop task-owned emulators when their consumer finishes. Keep a visible preview while the user is reviewing it. Port roadmaps own port work; the central roadmap owns repository-wide work.
 
 ## Public source boundary
 

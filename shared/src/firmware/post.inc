@@ -362,6 +362,8 @@ post_message_cursor:
     pushf
     pushad
     push es
+    push fs
+    push gs
     mov ax, 0xB800
     mov es, ax
     mov di, 22*160
@@ -373,6 +375,8 @@ post_message_cursor:
     xor bx, bx
     mov ah, 2
     int 0x10
+    pop gs
+    pop fs
     pop es
     popad
     popf

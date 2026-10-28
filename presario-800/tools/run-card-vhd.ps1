@@ -14,8 +14,8 @@ $build = Join-Path $root $(if ($env:BAIOS_BUILD_DIRECTORY) { $env:BAIOS_BUILD_DI
 $build = [IO.Path]::GetFullPath($build)
 $buildPrefix = [IO.Path]::GetFullPath((Join-Path $root 'build')).TrimEnd('\') + '\'
 if (-not ($build + '\').StartsWith($buildPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Build directory is outside the system build tree.' }
-$vm = Join-Path $build "86box/card-vm"
-$roms = Join-Path $build "86box/roms"
+$vm = Join-Path $build "tests/86box/card-vm"
+$roms = Join-Path $build "tests/86box/roms"
 $image = [IO.Path]::GetFullPath($ImagePath)
 if (-not (Test-Path -LiteralPath $image)) { throw "VHD image was not found: $image" }
 
@@ -151,7 +151,8 @@ try {
         $graphics.ReleaseHdc($deviceContext)
         $graphics.Dispose()
     }
-    $screenshot = Join-Path $build "card-boot.png"
+    $screenshot = Join-Path $build "review/card-boot.png"
+    [IO.Directory]::CreateDirectory((Split-Path -Parent $screenshot)) | Out-Null
     $bitmap.Save($screenshot, [Drawing.Imaging.ImageFormat]::Png)
     $bitmap.Dispose()
     [pscustomobject]@{

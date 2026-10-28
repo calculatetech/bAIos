@@ -1,1 +1,2 @@
-%include "../../shared/src/setup/layout.inc"
+%include "shared-owner.inc"
+presario_shared "setup/layout.inc"

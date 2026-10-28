@@ -20,6 +20,7 @@ def display():
         m.cpu.mem_write(m.base + 0x50, b'\x04\x05\x00')
         m.cpu.mem_write(m.base + 0x69, b'\x31')
         m.cpu.mem_write(m.base + 0xD4, struct.pack('<H', 0x1532))
+        m.target_cpu(0x1532)
         m.cpu.mem_write(m.base + 0x78, struct.pack('<H', 64512))
         m.cpu.mem_write(m.base + 0x80, b'\x04\x02')
         for offset in (0, 0x200):
@@ -79,6 +80,7 @@ def flow():
         if not enabled: policy[4] &= ~8
         m.cmos[0x69], m.cmos[0x6A] = 0xC2, -(0xC2+sum(policy)) & 255
         m.cmos[0x6B:0x80], m.cmos[0x33:0x36] = policy[:21], policy[21:]
+        m.target_cpu(signature)
         if cold: m.cpu.reg_write(x.UC_X86_REG_EDX, signature)
         else: m.cpu.mem_write(m.base+0xD4, struct.pack('<H', signature))
         seen = []
@@ -135,7 +137,7 @@ def flow():
                 assert model.text(17, 24, 12) == 'Not detected'
             if name == 'post_debug_summary':
                 seen.append('post')
-                assert model.text(2, 24, 7 if signature == 0x0430 else 12).strip() == ('486DX2' if signature == 0x0430 else 'Pentium P24T')
+                assert model.text(2, 24, 13 if signature == 0x0430 else 12).strip() == ('486DX2/487/OD' if signature == 0x0430 else 'Pentium P24T')
                 assert model.text(3, 24, 8).strip() == ('Enabled' if enabled else 'Disabled')
                 assert model.text(14, 24, 12) == 'Not detected'
                 assert model.text(5, 34, 6) == 'Passed'
@@ -190,6 +192,7 @@ def configuration_flow():
             encoded = model.ljust(40).encode('ascii')
             data[54:94] = bytes(value for i in range(0, 40, 2) for value in encoded[i:i+2][::-1])
         signature = options.get('signature', 0x0430)
+        m.target_cpu(signature)
         m.cpu.reg_write(x.UC_X86_REG_EDX, signature)
         hooks, header, checked = [], [], []
         watch_renderer_writes(m, hooks)
@@ -207,7 +210,7 @@ def configuration_flow():
         def observe(model, owner):
             if owner == 'settings_load': header.append(bytes(model.cpu.mem_read(0xB8000, 160)))
             if owner == 'post_debug_summary':
-                assert model.text(2, 24, 12).strip() == ('486DX2' if signature == 0x0430 else 'Pentium P24T')
+                assert model.text(2, 24, 13 if signature == 0x0430 else 12).strip() == ('486DX2/487/OD' if signature == 0x0430 else 'Pentium P24T')
                 assert model.text(3, 24, 8).strip() == ('Enabled' if options.get('l1', True) else 'Disabled')
                 assert model.text(14, 24, 12).strip() == ('Not detected' if options.get('l2', True) else 'Disabled')
                 total = int.from_bytes(model.cpu.mem_read(model.base+0x78, 2), 'little')+1024

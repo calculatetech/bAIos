@@ -1,8 +1,12 @@
 """Read-only ROM-window probe through the installed ROM's native AH87."""
+import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
+import shutil
 import struct
+import subprocess
 import sys
 
 from unicorn import Uc, UC_ARCH_X86, UC_MODE_16, UC_HOOK_INTR, UC_HOOK_INSN, UC_HOOK_MEM_WRITE
@@ -11,10 +15,6 @@ from unicorn import x86_const as x
 from fixture import PORT, Listing
 
 FOLDER = PORT/'build/diagnostics/rom-window'
-RAW = (FOLDER/'TGHOLE.COM').read_bytes()
-IMAGE = PORT/'build/zero-base/baios-mp386.bin'
-ROM = IMAGE.read_bytes()
-INT15 = Listing(IMAGE.with_suffix('.lst')).symbol('int15')
 
 
 def check(shape,expected,flags=0x246,segment=0x2000,protected=False,failure=0):
@@ -98,13 +98,28 @@ def check(shape,expected,flags=0x246,segment=0x2000,protected=False,failure=0):
     return dict(code=expected,reads=len(state['calls']),IF=bool(flags&0x200))
 
 
-if __name__ == '__main__':
+def main(image):
+    global RAW, ROM, INT15
+    FOLDER.mkdir(parents=True,exist_ok=True)
+    program=FOLDER/'TGHOLE.COM'
+    nasm=shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA'])/'bin/NASM/nasm.exe')
+    subprocess.run([nasm,'-w+error','-f','bin','-o',str(program),str(PORT/'diagnostics/rom-window.asm')],check=True)
+    RAW=program.read_bytes()
+    ROM=image.read_bytes()
+    INT15=Listing(image.with_suffix('.lst')).symbol('int15')
     cases = [check(shape,code,flags) for flags in (0x246,0x46)
              for shape,code in (('mirror','H0'),('distinct','H1'),('mixed','H2'))]
     cases += [check('mirror','H3',failure=i) for i in (1,2)]
     cases += [check('mirror','H4',protected=True),check('mirror','H5',segment=0x7000)]
     result = dict(cases=cases,size=len(RAW),sum32=f'{sum(RAW):08X}',
                   sha256=hashlib.sha256(RAW).hexdigest(),
-                  scope='Actual zero-base BIOS AH87; synthetic aliases. OEM execution and physical result pending.')
+                  image=str(image),image_sha256=hashlib.sha256(ROM).hexdigest(),
+                  scope='Actual current BIOS AH87; synthetic aliases. Physical result is unqualified.')
     (FOLDER/'check.json').write_text(json.dumps(result,indent=2)+'\n')
     print('PASS',json.dumps(result))
+
+
+if __name__ == '__main__':
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--image',type=Path,default=PORT/'build/baios-mp386.bin')
+    main(parser.parse_args().image.resolve())

@@ -214,6 +214,7 @@ int18:
 
 boot_candidate:
     boot_context
+    mov word [fs:B_DRIVE],0 ; Each selected source owns the buffer at7C00.
     call cd_boot_clear
     movzx bx, byte [fs:B_CURSOR]
     cmp bx, 4

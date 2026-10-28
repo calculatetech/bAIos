@@ -64,10 +64,10 @@ def build():
             assert images[50][65536:] == images[60][65536:] == system
             differences = [i for i in range(131072) if images[50][i] != images[60][i]]
             assert differences == [0x08E7, 32767], differences
-            generic = out / '86box/roms' / WRAPPER
+            generic = out / 'tests/86box/roms' / WRAPPER
             assert (out / FLASH[3]).read_bytes() == generic.read_bytes() == images[order[-1]]
             for clock in order:
-                assert (out / f'86box/vga{clock}/roms' / WRAPPER).read_bytes() == images[clock]
+                assert (out / f'tests/86box/vga{clock}/roms' / WRAPPER).read_bytes() == images[clock]
                 ps('verify-rom.ps1', '-BuildDirectory', out, '-VgaClockMHz', clock, '-SelfTest')
             print(f'PASS sole first build and coexistence {order}: both verifiers, retained sibling, common system, latest alias/wrapper', flush=True)
             # Synthetic local contrasts: only the named artifact is substituted.
@@ -97,11 +97,19 @@ def inventory():
 
 
 def cleanup():
+    producer = ast.parse((ROOT / 'tools/test-cdboot.py').read_text())
+    native = next(n for n in producer.body if isinstance(n, ast.FunctionDef) and n.name == 'native')
+    work = next(n.value for n in native.body if isinstance(n, ast.Assign)
+                and any(isinstance(t, ast.Name) and t.id == 'work' for t in n.targets))
+    for preview, expected in ((True, BUILD/'review/cd-review'), (False, BUILD/'diagnostics/cdboot/vga60')):
+        actual = eval(compile(ast.Expression(work), '<native CD work>', 'eval'),
+                      dict(BUILD=BUILD, clock=60, preview=preview, menus=(), NATIVE_MENU=()))
+        assert actual == expected, ('CD preview cleanup or diagnostic retention escaped its owner', actual)
     # Independent obsolete inputs, including duplicate prefixes and a later archive.
     obsolete = [BUILD / name for name in ('post-ui', 'post-ui-50', 'setup25', 'setup25-50',
                 'modular', 'modular-50', 'apm-50', 'ram-presets', 'vga141',
                 'baios-presario800-cache-detection.bin', 'baios-presario800-chipset.bin',
-                'baios-presario800-chipset-final.bin', 'archive', 'research',
+                'baios-presario800-chipset-final.bin', 'archive',
                 'm919-shared-check', 'shared-tools-junction', 'shared-tools-junction-output',
                 'shared-tools-native', 'emulator-test-system.rom')]
     scratch = BUILD / 'tmp'
@@ -109,7 +117,7 @@ def cleanup():
     obsolete += list(scratch.iterdir())
     provider = ROOT.parent / 'reference/software/speedsys/4.78/SPEEDSYS-code.bin'
     assert digest(provider) == 'b43f9ed7f8efa0f11561b3213b82c9727571fafd2fec1695b8cbfd0fe816eee0'
-    obsolete += [BUILD / '86box' / name for name in ('card-vm', 'cmos-review', 'diagnostic',
+    obsolete += [BUILD / 'tests/86box' / name for name in ('card-vm', 'cmos-review', 'diagnostic',
                 'ide-review', 'oem-probe', 'setup-review', 'unit-smoke', 'vector-dump', 'vm',
                 'official-d824.bin', 'unit-smoke.png')]
     obsolete += [BUILD / 'apm', BUILD / 'cdboot', BUILD / 'mouse']
@@ -127,7 +135,7 @@ def cleanup():
                 (path / 'purge-proof.txt').write_text('Synthetic obsolete output\n')
     else:
         obsolete = existing
-    review_roots = [BUILD / name for name in ('chipset-review', 'chipset-review/vga50', 'cd-review', 'review/cd-review')]
+    review_roots = [BUILD / name for name in ('review/chipset', 'review/chipset/vga50', 'review/apm', 'review/cd-review')]
     review_controls, created_reviews = [], []
     pending = BUILD / 'review'
     if not pending.exists():
@@ -159,8 +167,8 @@ def cleanup():
     obsolete += [vm for review in review_roots for vm in review.iterdir()
                  if vm.is_dir() and (vm / '86box.cfg').is_file()]
     # Real screenshot producers must save current evidence outside old archives.
-    for source, expected, screenshot in (('test-setup.py', 'chipset-review/setup', 'setup-standard.png'),
-                                         ('test-ports.py', 'chipset-review/serial-addresses', 'devices.png')):
+    for source, expected, screenshot in (('test-setup.py', 'review/chipset/setup', 'setup-standard.png'),
+                                         ('test-ports.py', 'review/chipset/serial-addresses', 'devices.png')):
         producer = ast.parse((ROOT / 'tools' / source).read_text())
         producer_body = next(n for n in producer.body if isinstance(n, ast.FunctionDef) and n.name == 'run_86box')
         evidence_paths = [n.value.right.value for n in ast.walk(producer_body)
@@ -176,7 +184,7 @@ def cleanup():
         for name in (screenshot, 'screen.log', 'screen.nvr'):
             (Path(control.name) / name).write_bytes(b'Synthetic current review evidence')
         review_controls.append(control)
-    card_capture = BUILD / 'card-boot.png'
+    card_capture = BUILD / 'review/card-boot.png'
     created_card_capture = not card_capture.exists()
     if created_card_capture:
         card_capture.write_bytes(b'Synthetic current card screenshot')
@@ -186,7 +194,7 @@ def cleanup():
     (record / 'build-paths-cleanup-before.json').write_text(json.dumps(before, sort_keys=True))
     outside = {str(p): digest(p) for folder in (ROOT / 'src', ROOT / 'reference', ROOT / 'docs')
                for p in folder.rglob('*') if p.is_file()}
-    card_hash = digest(BUILD / 'presario800-card.vhd')
+    card_hash = digest(ROOT.parent / 'reference/media/dos/test-card.vhd')
     roms = retained_roms()
     retained = {name: state for name, state in before.items()
                 if not any((BUILD / name).is_relative_to(p) for p in obsolete)}
@@ -200,7 +208,7 @@ def cleanup():
     after = inventory()
     (record / 'build-paths-cleanup-after.json').write_text(json.dumps(after, sort_keys=True))
     assert retained == after, ('Unexpected retention/deletion', set(retained) ^ set(after))
-    assert roms == retained_roms() and card_hash == digest(BUILD / 'presario800-card.vhd')
+    assert roms == retained_roms() and card_hash == digest(ROOT.parent / 'reference/media/dos/test-card.vhd')
     assert outside == {p: digest(Path(p)) for p in outside}
     print('PASS pending review pair and shared system survive cleanup unchanged', flush=True)
     assert not (BUILD / 'archive').exists()
@@ -217,10 +225,10 @@ def cleanup():
     print('PASS empty obsolete set on repeated cleanup: no new history or file changes', flush=True)
     for control in review_controls:
         control.cleanup()  # Owned synthetic retained controls, after terminal oracles.
-    for review in reversed(created_reviews):
-        review.rmdir()
     if created_card_capture:
         card_capture.unlink()  # Remove only the owned synthetic screenshot.
+    for review in reversed(created_reviews):
+        review.rmdir()
 
 
 if __name__ == '__main__':

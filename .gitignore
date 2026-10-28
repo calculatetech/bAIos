@@ -22,3 +22,15 @@ reference/
 /tools/86box/source/
 /tools/86box/roms/
 /tools/deps/
+.agent/test-results/
+.agent/worktrees/
+/reference/media/dos/test-card.vhd
+/tools/DOSBENCH/
+**/docs/searchable/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+/pb450/docs/*.htm*
+/pb450/docs/*_files/

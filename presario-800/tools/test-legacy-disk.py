@@ -259,6 +259,7 @@ def check_pair():
             # Relocation keeps both records and far pointers coherent.
             model.cpu.mem_write(0x8FC00, bytes(model.cpu.mem_read(0x9FC00, 1024)))
             model.cpu.mem_write(0x40E, struct.pack('<H', 0x8FC0))
+            model.post_call('publish_disk_cmos')
             for logical, unit in enumerate(disks):
                 assert model.disk(2, dx=0x80 + logical)[0] is False
                 assert model.unit == unit
@@ -501,7 +502,7 @@ def check_floppy_buffers():
 
 def check_windows_irq():
     """Run the installed WDCTRL IRQ gate after production controller detection."""
-    fat = importlib.import_module('memory-fixture').Fat16(rtc.ROOT / 'build/presario800-card.vhd')
+    fat = importlib.import_module('memory-fixture').Fat16(rtc.ROOT.parent / 'reference/media/dos/test-card.vhd')
     try:
         driver = fat.read('WINDOWS/SYSTEM/WIN386.EXE')
     finally:
@@ -576,6 +577,7 @@ def main():
     assert not irq.commands and not irq.data_reads, 'IRQ handler disturbed ATA task file'
     print('Shared IRQ14: OEM completion latch, both PIC EOIs, register/flags preservation PASS')
     disk = Disk()
+    disk.post_call('publish_disk_cmos')
     # These calls failed with AH01 in the baseline, causing SI8 to reset/retry.
     result = disk.disk(0x0C, al=0, cx=0x100, bx=0xFFFF, es=0x9FC0)
     assert not result[0] and result[1] >> 8 == 0, result
@@ -655,9 +657,12 @@ def main():
     assert bytes(disk.cmos[:0xE]) + bytes(disk.cmos[0x32:0x33]) == clock
     disk.cpu.mem_write(0x8FC00, bytes(disk.cpu.mem_read(0x9FC00, 1024)))
     disk.cpu.mem_write(0x40E, struct.pack('<H', 0x8FC0))
+    # Fixture-owned map changes use POST publication, not an INT13 side effect.
+    disk.post_call('publish_disk_cmos')
     assert disk.disk(0x10)[0] is False
     assert struct.unpack('<HH', disk.cpu.mem_read(0x104, 4)) == (0xE0, 0x8FC0)
     disk.cpu.mem_write(0x8FC20, b'\x00')
+    disk.post_call('publish_disk_cmos')
     assert disk.disk(0x10)[2] == 0x80
     assert bytes(disk.cpu.mem_read(0x475, 1)) == b'\x00'
     assert bytes(disk.cpu.mem_read(0x104, 4)) == bytes(4)

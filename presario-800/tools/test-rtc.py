@@ -520,6 +520,19 @@ def check_clean_dos_speedsys():
                 fat.replace(disk, 'AUTOEXEC.BAT', b'@ECHO OFF\r\nC:\\SPRTC.COM\r\n')
         finally:
             fat.vhd.close()
+        # Use the existing valid native CMOS fixture. A fresh card VM otherwise
+        # waits at POST recovery before DOS can execute the RTC consumer.
+        matrix = importlib.import_module('floppy-matrix')
+        matrix.config(folder, image, 0, 0, folder/'none-a', folder/'none-b', seek=False)
+        cmos = bytearray((folder/'nvr/d824.nvr').read_bytes())
+        # The d824 emulator has no matching VLSI L2 SRAM; use saved Setup policy.
+        policy = bytearray(importlib.import_module('test-chipset').NORMAL)
+        policy[9] &= ~1
+        cmos[0x69], cmos[0x6A] = 0xC2, -(0xC2 + sum(policy)) & 255
+        cmos[0x6B:0x80], cmos[0x33:0x36] = policy[:21], policy[21:]
+        nvr = BUILD/'tests/86box/card-vm/nvr'
+        nvr.mkdir(parents=True, exist_ok=True)
+        (nvr/'d824.nvr').write_bytes(cmos)
         subprocess.run(['pwsh', '-NoProfile', '-File', str(ROOT / 'tools/run-card-vhd.ps1'),
                         '-ImagePath', str(image), '-MemoryKiB', '8192',
                         '-ExpectedExitCode', '103', '-TimeoutSeconds', '45'], check=True)

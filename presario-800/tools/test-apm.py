@@ -502,7 +502,7 @@ def native():
     nasm = shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA']) / 'bin/NASM/nasm.exe')
     exe = shutil.which('86Box.exe') or str(Path(os.environ['LOCALAPPDATA']) /
         'Microsoft/WinGet/Packages/86Box.86Box_Microsoft.Winget.Source_8wekyb3d8bbwe/86Box.exe')
-    work = rtc.BUILD / 'apm-review'
+    work = rtc.BUILD / 'review/apm'
     work.mkdir(parents=True, exist_ok=True)
     for label, driver, managers in (('probe', False, False), ('driver-dos', True, False), ('driver-emm386', True, True)):
         vm = work / label

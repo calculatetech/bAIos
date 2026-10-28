@@ -23,6 +23,7 @@ class Peer:
         self.stop=threading.Event()
         self.socket=socket.socket(socket.AF_INET,socket.SOCK_DGRAM,socket.IPPROTO_UDP)
         self.socket.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+        self.socket.setsockopt(socket.SOL_SOCKET,socket.SO_BROADCAST,1)
         self.socket.bind(('',8086))
         self.socket.setsockopt(socket.IPPROTO_IP,socket.IP_ADD_MEMBERSHIP,socket.inet_aton(GROUP[0])+socket.inet_aton('0.0.0.0'))
         self.socket.setsockopt(socket.IPPROTO_IP,socket.IP_MULTICAST_TTL,1)
@@ -36,7 +37,8 @@ class Peer:
         udp=struct.pack('!HHHH',sport,dport,8+len(body),0)+body
         ip=struct.pack('!BBHHHBBH4s4s',0x45,0,20+len(udp),0,0,64,17,0,SERVER,dstip)
         ip=ip[:10]+struct.pack('!H',checksum(ip))+ip[12:]
-        self.socket.sendto(dstmac+MAC+b'\x08\x00'+ip+udp,GROUP)
+        # Local Switch disables same-host multicast reception on Winsock.
+        self.socket.sendto(dstmac+MAC+b'\x08\x00'+ip+udp,('127.255.255.255',GROUP[1]))
 
     def frame(self,data):
         if len(data)<42 or data[6:12]==MAC:return
@@ -45,7 +47,7 @@ class Peer:
             arp=data[14:]
             if len(arp)>=28 and arp[6:8]==b'\0\1' and arp[24:28]==SERVER:
                 reply=struct.pack('!HHBBH',1,0x800,6,4,2)+MAC+SERVER+arp[8:18]
-                self.socket.sendto(src+MAC+b'\x08\x06'+reply,GROUP)
+                self.socket.sendto(src+MAC+b'\x08\x06'+reply,('127.255.255.255',GROUP[1]))
                 self.events.append('ARP')
             return
         if data[12:14]!=b'\x08\x00' or data[23]!=17:return

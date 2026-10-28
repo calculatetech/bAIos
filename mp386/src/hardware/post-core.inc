@@ -20,7 +20,14 @@ post_ui_cache:
     ui_text 3,3,mp_l1,0x0B
     mov di,3*160+24*2
     call post_clear_value
-    ui_text 3,24,mp_no_l1,7
+    mp_cyrix_test
+    mov si,mp_no_l1
+    jne .l1_ready
+    mov si,mp_l1_disabled
+.l1_ready:
+    mov di,3*160+24*2
+    mov bh,7
+    call setup_text
     ui_text 4,3,u_l2,0x0B
     mov di,4*160+24*2
     call post_clear_value
@@ -67,6 +74,7 @@ post_rom_state:
     ret
 mp_l1 db 'L1 cache',0
 mp_no_l1 db 'Not present',0
+mp_l1_disabled db 'Disabled',0
 mp_cache_disabled db 'Disabled',0
 mp_cache_size db '32 KB',0
 mp_cache_failed db 'Cache test failed',0

@@ -1,0 +1,647 @@
+{
+  "schema": 1,
+  "resources": [
+    "tools/deps/86box-b10408",
+    "reference/media/dos/test-card.vhd",
+    "presario-800/docs",
+    "presario-800/reference",
+    "reference",
+    "tools/86box/roms",
+    "tools/86box/source",
+    "tools/deps"
+  ],
+  "prepare": [
+    {
+      "id": "01-vga50",
+      "argv": [
+        "powershell",
+        "-File",
+        "presario-800/tools/build.ps1",
+        "-VgaClockMHz",
+        "50"
+      ]
+    },
+    {
+      "id": "02-vga60",
+      "argv": [
+        "powershell",
+        "-File",
+        "presario-800/tools/build.ps1",
+        "-VgaClockMHz",
+        "60"
+      ]
+    },
+    {
+      "id": "03-bus-reference",
+      "argv": [
+        "python",
+        "presario-800/tools/build-vga-bus.py"
+      ]
+    },
+    {
+      "id": "04-speedsys-no-fpu",
+      "argv": [
+        "nasm",
+        "-f",
+        "bin",
+        "-o",
+        "presario-800/build/diagnostics/SPNOFPU.COM",
+        "presario-800/tests/speedsys-no-fpu.asm"
+      ]
+    },
+    {
+      "id": "05-speedsys-sample",
+      "argv": [
+        "nasm",
+        "-f",
+        "bin",
+        "-o",
+        "presario-800/build/diagnostics/SPWHERE.COM",
+        "presario-800/tests/speedsys-sample.asm"
+      ]
+    },
+    {
+      "id": "06-vga141",
+      "argv": [
+        "powershell",
+        "-File",
+        "presario-800/tools/build.ps1",
+        "-Vga141"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "apm",
+      "argv": [
+        "python",
+        "presario-800/tools/test-apm.py"
+      ]
+    },
+    {
+      "id": "apm-native",
+      "argv": [
+        "python",
+        "presario-800/tools/test-apm.py",
+        "--86box"
+      ]
+    },
+    {
+      "id": "build-cleanup",
+      "argv": [
+        "python",
+        "tools/test-build-cleanup.py"
+      ]
+    },
+    {
+      "id": "build-paths",
+      "argv": [
+        "python",
+        "presario-800/tools/test-build-paths.py",
+        "--build",
+        "--cleanup"
+      ]
+    },
+    {
+      "id": "cdboot",
+      "argv": [
+        "python",
+        "presario-800/tools/test-cdboot.py"
+      ]
+    },
+    {
+      "id": "cdboot-native-50",
+      "argv": [
+        "python",
+        "presario-800/tools/test-cdboot.py",
+        "--86box",
+        "--iso",
+        "presario-800/reference/media/windows98se.iso",
+        "--vga-clock",
+        "50"
+      ]
+    },
+    {
+      "id": "cdboot-native-60",
+      "argv": [
+        "python",
+        "presario-800/tools/test-cdboot.py",
+        "--86box",
+        "--iso",
+        "presario-800/reference/media/windows98se.iso",
+        "--vga-clock",
+        "60"
+      ]
+    },
+    {
+      "id": "cdrom-dos-apicd",
+      "argv": [
+        "python",
+        "presario-800/tools/test-cdrom-dos.py",
+        "reference/media/dos/test-card.vhd",
+        "tools/deps/cd-drivers/apicd214.zip"
+      ]
+    },
+    {
+      "id": "cdrom-dos-mitsumi",
+      "argv": [
+        "python",
+        "presario-800/tools/test-cdrom-dos.py",
+        "reference/media/dos/test-card.vhd",
+        "tools/deps/cd-drivers/mitsumi155.img.xz"
+      ]
+    },
+    {
+      "id": "cdrom-dos-no-emm",
+      "argv": [
+        "python",
+        "presario-800/tools/test-cdrom-dos.py",
+        "reference/media/dos/test-card.vhd",
+        "tools/deps/cd-drivers/apicd214.zip",
+        "--no-emm"
+      ]
+    },
+    {
+      "id": "chipset",
+      "argv": [
+        "python",
+        "presario-800/tools/test-chipset.py"
+      ]
+    },
+    {
+      "id": "chipset-native-50",
+      "argv": [
+        "python",
+        "presario-800/tools/test-chipset.py",
+        "--86box",
+        "--vga-clock",
+        "50"
+      ]
+    },
+    {
+      "id": "chipset-native-60",
+      "argv": [
+        "python",
+        "presario-800/tools/test-chipset.py",
+        "--86box",
+        "--vga-clock",
+        "60"
+      ]
+    },
+    {
+      "id": "emm-fixture",
+      "argv": [
+        "python",
+        "presario-800/tools/test-emm-fixture.py",
+        "reference/media/dos/test-card.vhd"
+      ]
+    },
+    {
+      "id": "emm-reset",
+      "argv": [
+        "powershell",
+        "-File",
+        "presario-800/tools/test-emm-reset.ps1",
+        "-ImagePath",
+        "reference/media/dos/test-card.vhd"
+      ]
+    },
+    {
+      "id": "emm-reset-keypad",
+      "argv": [
+        "powershell",
+        "-File",
+        "presario-800/tools/test-emm-reset.ps1",
+        "-ImagePath",
+        "reference/media/dos/test-card.vhd",
+        "-KeypadDelete"
+      ]
+    },
+    {
+      "id": "emm-reset-negative",
+      "argv": [
+        "powershell",
+        "-File",
+        "presario-800/tools/test-emm-reset.ps1",
+        "-ImagePath",
+        "reference/media/dos/test-card.vhd",
+        "-NegativeControl"
+      ]
+    },
+    {
+      "id": "emm-reset-numlock-off",
+      "argv": [
+        "powershell",
+        "-File",
+        "presario-800/tools/test-emm-reset.ps1",
+        "-ImagePath",
+        "reference/media/dos/test-card.vhd",
+        "-BootNumLock",
+        "Off"
+      ]
+    },
+    {
+      "id": "emm-reset-numlock-on",
+      "argv": [
+        "powershell",
+        "-File",
+        "presario-800/tools/test-emm-reset.ps1",
+        "-ImagePath",
+        "reference/media/dos/test-card.vhd",
+        "-BootNumLock",
+        "On"
+      ]
+    },
+    {
+      "id": "emm-reset-production",
+      "argv": [
+        "powershell",
+        "-File",
+        "presario-800/tools/test-emm-reset.ps1",
+        "-ImagePath",
+        "reference/media/dos/test-card.vhd",
+        "-ProductionRom"
+      ]
+    },
+    {
+      "id": "external-cache",
+      "argv": [
+        "python",
+        "presario-800/tools/test-external-cache.py"
+      ]
+    },
+    {
+      "id": "floppy-dos",
+      "argv": [
+        "python",
+        "presario-800/tools/floppy-matrix.py",
+        "--dos-backup",
+        "reference/media/dos/test-card.vhd"
+      ]
+    },
+    {
+      "id": "floppy-dos-emm",
+      "argv": [
+        "python",
+        "presario-800/tools/floppy-matrix.py",
+        "--dos-backup",
+        "reference/media/dos/test-card.vhd",
+        "--memory-managers"
+      ]
+    },
+    {
+      "id": "floppy-matrix",
+      "argv": [
+        "python",
+        "presario-800/tools/floppy-matrix.py"
+      ]
+    },
+    {
+      "id": "floppy-read-only",
+      "argv": [
+        "python",
+        "presario-800/tools/floppy-matrix.py",
+        "--raw",
+        "--read-only",
+        "--keep-artifacts",
+        "--timeout",
+        "600"
+      ]
+    },
+    {
+      "id": "floppy-write-protected",
+      "argv": [
+        "python",
+        "presario-800/tools/floppy-matrix.py",
+        "--write-protected"
+      ]
+    },
+    {
+      "id": "ide-options",
+      "argv": [
+        "python",
+        "presario-800/tools/test-ide-options.py"
+      ]
+    },
+    {
+      "id": "ide-pair",
+      "argv": [
+        "python",
+        "presario-800/tools/test-ide-pair.py"
+      ]
+    },
+    {
+      "id": "identity",
+      "argv": [
+        "python",
+        "presario-800/tools/test-identity.py"
+      ]
+    },
+    {
+      "id": "legacy-boot",
+      "argv": [
+        "python",
+        "presario-800/tools/test-legacy-boot.py"
+      ]
+    },
+    {
+      "id": "legacy-disk",
+      "argv": [
+        "python",
+        "presario-800/tools/test-legacy-disk.py"
+      ]
+    },
+    {
+      "id": "legacy-emulator",
+      "argv": [
+        "python",
+        "presario-800/tools/test-legacy-emulator.py"
+      ]
+    },
+    {
+      "id": "legacy-native",
+      "argv": [
+        "python",
+        "presario-800/tools/test-legacy-native.py"
+      ]
+    },
+    {
+      "id": "memory-banks",
+      "argv": [
+        "python",
+        "presario-800/tools/test-memory-banks.py"
+      ]
+    },
+    {
+      "id": "modular-setup",
+      "argv": [
+        "python",
+        "presario-800/tools/test-modular-setup.py"
+      ]
+    },
+    {
+      "id": "mouse",
+      "argv": [
+        "python",
+        "presario-800/tools/mouse-test.py",
+        "reference/media/dos/test-card.vhd"
+      ]
+    },
+    {
+      "id": "mouse-absent",
+      "argv": [
+        "python",
+        "presario-800/tools/mouse-test.py",
+        "reference/media/dos/test-card.vhd",
+        "--no-mouse"
+      ]
+    },
+    {
+      "id": "mouse-editor",
+      "argv": [
+        "python",
+        "presario-800/tools/mouse-test.py",
+        "reference/media/dos/test-card.vhd",
+        "--edit",
+        "--keep-artifacts"
+      ]
+    },
+    {
+      "id": "ports",
+      "argv": [
+        "python",
+        "presario-800/tools/test-ports.py"
+      ]
+    },
+    {
+      "id": "ports-native",
+      "argv": [
+        "python",
+        "presario-800/tools/test-ports.py",
+        "--86box"
+      ]
+    },
+    {
+      "id": "post-completion",
+      "argv": [
+        "python",
+        "presario-800/tools/test-setup.py",
+        "--case",
+        "post-completion"
+      ]
+    },
+    {
+      "id": "post-ui",
+      "argv": [
+        "python",
+        "presario-800/tools/test-post-ui.py"
+      ]
+    },
+    {
+      "id": "rtc",
+      "argv": [
+        "python",
+        "presario-800/tools/test-rtc.py"
+      ]
+    },
+    {
+      "id": "rtc-dos-speedsys",
+      "argv": [
+        "python",
+        "presario-800/tools/test-rtc.py",
+        "--dos-speedsys"
+      ],
+      "inputs": [
+        "reference/media/dos/test-card.vhd"
+      ]
+    },
+    {
+      "id": "runtime-input",
+      "argv": [
+        "python",
+        "presario-800/tools/test-runtime-input.py"
+      ]
+    },
+    {
+      "id": "setup",
+      "argv": [
+        "python",
+        "presario-800/tools/test-setup.py"
+      ]
+    },
+    {
+      "id": "setup-native",
+      "argv": [
+        "python",
+        "presario-800/tools/test-setup.py",
+        "--86box",
+        "--boot-86box",
+        "--86box-case",
+        "hdd",
+        "--86box-case",
+        "clock24",
+        "--86box-case",
+        "no-disk",
+        "--86box-case",
+        "invalid-date",
+        "--86box-case",
+        "power-loss",
+        "--86box-case",
+        "invalid-settings",
+        "--86box-case",
+        "recovery",
+        "--86box-case",
+        "ide-device",
+        "--86box-case",
+        "ide-types",
+        "--86box-case",
+        "ide-block",
+        "--86box-case",
+        "ide-channel",
+        "--86box-case",
+        "ide-submenu",
+        "--86box-case",
+        "ide-none"
+      ]
+    },
+    {
+      "id": "setup-themes",
+      "argv": [
+        "python",
+        "presario-800/tools/test-setup-themes.py"
+      ]
+    },
+    {
+      "id": "shared-adoption",
+      "argv": [
+        "python",
+        "presario-800/tools/test-shared-adoption.py"
+      ]
+    },
+    {
+      "id": "shared-tools",
+      "argv": [
+        "python",
+        "tools/test-shared-tools.py",
+        "reference/media/dos/test-card.vhd"
+      ]
+    },
+    {
+      "id": "speedsys-no-fpu",
+      "argv": [
+        "python",
+        "presario-800/tools/test-speedsys-no-fpu.py"
+      ]
+    },
+    {
+      "id": "speedsys-rom-id",
+      "argv": [
+        "python",
+        "presario-800/tools/test-speedsys-rom-id.py"
+      ]
+    },
+    {
+      "id": "speedsys-sample",
+      "argv": [
+        "python",
+        "presario-800/tools/test-speedsys-sample.py"
+      ]
+    },
+    {
+      "id": "validate",
+      "argv": [
+        "powershell",
+        "-File",
+        "presario-800/tools/validate.ps1"
+      ]
+    },
+    {
+      "id": "vesa-buffer-boundary",
+      "argv": [
+        "python",
+        "presario-800/tools/test-vesa-buffer-boundary.py"
+      ]
+    },
+    {
+      "id": "vga141",
+      "argv": [
+        "python",
+        "presario-800/tools/test-vga141.py"
+      ]
+    },
+    {
+      "id": "vga141-native",
+      "argv": [
+        "python",
+        "presario-800/tools/test-vga141.py",
+        "--emulator"
+      ]
+    }
+  ],
+  "case_sets": [
+    {
+      "script": "presario-800/tools/test-setup.py",
+      "argument": "--86box-case"
+    },
+    {
+      "script": "presario-800/tools/test-chipset.py",
+      "argument": "--vga-clock"
+    },
+    {
+      "script": "presario-800/tools/test-cdboot.py",
+      "argument": "--vga-clock"
+    }
+  ],
+  "historical_checks": [],
+  "candidates": [
+    {
+      "id": "candidate-50",
+      "argv": [
+        "powershell",
+        "-File",
+        "presario-800/tools/build.ps1",
+        "-OutputDirectory",
+        "build/pipeline-candidate",
+        "-VgaClockMHz",
+        "50"
+      ]
+    },
+    {
+      "id": "candidate-60",
+      "argv": [
+        "powershell",
+        "-File",
+        "presario-800/tools/build.ps1",
+        "-OutputDirectory",
+        "build/pipeline-candidate",
+        "-VgaClockMHz",
+        "60"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "presario-800/build/pipeline-candidate/baios-presario800-vga50.bin",
+      "name": "baios-presario800-vga50.bin",
+      "size": 131072,
+      "physical": true
+    },
+    {
+      "path": "presario-800/build/pipeline-candidate/baios-presario800-vga60.bin",
+      "name": "baios-presario800-vga60.bin",
+      "size": 131072,
+      "physical": true
+    },
+    {
+      "path": "presario-800/build/pipeline-candidate/baios-presario800-system.rom",
+      "name": "baios-presario800-system.rom",
+      "size": 65536,
+      "physical": false
+    }
+  ],
+  "coverage_notes": [
+    "The default Python suites enumerate their own named cases. The optional native Setup invocation explicitly includes every advertised native case.",
+    "memory-fixture.py, run-card-vhd.ps1 and shared FAT helpers execute through DOS, mouse, floppy and EMM reset checks. Helpers are not substitute firmware checks.",
+    "The native floppy Swap On limitation remains the documented port/emulator boundary; --swap only describes availability and is not a success oracle."
+  ]
+}

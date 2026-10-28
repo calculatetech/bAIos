@@ -4,3 +4,4 @@
 %include "hardware/cache-test.inc"
 pb430_isa_ui
 pb430_isa_choices
+pb430_rom_extensions_end:

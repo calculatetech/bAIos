@@ -313,6 +313,8 @@ setup_test_tick:
     cmp cx, 0x1345
     jne .fail
     cmp dh, 0x56
+    jb .fail
+    cmp dh, 0x57              ; The free-running RTC may advance before this tick.
 %endif
     ja .fail
     popad
