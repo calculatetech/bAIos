@@ -100,8 +100,12 @@ mov eax,0x80008050
 out dx,eax
 mov dx,0xCFC
 in eax,dx
-test al,0x80                ; Actual hostbridge external cache still disabled.
+test al,0x80                ; Observe the effective hostbridge cache gate.
+%if TEST_L2_ENABLED
+jz .geometry_bad
+%else
 jnz .geometry_bad
+%endif
 mov al,0x75
 cmp byte [fs:0x50],TEST_RAM_FLAGS
 jne terminal

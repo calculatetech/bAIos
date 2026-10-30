@@ -21,7 +21,7 @@ class Listing:
 
     def offset(self, row):
         return next(int(m[1], 16) for line in self.lines[row + 1:]
-                    if (m := re.match(r'\s*\d+\s+([0-9A-F]{8})\s+(?:[0-9A-F]|<bin )', line)))
+                    if (m := re.match(r'\s*\d+\s+([0-9A-F]{8})\s+(?:[0-9A-F]|\[|<bin )', line)))
 
     def symbol(self, name, owner=None):
         return self.offset(self.row(name, self.row(owner) if owner else 0))

@@ -3,8 +3,8 @@
     "vendor": "PC-Chips",
     "model": "M919",
     "revision": "1.5",
-    "version": "0.1.0",
-    "release_date": "10/08/2026"
+    "version": "0.5.5",
+    "release_date": "10/30/2026"
   },
   "rom": {
     "size": 131072,
@@ -14,7 +14,8 @@
     "reset_entry_offset": 0,
     "reset_vector_offset": 131056,
     "checksum_offset": 131055,
-    "model_byte": 252
+    "model_byte": 252,
+    "reset_near": true
   },
   "platform": {
     "host_bridge": "UM8881F",
@@ -62,7 +63,7 @@
     "system_revision": 0
   },
   "emulator": {
-    "machine": "m919",
+    "machine": "84xxuuda",
     "cpu_family": "am5x86",
     "cpu_speed": 133333333,
     "cpu_multi": 4,
@@ -71,7 +72,7 @@
     "gfx_section": "Cirrus Logic GD5446 (PCI)",
     "gfx_bios": "cl_gd5446_pci",
     "gfx_memory": 4,
-    "rom_path": "machines/m919/9190914s.rom",
+    "rom_path": "machines/84xxuuda/uud0520s.bin",
     "rom_files": [
       "video/cirruslogic/5446bv.vbi"
     ]

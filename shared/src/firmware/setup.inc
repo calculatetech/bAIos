@@ -8,7 +8,8 @@ settings_load:
     mov dword [fs:C_TYPES], (0x01010100 | FLOPPY_DEFAULT_TYPES)
     mov byte [fs:C_SLAVE], 1
     mov dword [fs:C_BASE_VALID], 0x02000100
-    mov word [fs:C_BOOT_SECOND], 2
+    mov byte [fs:C_BOOT], DEFAULT_BOOT_FIRST
+    mov word [fs:C_BOOT_SECOND], DEFAULT_BOOT_REST
     mov byte [fs:C_BOOT_FOURTH], 0
     mov byte [fs:C_VALID], 0
     mov byte [fs:C_THEME], 0
@@ -116,6 +117,8 @@ settings_load:
     jne .legacy_boot
     mov byte [fs:C_SLAVE], 0
 .legacy_boot:
+    mov byte [fs:C_BOOT], 1
+    mov word [fs:C_BOOT_SECOND], 2
     test cl, cl
     jz .publish
     mov byte [fs:C_BOOT], 2
@@ -242,13 +245,6 @@ settings_load:
     mov byte [fs:C_BASE_VALID], 1
     mov byte [fs:C_VALID], 1
 .done:
-%ifdef BOARD_DEFAULT_BOOT_FIRST
-    cmp byte [fs:C_BASE_VALID], 0
-    jne .boot_defaults_done
-    mov byte [fs:C_BOOT], BOARD_DEFAULT_BOOT_FIRST
-    mov word [fs:C_BOOT_SECOND], BOARD_DEFAULT_BOOT_REST
-.boot_defaults_done:
-%endif
     cmp byte [fs:C_SWAP], 0
     je .physical_types
     ror byte [fs:C_TYPES], 4
@@ -666,12 +662,20 @@ setup_draft_defaults:
     mov byte [fs:U_NUMLOCK], 1
     mov byte [fs:U_SWAP], 0
     mov byte [fs:U_HALT], 2
-    mov word [fs:U_BOOT_SECOND], 2
+    mov byte [fs:U_BOOT], DEFAULT_BOOT_FIRST
+    mov word [fs:U_BOOT_SECOND], DEFAULT_BOOT_REST
     mov byte [fs:U_BOOT_FOURTH], 0
-%ifdef BOARD_DEFAULT_BOOT_FIRST
-    mov byte [fs:U_BOOT], BOARD_DEFAULT_BOOT_FIRST
-    mov word [fs:U_BOOT_SECOND], BOARD_DEFAULT_BOOT_REST
-%endif
+    ret
+
+; Confirmed defaults action shared by both Setup entry paths.
+setup_defaults:
+    call setup_draft_defaults
+    mov di, U_IDE
+    call ide_defaults
+    mov di, U_PORTS
+    call ports_defaults
+    mov di, U_CHIP
+    call chipset_defaults
     ret
 
 post_numlock_apply:
@@ -838,13 +842,7 @@ post_clock_alert:
     jc .clock_error
     test byte [fs:C_ERROR], 4
     jz .done                 ; Keep valid settings when only the clock failed.
-    call setup_draft_defaults
-    mov di, U_IDE
-    call ide_defaults
-    mov di, U_PORTS
-    call ports_defaults
-    mov di, U_CHIP
-    call chipset_defaults
+    call setup_defaults
     call settings_save
     jc .settings_error
     call settings_load
@@ -1164,7 +1162,7 @@ setup_main:
     mov bl, 6
     cmp byte [fs:U_IDE_DEVICE], 1
     ja .field_limit
-    mov bl, 9
+    mov bl, IDE_FIELD_COUNT-1
 .field_limit:
     mov cl, [fs:U_FIELD]
     cmp ah, 0x48
@@ -1257,13 +1255,7 @@ setup_main:
     mov si, u_defaults_confirm
     call setup_confirm
     jc .redraw
-    call setup_draft_defaults
-    mov di, U_IDE
-    call ide_defaults
-    mov di, U_PORTS
-    call ports_defaults
-    mov di, U_CHIP
-    call chipset_defaults
+    call setup_defaults
     jmp .redraw
 .save:
     mov si, u_save_confirm
@@ -1903,6 +1895,14 @@ setup_change:
 setup_enum_store:
     pushf
     pushad
+    cmp byte [fs:U_PAGE],1
+    jne .boot
+    cmp byte [fs:U_IDE_DEVICE],1
+    ja .boot
+    popad
+    popf
+    jmp ide_ui_store
+.boot:
     cmp byte [fs:U_PAGE], 2
     jne .store
     cmp byte [fs:U_FIELD], 4
@@ -2790,6 +2790,9 @@ u_boot_labels dw u_boot_order,u_boot_second,u_boot_third,u_boot_fourth,u_seek,u_
     dw u_fast_boot
 %endif
 u_ide_rows db 5,6,7,8,9,10,11,14,15,16
+%ifdef BOARD_IDE_32BIT_POLICY
+    db 17
+%endif
 u_exit_rows db 5,6
 
 ; Append the retained VGA font's right arrow after the complete value.
@@ -2928,6 +2931,13 @@ setup_help:
     jne .normal_help
     cmp byte [fs:U_IDE_DEVICE], 1
     ja .channel_help
+%ifdef BOARD_IDE_32BIT_POLICY
+    cmp byte [fs:U_FIELD],10
+    jne .ordinary_ide_help
+    mov bx,IDE_DWORD_HELP_TOPIC
+    jmp .topic
+.ordinary_ide_help:
+%endif
     movzx bx, byte [fs:U_FIELD]
     add bx, 14
     jmp .topic
@@ -3477,12 +3487,21 @@ u_help_topics:
     dw u_halt,u_help_halt1,u_help_halt2
     dw u_clock_format,u_help_format1,u_help_format2
     dw u_time,u_help_time24,u_help_time2
+%ifdef BOARD_IDE_32BIT_POLICY
+IDE_DWORD_HELP_TOPIC equ ($-u_help_topics)/6
+    dw u_ide_dword,u_help_ide_dword1,u_help_ide_dword2
+%endif
 %ifdef BOARD_FAST_BOOT_SETTING
 FAST_BOOT_HELP_TOPIC equ ($-u_help_topics)/6
     dw u_fast_boot,u_help_fast1,u_help_fast2
 u_fast_boot db 'Fast Boot',0
 u_help_fast1 db 'Skip the startup RAM test above 1 MB.',0
 u_help_fast2 db 'Off runs the full test and is the default.',0
+%endif
+%ifdef BOARD_IDE_32BIT_POLICY
+u_ide_dword db '32-bit ATA Transfers',0
+u_help_ide_dword1 db 'Uses 32-bit data transfers on supported IDE.',0
+u_help_ide_dword2 db 'Disabled uses the compatible 16-bit default.',0
 %endif
 u_help_standard1 db 'System date, time, and detected memory.',0
 u_help_standard2 db 'Select a clock field to edit it.',0
@@ -3579,24 +3598,108 @@ ide_ui_parameters:
     je .translation
     cmp al, 8
     je .block
+%ifdef BOARD_IDE_32BIT_POLICY
+    cmp al,10
+    je .dword
+%endif
     add bx, IDE_EDD_OFF
-    mov si, u_ide_edd_values
-    mov cx, 2
-    ret
-.enabled:
-    call ide_ui_enable_pointer
+    mov al,[fs:bx]
+    xor al,1
     mov si, u_seek_values
     mov cx, 2
-    ret
+    jmp .ready
+.enabled:
+    call ide_ui_enable_pointer
+    mov al,[fs:bx]
+    mov si, u_seek_values
+    mov cx, 2
+    jmp .ready
 .translation:
     add bx, IDE_TRANSLATION
-    mov si, u_ide_translation_values
+    movzx bx,byte [fs:bx]
+    mov al,[cs:ide_translation_to_display+bx]
+    mov si, u_ide_translation_choices
     mov cx, 4
-    ret
+    jmp .ready
 .block:
     add bx, IDE_BLOCK
-    mov si, u_ide_block_values
+    mov al,[fs:bx]
+    cmp al,2
+    jb .block_special
+    sub al,2
+    jmp .block_ready
+.block_special:
+    add al,7
+.block_ready:
+    mov si, u_ide_block_choices
     mov cx, 9
+    jmp .ready
+%ifdef BOARD_IDE_32BIT_POLICY
+.dword:
+    mov cl,[fs:U_IDE_DEVICE]
+    mov al,[fs:U_CHIP+(BOARD_IDE_32BIT_POLICY-C_CHIP)]
+    shr al,cl
+    and al,1
+    mov si,u_seek_values
+    mov cx,2
+%endif
+.ready:
+    mov bx,U_CHIP_VALUE
+    mov [fs:bx],al
+    ret
+
+; AL is a display position. The saved record retains its existing encodings.
+ide_ui_store:
+    pushf
+    pushad
+    mov dl,al
+    call ide_ui_record
+    cmp byte [fs:U_FIELD],0
+    je .enabled
+    cmp byte [fs:U_FIELD],7
+    je .translation
+    cmp byte [fs:U_FIELD],8
+    je .block
+%ifdef BOARD_IDE_32BIT_POLICY
+    cmp byte [fs:U_FIELD],10
+    je .dword
+%endif
+    xor al,1
+    mov [fs:bx+IDE_EDD_OFF],al
+    jmp .done
+.enabled:
+    call ide_ui_enable_pointer
+    mov [fs:bx],al
+    jmp .done
+.translation:
+    movzx di,al
+    mov al,[cs:ide_translation_from_display+di]
+    mov [fs:bx+IDE_TRANSLATION],al
+    jmp .done
+.block:
+    cmp al,7
+    jae .block_special
+    add al,2
+    jmp .block_ready
+.block_special:
+    sub al,7
+.block_ready:
+    mov [fs:bx+IDE_BLOCK],al
+    jmp .done
+%ifdef BOARD_IDE_32BIT_POLICY
+.dword:
+    mov cl,[fs:U_IDE_DEVICE]
+    mov al,1
+    shl al,cl
+    not al
+    and [fs:U_CHIP+(BOARD_IDE_32BIT_POLICY-C_CHIP)],al
+    mov al,dl
+    shl al,cl
+    or [fs:U_CHIP+(BOARD_IDE_32BIT_POLICY-C_CHIP)],al
+%endif
+.done:
+    popad
+    popf
     ret
 
 ide_ui_select:
@@ -3641,7 +3744,7 @@ ide_ui_change:
     jb .store
     xor al, al
 .store:
-    mov [fs:bx], al
+    call ide_ui_store
     jmp .done
 .type:
     call ide_ui_record
@@ -3743,6 +3846,10 @@ ide_ui_draw:
     je .block
     cmp bp, 9
     je .edd
+%ifdef BOARD_IDE_32BIT_POLICY
+    cmp bp,10
+    je .dword
+%endif
     mov bx, bp
     sub bx, 2
     shl bx, 1
@@ -3779,6 +3886,15 @@ ide_ui_draw:
 .edd:
     movzx bx, byte [fs:si + IDE_EDD_OFF]
     mov si, u_ide_edd_values
+    jmp .enum
+%ifdef BOARD_IDE_32BIT_POLICY
+.dword:
+    mov cl,[fs:U_IDE_DEVICE]
+    mov bl,[fs:U_CHIP+(BOARD_IDE_32BIT_POLICY-C_CHIP)]
+    shr bl,cl
+    and bx,1
+    mov si,u_seek_values
+%endif
 .enum:
     shl bx, 1
     mov si, [si + bx]
@@ -3786,7 +3902,7 @@ ide_ui_draw:
     call setup_text
 .next:
     inc bp
-    cmp bp, 10
+    cmp bp, IDE_FIELD_COUNT
     jb .field
     popad
     ret
@@ -4092,11 +4208,20 @@ ide_ui_number:
 
 u_ide_labels dw u_ide_enabled,u_ide_type,u_ide_cyl,u_ide_heads,u_ide_sectors
     dw u_ide_precomp,u_ide_landing,u_ide_translation,u_ide_block,u_ide_edd
+%ifdef BOARD_IDE_32BIT_POLICY
+    dw u_ide_dword
+%endif
+IDE_FIELD_COUNT equ ($-u_ide_labels)/2
 u_ide_number_offsets dw IDE_CYLINDERS,IDE_HEADS,IDE_SECTORS,IDE_PRECOMP,IDE_LANDING
 u_ide_number_max dw 65535,16,63,65535,65535
 u_ide_translation_values dw u_auto,u_ide_normal,u_ide_large,u_ide_lba
+u_ide_translation_choices dw u_auto,u_ide_large,u_ide_lba,u_ide_normal
+ide_translation_to_display db 0,3,1,2
+ide_translation_from_display db 0,2,3,1
 u_ide_block_values dw u_auto,u_off,u_ide_block2,u_ide_block4,u_ide_block8
     dw u_ide_block16,u_ide_block32,u_ide_block64,u_ide_block128
+u_ide_block_choices dw u_ide_block2,u_ide_block4,u_ide_block8,u_ide_block16
+    dw u_ide_block32,u_ide_block64,u_ide_block128,u_auto,u_off
 u_ide_edd_values dw u_on,u_off
 u_ide_controller db 'Primary IDE Controller',0
 u_ide_disk_group db 'DISK CONFIGURATION',0

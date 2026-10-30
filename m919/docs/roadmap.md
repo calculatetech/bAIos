@@ -1,10 +1,8 @@
-> **Indefinite hardware hold:** defective hardware. No builds, retests, tuning or publication until the user explicitly resumes this port. Preserve current images and evidence.
-
 # M919 roadmap
 
 This is the source of truth for accepted M919 work. Task identifiers are permanent. Never reuse or rename an identifier. Keep at most one task active.
 
-The user resumed hardware testing after discovering that the FSB was set to 40 MHz. Restore the build from before Fast was removed, retain full L2 failure diagnostics, and retest at 33 MHz. AMI still cannot enable L2. The fault is not localized.
+The user resumed this port and replaced its adapters. A selected 512 KB SRAM population now passes Memtest and runs Quake with write-back cache enabled. Rejected chips are not all established defective. The shared-code checkpoint and its defaults are confirmed. Preserve that candidate while extending the tuning controls.
 
 Status legend:
 
@@ -18,7 +16,7 @@ Status legend:
 
 ## Active
 
-No active task while the hardware hold remains.
+- **M919-010: Complete the known tuning controls.** Add the non-power-management controls supported by the aggregated ROM and chipset evidence through the existing individual-setting menus. Preserve confirmed defaults, valid saved settings, dynamic hardware detection, the complete cache sequence and no-AUX policy. Keep uncertain encodings and chipset power management deferred. Retain the existing shared APM service. The [tuning and IDE plan](plans/M919-010-tuning.md) defines the publication checkpoint, then faster PIO and complete dual-channel/four-device support through shared owners. Physical iteration uses bounded checks and a new flash candidate.
 
 ## On hold
 
@@ -44,6 +42,7 @@ No task is declined.
 
 ## Completed
 
+- **M919-009: Checkpoint the replacement adapters and shared fixes.** Local checkpoint `71837dc` records 512 KB WB operation, ViRGE compatibility with reset corruption, shared ATA/PCI VGA owners, and CD/floppy/HD defaults with supported caches enabled/WB. Targeted validation and native checkpoint review passed. The user confirmed the defaults on hardware. Further tuning belongs to M919-010.
 - **M919-008: Complete hardware adapters and accelerate RAM testing.** Completed RAM geometry, Super I/O, cache qualification and fault reporting, shared CPU recognition, and PCI support while preserving the donor firmware and presentation. Full-coverage RAM testing is faster. The complete software matrix, boundary trace closure, and native review passed. Replacing U23 and U14 restored the reported revision 1.5 board's 512 KB write-through cache. Wider physical compatibility and timing margins remain in M919-005.
 - **M919-002: Port the complete donor firmware through M919 hardware adapters.** Delivered the shared donor POST, RAM test, Setup, CMOS policy, beeps, error handling, presentation, and native DOS 6.22 services. M919 adapters support the reported revision 1.5 baseline. The no-AUX board policy restores keyboard input. Complete first-deliverable validation, trace closure, and final review passed. Wider compatibility remains in M919-003 through M919-007.
 - **M919-001: Prepare the M919 port and shared source.** Prepared root shared code, M919 porting seeds, diagnostics, reference identities, and the complete-POST contract. Presario ROM bytes and all original AMI references remain unchanged.

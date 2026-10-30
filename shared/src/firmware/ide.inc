@@ -538,6 +538,7 @@ ide_multiple_transfer:
 .block:
     call ata_wait_drq
     jc .error
+.block_ready:
     movzx bp, byte [fs:S_COUNT]
     movzx ax, byte [fs:S_DONE]
     sub bp, ax
@@ -553,14 +554,21 @@ ide_multiple_transfer:
     cli
     cmp byte [fs:S_COMMAND], CMD_READ
     jne .write
-    rep insw
+    call ide_pio_read
     jmp .data_done
 .write:
-    rep outsw
+    call ide_pio_write
 .data_done:
     popf
-    call ata_delay
+    mov ax, bp
+    add al, [fs:S_DONE]
+    cmp al, [fs:S_COUNT]
+    jb .next_block
     call ata_wait_complete
+    jmp .checked
+.next_block:
+    call ata_wait_drq           ; Intermediate DRQ requests another block, not completion.
+.checked:
     jc .error
     mov ax, bp
     add [fs:S_DONE], al
@@ -568,7 +576,7 @@ ide_multiple_transfer:
     add [fs:S_LBA], eax
     mov al, [fs:S_DONE]
     cmp al, [fs:S_COUNT]
-    jb .block
+    jb .block_ready
     clc
     jmp .done
 .error:
@@ -577,6 +585,38 @@ ide_multiple_transfer:
     pop es
     pop ds
     popad
+    ret
+
+; CX is a word count in both paths. Identify, packets and ECC remain separate.
+ide_pio_read:
+%ifdef BOARD_ATA_DWORD_IO
+    cmp byte [fs:S_COMMAND],CMD_READ
+    jne .words
+    cmp byte [fs:S_PIO32],1
+    jne .words
+    test cx,1
+    jnz .words
+    shr cx,1
+    rep insd
+    ret
+.words:
+%endif
+    rep insw
+    ret
+ide_pio_write:
+%ifdef BOARD_ATA_DWORD_IO
+    cmp byte [fs:S_COMMAND],CMD_WRITE
+    jne .words
+    cmp byte [fs:S_PIO32],1
+    jne .words
+    test cx,1
+    jnz .words
+    shr cx,1
+    rep outsd
+    ret
+.words:
+%endif
+    rep outsw
     ret
 
 ide_default_settings:

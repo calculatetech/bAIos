@@ -349,25 +349,7 @@ keyboard_runtime_failed:
 default_iret:
     iret
 
-; OEM F000:B343: DOS ATAPI drivers chain hard-disk IRQ14 here.
-; A bare IRET leaves the slave PIC and cascade in service and blocks devices.
-int76:
-    push ax
-    push ds
-    mov ax, 0x0040
-    mov ds, ax
-    mov byte [0x008E], 0xFF
-    mov al, 0x66               ; Specific slave IRQ6 (system IRQ14) EOI.
-    out 0xA0, al
-    mov al, 0x62               ; Specific master cascade EOI.
-    out 0x20, al
-    xor ax, ax
-    mov ds, ax
-    mov ax, 0x9100             ; OEM device-completion notification hook.
-    int 0x15
-    pop ds
-    pop ax
-    iret
+%include "pc/ata-irq.inc"
 
 ; Standard AT numeric-error acknowledgment and application INT02 chain.
 ; The AT F0 latch clears external IRQ13/FERR state.
@@ -1549,36 +1531,6 @@ ata_packet_signature:
     stc
     ret
 
-; POST identification can wait for a cold ATAPI drive without a CPU-speed limit.
-; Runtime ATA transfer waits retain their existing fast owner.
-ata_identify_wait_drq:
-    mov cx, 15000
-    ata_port ATA_STATUS
-    cmp byte [fs:S_IDENTIFY_TRACE], 3
-    je .poll
-    ata_port ATA_CONTROL     ; Packet polling must not acknowledge INTRQ.
-.poll:
-    call ata_read_status
-    test al, 0x80
-    jnz .next
-    test al, 0x21
-    jnz .controller
-    test al, 8
-    jnz .ok
-.next:
-    call kbc_delay_2ms
-    loop .poll
-    mov byte [fs:S_STATUS], ERR_TIMEOUT
-    stc
-    ret
-.controller:
-    mov byte [fs:S_STATUS], ERR_CONTROLLER
-    stc
-    ret
-.ok:
-    clc
-    ret
-
 ; Publish the detected drive, not a code pointer masquerading as its table.
 ; Reload the far pointer after EMM386 relocates the EBDA.
 ; POST owns publication; option ROMs can reuse these vectors afterward.
@@ -1742,7 +1694,6 @@ ata_select_ready:
 ata_no_data_command:
     ata_port ATA_COMMAND
     out dx, al
-    call ata_delay
     jmp ata_wait_complete
 
 %include "pc/chs-geometry.inc"
@@ -1858,14 +1809,13 @@ ata_transfer:
     mov di, bx
     pushf
     cli
-    rep insw
+    call ide_pio_read
     cmp byte [fs:S_COMMAND], CMD_READ_LONG
     jne .read_data_done
     mov cx, 4                 ; OEM A343/A34C: data words, then ECC bytes.
     rep insb
 .read_data_done:
     popf
-    call ata_delay              ; Allow the device to update BSY/DRQ after data.
 %ifdef EMULATOR_TEST
     call ata_test_after_read
 %endif
@@ -1879,7 +1829,7 @@ ata_transfer:
     mov si, bx
     pushf
     cli
-    rep outsw
+    call ide_pio_write
     cmp byte [fs:S_COMMAND], CMD_WRITE_LONG
     jne .write_data_done
     mov cx, 4                 ; OEM A318/A325: ECC uses byte-sized port I/O.
@@ -1914,71 +1864,7 @@ ata_transfer:
     pop ds
     ret
 
-ata_wait_ready:
-    mov ecx, 0x00100000
-    ata_port ATA_STATUS
-.loop:
-    call ata_read_status
-    test al, 0x80
-    jnz .next
-    test al, 0x40
-    jnz .ok
-.next:
-    dec ecx
-    jnz .loop
-    mov byte [fs:S_STATUS], ERR_TIMEOUT
-    stc
-    ret
-.ok:
-    clc
-    ret
-
-ata_wait_complete:
-    mov ecx, 0x00100000
-    ata_port ATA_STATUS
-.loop:
-    call ata_read_status
-    test al, 0x80
-    jnz .next
-    test al, 0x21
-    jnz .controller
-    clc
-    ret
-.next:
-    dec ecx
-    jnz .loop
-    mov byte [fs:S_STATUS], ERR_TIMEOUT
-    stc
-    ret
-.controller:
-    mov byte [fs:S_STATUS], ERR_CONTROLLER
-    stc
-    ret
-
-ata_wait_drq:
-    mov ecx, 0x00100000
-    ata_port ATA_STATUS
-.loop:
-    call ata_read_status
-    test al, 0x80
-    jnz .next
-    test al, 0x21
-    jnz .controller
-    test al, 0x08
-    jnz .ok
-.next:
-    dec ecx
-    jnz .loop
-    mov byte [fs:S_STATUS], ERR_TIMEOUT
-    stc
-    ret
-.controller:
-    mov byte [fs:S_STATUS], ERR_CONTROLLER
-    stc
-    ret
-.ok:
-    clc
-    ret
+%include "pc/ata-status.inc"
 
 ata_read_status:
 %ifdef EMULATOR_TEST
@@ -2232,9 +2118,18 @@ rom_code_end:
 %endif
 %endif
 %endif
+; Keep POST discovery helpers after any fixed VGA compatibility entry.
+%include "pc/ata-identify.inc"
 times CFG_ROM_CHECKSUM_OFFSET-((CFG_ROM_CODE_SEGMENT << 4)-CFG_ROM_BASE)-($-$$) db 0xFF
 checksum_byte: db 0
 reset_vector:
+%ifdef BOARD_RESET_NEAR
+    ; Preserve the CPU's high reset-CS alias until the board clears shadowing.
+    db 0xE9
+    dw (startup-($+2)) & 0xFFFF
+    db 0x90,0x90
+%else
     jmp CFG_ROM_CODE_SEGMENT:startup
+%endif
 bios_date db BIOS_DATE_PREFIX,BIOS_DATE_YEAR
     db 0,CFG_ROM_MODEL_BYTE,0

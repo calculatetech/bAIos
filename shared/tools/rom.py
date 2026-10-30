@@ -47,7 +47,12 @@ def verify(port, image=None):
     if sum(raw) & 255:
         raise ValueError('Incorrect ROM checksum')
     reset = geometry['reset_vector_offset']
-    if raw[reset] != 0xEA or struct.unpack_from('<HH', raw, reset + 1) != (
+    if geometry.get('reset_near', False):
+        vector_ip = geometry['base'] + reset - (geometry['reset_segment'] << 4)
+        target = (vector_ip + 3 + struct.unpack_from('<h', raw, reset + 1)[0]) & 0xFFFF
+        if raw[reset] != 0xE9 or target != geometry['reset_entry_offset']:
+            raise ValueError('Incorrect near reset target')
+    elif raw[reset] != 0xEA or struct.unpack_from('<HH', raw, reset + 1) != (
             geometry['reset_entry_offset'], geometry['reset_segment']):
         raise ValueError('Incorrect reset target')
     entry = (geometry['reset_segment'] << 4) + geometry['reset_entry_offset'] - geometry['base']

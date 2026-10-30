@@ -1,32 +1,40 @@
-; UM8663: independent fixed UART pairs and real controller enable bits.
+; UM8663 register functions from the local UMC reference. No PS/2 owner.
 init_superio:
     pushf
     cli
+    push ax
+    push dx
     mov dx,CFG_PLATFORM_SIO_INDEX
     mov al,0xAA
     out dx,al
-    mov al,0xC2
-    out dx,al
-    inc dx
-    in al,dx
-    and al,0xDF
-    or al,0x81
-    out dx,al
-    dec dx
     mov al,0xC0
     out dx,al
     inc dx
-    mov al,CFG_PLATFORM_SIO_CR0
+    in al,dx
+    and al,0xE0
+    or al,0x0F
     out dx,al
     dec dx
     mov al,0xC1
     out dx,al
     inc dx
-    mov al,CFG_PLATFORM_SIO_CR1
+    in al,dx
+    and al,0x30
+    or al,0x8F
+    out dx,al
+    dec dx
+    mov al,0xC2
+    out dx,al
+    inc dx
+    in al,dx
+    and al,0xDF
+    or al,0x80
     out dx,al
     dec dx
     mov al,0x55
     out dx,al
+    pop dx
+    pop ax
     popf
     ret
 init_at_prerequisites:
@@ -43,7 +51,7 @@ init_at_prerequisites:
     out 0x41,al
     ret
 
-; The donor SMC used enhanced TDR swapping. UM8663 routing is handled here.
+; Drive selection and motor swapping use the standard AT DOR fields.
 board_floppy_unit:
     cmp byte [fs:C_SWAP],0
     je .done
@@ -282,7 +290,7 @@ ide_apply_controller:
     pushad
     cmp word [fs:HW_IDE_BDF],0xFFFF
     jne .pci
-    call umc_legacy_ide_apply
+    mov byte [fs:HW_IDE_USABLE],0
     jmp .done
 .pci:
     movzx eax,word [fs:HW_IDE_BDF]
@@ -303,39 +311,6 @@ ide_apply_controller:
 .done:
     popad
     ret
-umc_legacy_ide_apply:
-    ; The measured AF legacy window uses both channels and conservative PIO0.
-    mov dx,0x108
-    mov al,0x4A
-    out dx,al
-    mov al,0x6C
-    out dx,al
-    mov al,0xB0
-    out dx,al
-    inc dx
-    xor al,al
-    cmp byte [fs:C_IDE],0
-    je .enable
-    mov al,0xC0
-.enable:
-    out dx,al
-    dec dx
-    mov si,umc_legacy_ide_timing
-.register:
-    cs lodsb
-    cmp al,0xFF
-    je .lock
-    out dx,al
-    inc dx
-    cs lodsb
-    out dx,al
-    dec dx
-    jmp .register
-.lock:
-    mov al,0x34
-    out dx,al
-    ret
-umc_legacy_ide_timing db 0xB2,0x44,0xB3,0x44,0xB4,0xCC,0xB5,0xCC,0xB6,0xCC,0xB7,0xCC,0xB8,0xCC,0xFF
 floppy_controller_mode:
     ; Native AT controller, with software drive swapping in generic dispatch.
     ; Reestablish wake/init even after retained BIOS or power management state.
@@ -349,7 +324,7 @@ floppy_controller_mode:
     inc dx
     in al,dx
     and al,0xDF
-    or al,0x81
+    or al,0x80
     out dx,al
     dec dx
     mov al,0x55

@@ -3,109 +3,119 @@ chipset_ui_parameters:
     call chipset_ui_enum_parameters
     call chipset_ui_choice_order
     mov [fs:U_CHIP_VALUE],al
-    cmp byte [fs:U_CHIP_SCREEN],1
-    jne .done
-    cmp byte [fs:U_FIELD],2
-    jne .done
-    mov si,U_CHIP
-    call chipset_fast_available
-    mov si,chip_mode_choices
-    jc .normal_choices
-    inc al
-    and al,3
-    mov [fs:U_CHIP_VALUE],al
-    jmp .done
-.normal_choices:
-    add si,2
-    mov cx,3
-.done:
     ret
 chipset_ui_editable:
-    cmp byte [fs:U_CHIP_SCREEN],1
-    jne .good
-    cmp cl,3
-    jb .good
-    cmp cl,5
-    je .good
-    cmp cl,6
-    ja .good
-    push ax
-    mov al,[fs:U_CHIP+8]
-    and al,0xC0
-    cmp al,0x80
-    pop ax
-    jne .bad
-    cmp cl,6
-    jne .good
-    test byte [fs:U_CHIP+5],1
-    jz .bad
-.good:
     clc
-    ret
-.bad:
-    stc
     ret
 chipset_ui_commit:
     pushad
-    mov cl,[fs:U_FIELD]
-    call chipset_ui_editable
-    jc .done
-    cmp byte [fs:U_CHIP_SCREEN],1
-    jne .commit
-    cmp cl,2
-    jne .commit
-    mov si,U_CHIP
-    call chipset_fast_available
-    jc .commit
-    dec byte [fs:U_CHIP_VALUE]
-    and byte [fs:U_CHIP_VALUE],3
-.commit:
     call chipset_ui_descriptor
     mov si,[cs:si+7]
     mov al,[fs:U_CHIP_VALUE]
     call chipset_ui_choice_order
     mov [fs:U_CHIP_VALUE],al
     call chipset_ui_enum_commit
-    cmp byte [fs:U_CHIP_SCREEN],1
-    jne .cache
-    cmp byte [fs:U_FIELD],2
-    jbe .profile
-    cmp byte [fs:U_FIELD],5
-    je .profile
-    cmp byte [fs:U_FIELD],6
-    jbe .manual
-    jmp .done
-.cache:
-    cmp byte [fs:U_CHIP_SCREEN],2
-    jne .done
-    cmp byte [fs:U_FIELD],3
-    je .manual
-    cmp byte [fs:U_FIELD],1
-    je .profile
-    cmp byte [fs:U_FIELD],2
-    jne .done
-.profile:
-    mov si,U_CHIP
-    call chipset_profile_apply
-    jmp .done
-.manual:
-    and byte [fs:U_CHIP+8],0x3F
-    or byte [fs:U_CHIP+8],0x80
-.done:
     popad
     ret
-
-; Order choices without changing the saved hardware encodings.
 chipset_ui_choice_order:
-    cmp si,chip_enable_values
+    cmp si,chip_l2_values
     jne .waits
     xor al,1
-    mov si,chip_enable_choices
+    mov si,chip_enable_values
     ret
 .waits:
     cmp si,chip_wait_values
-    jne .done
+    jne .type
     xor al,3
     mov si,chip_wait_choices
+    ret
+.type:
+    cmp si,chip_type_values
+    jne .policy
+    xor al,1
+    mov si,chip_type_choices
+    ret
+.policy:
+    cmp si,chip_policy_values
+    jne .burst
+    xor al,1
+    mov si,chip_policy_choices
+    ret
+.burst:
+    cmp si,chip_burst_values
+    jne .edo
+    xor al,3
+    mov si,chip_burst_choices
+    ret
+.edo:
+    cmp si,chip_edo_burst_values
+    jne .reverse_three
+    xor al,1
+    mov si,chip_edo_burst_choices
+    ret
+.reverse_three:
+    cmp si,chip_keep_switch_values
+    jne .ldev
+    mov si,chip_keep_switch_choices
+    jmp .three
+.ldev:
+    cmp si,chip_ldev_values
+    jne .isa
+    mov si,chip_ldev_choices
+    jmp .three
+.isa:
+    cmp si,chip_isa_values
+    jne .lock
+    mov si,chip_isa_choices
+.three:
+    neg al
+    add al,2
+    ret
+.lock:
+    cmp si,chip_lock_values
+    jne .devsel
+    mov si,chip_lock_choices
+    jmp .swap_first
+.devsel:
+    cmp si,chip_devsel_values
+    jne .keyboard
+    mov si,chip_devsel_choices
+    jmp .swap_first
+.keyboard:
+    cmp si,chip_kbc_values
+    jne .pci_clock
+    mov si,chip_kbc_choices
+.swap_first:
+    cmp al,2
+    jae .done
+    xor al,1
+    ret
+.pci_clock:
+    cmp si,chip_pci_clock_values
+    jne .recovery
+    mov si,chip_pci_clock_choices
+    xor al,3
+    ret
+.recovery:
+    cmp si,chip_recovery_values
+    jne .posted
+    mov si,chip_recovery_choices
+    xor al,3
+.posted:
+    cmp si,chip_posted_values
+    jne .irq
+    mov si,chip_posted_choices
+    xor al,1
+    ret
+.irq:
+    cmp si,chip_irq_values
+    jne .done
+    mov si,chip_irq_choices
+    cmp al,0
+    je .swap_irq
+    cmp al,10
+    jne .done
+.swap_irq:
+    xor al,10
 .done:
     ret

@@ -1,6 +1,158 @@
 # M919 register evidence
 
-All numbers are hexadecimal unless a unit is shown. This ledger covers the current M919 adapters. An AMI table value proves a write, not a correct register meaning. Physical DOS boot, floppy operation, HIMEM/EMM386 loading and keyboard input are confirmed on the reported baseline. Those functional results do not independently establish each register meaning or timing margin.
+All numbers are hexadecimal unless a unit is shown. This ledger includes historical M919 adapters and the expanded reference study below. Earlier adapter descriptions are retained evidence, not a description of the replacement cache implementation. An AMI table value proves a write, not a correct register meaning. Earlier physical DOS boot, floppy operation, HIMEM/EMM386 loading and keyboard input do not establish the replacement implementation's cache stability.
+
+## Tuning omissions in candidate 0.5.3
+
+This report compares the current source with the four original M919 AMI releases and the retained AMI, Award and Phoenix research. It covers tuning and device configuration. It does not reproduce every vendor password, keyboard or POST presentation choice.
+
+On 2026-10-30, the user confirmed that host-to-PCI posting, burst writes and the post-write buffer are present. The user accepts the measured PCI performance as consistent with other users' results. This is the physical result for the reported configuration. It does not qualify every tuning combination. The 0.5.3 host-header change produced no reported performance gain. This report makes no firmware change.
+
+The current menus expose 45 chipset controls. Shared Setup separately supplies Fast Boot, boot order, IDE block mode, translation and EDD controls. M919 also exposes 32-bit ATA transfers. The items below remain absent, automatic, incomplete or excluded. A missing control is not necessarily unsafe or unsupported.
+
+### Features with implementation work remaining
+
+| Feature | Current behavior | Reason and evidence |
+| --- | --- | --- |
+| Faster IDE PIO modes | The controller uses PIO0 timing for all four positions. There is no Auto/PIO0 through PIO4 selector. Block mode and 32-bit transfers are separate, implemented features. | Original AMI option55 offers Auto and Modes0 through4. The current `board_pci_device` writes the fixed BF timing tuple `FF30C900` and `BBBB6666`. Controller timing selection and drive-mode negotiation are unfinished. This is a real performance feature left out, not an unknown register family. |
+| Game-port enable | No Setup switch owns this function. Super I/O writes preserve its existing upper C0 bits. | Original AMI option53 is Game Port, CMOS56 mask80. The pinned manual identifies UM8663 C0.20 as the enable. There is no completed saved-policy owner. It is not established permanently disabled. |
+| Parallel-port DMA channel | SPP, EPP and ECP mode selection exists. ECP DMA-channel selection does not. The current owner preserves Super I/O C3. | Original option52 offers ECP DMA channels1 and3. The adapter does not program this selector. An ECP mode label alone does not establish functioning ECP DMA. |
+| Complete parity configuration | Memory Parity exists, including parity initialization. The implementation does not reproduce all coordinated AMI control writes. | Original normal code coordinates HB5A.10, HB05.01 and inverse IBC41.40. The current parity owner leaves the last two fields unowned. This is an incomplete implementation, not a deliberately omitted menu item. The reported non-parity configuration does not qualify it. |
+| Four simultaneous IDE device records | All four physical positions are probed. The shared API retains only the first two detected ATA/ATAPI records. | The current donor state and public disk services have two logical records. Original secondary-drive count and separate third/fourth drive policies are not reproduced. Supporting four devices requires state and service work, not another channel-enable bit. |
+| System BIOS cacheability | F-segment shadowing exists. A System BIOS Cacheable switch does not. | Award binds HB55.20 to this feature. Older AMI UD-486-GRN uses HB55.30 for Main BIOS Cacheable. The manual also associates HB58/HB59 with the cacheable extent. These observations are not a completed, qualified implementation for the current shadow owner. This remains unfinished work rather than a finding that the feature has no value. |
+| Regional ROM cacheability | C8000, D0000, D8000 and E0000 cacheability switches do not exist. Six optional C8000 through DFFFF shadow controls do exist. | MGV994 descriptors bind these cacheability controls to HB55 masks02,04,08,10. The full saved-value path, electrical ranges and silicon applicability remain unclosed. Shadowing and cacheability are different functions. Video BIOS Cacheable is already implemented. |
+
+### Vendor selectors replaced by automatic or fixed policy
+
+| Vendor control | Current replacement | Why there is no matching switch |
+| --- | --- | --- |
+| Auto Configuration Function | Individual DRAM waits, cache burst, PCI ratio, ISA divider and keyboard-clock controls. | The original automatic table combines measured CPU classes with timing and clock fields. The user reports its unwanted PCI20 MHz result at a40 MHz bus. Importing that table would defeat the explicit PCI-ratio owner. The current firmware does not claim automatic optimal timing. |
+| L1 Cache Mode, WT/WB | Internal CPU Cache remains selectable. CPU recognition supplies the qualified AMD modelE/modelF host protocol choice. | A generic WT/WB switch needs coordinated CPU and chipset support. The original AMI path has CPU-descriptor conditions. The port does not offer a switch that only changes HB51.02 or assumes that enabling CR0 cache selects the requested write policy. Wider selectable L1 policy remains unfinished. |
+| Alternate tag bit / dirty-bit configuration | The cache engine owns tag format, measured geometry and the supported cacheable extent. | Award labels include Alt Bit in Tag SRAM and Ext-Cache with Dirty Bit. Exposing their raw HB51.01 selector independently would change the cache engine's address/tag contract. The current WT/WB sequence is preserved. |
+| Cache size and bank population | Runtime qualification establishes the installed SRAM organization. | These are detected hardware properties. A bench configuration is not a permanent board value. |
+| Video C0000 shadow disable | The selected VGA provider determines the required shadow extent. | Its retained ROM contents must survive later ROM discovery and provider-decode changes. There is no independent off switch for a shadow required by the active provider. |
+| Explicit disable for optional ROM shadows | The six extra regions offer Auto/Enabled. | Auto retains copies required by detected providers. There is no override that forbids a provider's automatic shadow. Enabled adds a copy. |
+| VGA residence on PCI or VL bus | The selected provider automatically controls the normal VGA bus tuple. | The actual PCI provider selects HB51.04, IBC50.80 and IBC56.60. This policy was added in0.5.2 and improved physical performance. It is not a missing buffer switch. |
+| Host PCI cache-line size and latency | The qualified UM8881 host receives cache-line04 and latency40 automatically. | These are normal header policy, not exposed tuning sliders. They were added in0.5.3. Endpoint bus mastering is not enabled indiscriminately. |
+| Programming Auto/Manual and IDE-card slot/location selectors | Super I/O policy and positive PCI IDE discovery select the usable controller. | Original options4C and56 through58 offer manual policy, slot and interrupt-pin overrides. The port does not reproduce those overrides. Its current IDE path requires a supported, resource-qualified compatibility controller. |
+| Secondary IDE enable and drive-count overrides | The qualified controller enables both legacy channels and probes every physical position. | Original options59 and5F allow manual secondary-channel/count policy. The current top-level controller enable and detected records replace part of this behavior. Independent channel disable and four-record policy remain absent. |
+| NCR SCSI slot selector | Generic option-ROM discovery can run a supplied adapter ROM. | Original option62 selects the slot for the embedded NCR ROM. bAIos does not bundle that vendor ROM or reproduce its slot selector. |
+
+### Deferred or insufficiently established controls
+
+| Feature or source label | Disposition | Reason |
+| --- | --- | --- |
+| Chipset power management | Deferred by user direction. | Doze, standby, suspend, green timers, video power control, SMI/SMRAM and activity/wake monitors need a complete hardware power-management owner. Shared APM remains present. APM availability does not claim chipset suspend support. |
+| Keyboard emulation | Not imported from Award's IBC57.08 descriptor. | The source label does not establish a compatible implementation for this board. No required emulation runtime is implemented. Ordinary keyboard handling and keyboard-clock selection already exist. |
+| Memory hole | No user-selectable hole. Startup clears the documented hole-enable bit. | The pinned manual describes HB56/HB57 fields. The current RAM map and public memory services do not implement a reserved-hole policy and its dependent cache handling. This was not needed by the reported hardware. |
+| Burst Copy-Back auxiliary bit | HB53.40 DRAM Burst Writes is exposed. The older Award companion HB60.10 is not added. | Eight Award cores associate the two fields through visible and hidden descriptors. The full saved-policy path is not closed, and one core gives them different defaults. The evidence does not establish a mandatory paired write on M919. |
+| PCI Master Retry Timer | No selector for the older Phoenix Disabled/16/32/64 PCICLK choices. | The retained source binds the label at EE71:142A to IBC41.18 through selector F000:4CDB. Numeric encoding and applicability to this UM8886BF remain unqualified. |
+| DMA Page Register Alien | No selector for this exact older Phoenix label. | The source binds EE71:1412 through selector F000:4CCB to IBC41.80. The electrical meaning and M919 applicability remain unresolved. |
+| Older Phoenix IRQ-trigger labels | Excluded pending chipset/revision qualification. | That source associates host fields with meanings that conflict with the later DRAM register map. Its bridge-address interpreter was checked, so this cannot be dismissed as a swapped-address parser error. The names are source-specific evidence, not established M919 controls. |
+| Additional VLB timing names | No guessed level/edge or retry control added. | The four original AMI Setup modules have no separate VLB tuning group. The recovered Edge/Level option belongs to PCI IDE IRQ triggering and is implemented. Local Device Sampling, DRAM Resource Lock and Device Number Mapping are already exposed. Other source labels still need a qualified hardware binding. |
+| CAS-before-RAS or additional refresh modes | No additional selector. Normal/Slow refresh is implemented. | The retained evidence does not establish another usable selector and encoding for this board. A feature name from another chipset is not a register binding. |
+| Additional Cyrix tuning | No generic collection of CPU speed switches. | The port implements positively guarded Cyrix Linear Burst and AMI load/store tuning. No further source-qualified CPU/chipset sequence is established by the retained tuning inventory. This does not mean that Cyrix has no other features. |
+| IDE FIFO and bus-master DMA | Disabled in the current BF controller path. | The pinned manual describes a60-byte FIFO with direction, drain and completion management. It requires a specialized transfer/IRQ owner. BF bus mastering also lacks scatter/gather and has alignment constraints. Adding a flag to the PIO driver would not implement these transfers. |
+| PCI IRQ6 | Not offered for PCI routing, even though an original Setup descriptor names it. | The original board routing mask DEB8 excludes IRQ6. The current routing owner retains that positive mask and also reserves active ISA-device interrupts. A menu descriptor alone does not establish that this board can route a PCI link there. |
+| PS/2 mouse and AUX initialization | Intentionally unavailable. | The user reports no connector and confirmed that AUX initialization locks this board. Serial mouse operation remains available. |
+| Other-board unknown bits and transients | No raw register editor or guessed performance switches. | Daewoo host76/77/79, conflicting Phoenix host61 meanings, IBC A3.20 pulses and unresolved low-level fields lack a complete board-qualified contract. Their observed writes remain research evidence. |
+
+### Follow-up priority and evidence limits
+
+Faster IDE PIO timing, game-port selection and ECP DMA selection are concrete features to finish. Complete parity configuration is a separate correctness gap. System and regional ROM caching need their remaining range and shadow interactions closed. Power management remains deferred. The user accepts PCI throughput, so the current results do not justify further speculative PCI performance changes.
+
+The current source owners are `chipset-data.inc`, `timing.inc`, `chipset.inc`, `cyrix.inc`, `rom-tuning.inc`, `pci.inc`, `pci-tuning.inc`, `sio-core.inc`, `parity.inc` and `ata-core.inc` under `src/hardware/`. Shared IDE policy remains in `shared/src/firmware/ide.inc`. Generated vendor decodes remain private under the research directory linked below.
+
+Outside throughput tuning, the original standalone typematic-rate, memory-test tick sound, DEL-message display, extended BIOS RAM-area placement, numeric-processor-test and password-policy switches lack independent equivalents. Shared Fast Boot covers the RAM-test policy. Num Lock, boot order, error-halt policy and floppy swapping already have shared controls. Award's Monitor VL-Bus Card is a power-management activity monitor, not an additional VLB timing control.
+
+This report checks source and retained research. It runs no new firmware tests, native correctness review or hardware measurements. It does not claim complete semantic resolution of every decoded ROM byte. Older sections below retain historical findings. The current report supersedes their statements that implemented controls such as PCI lock method, Cyrix linear burst or the VGA bus tuple are still entirely unbound.
+
+## Expanded reference study and upstream proposals
+
+The 2026-10-29 collection contains 29 distinct physical ROM images. Full raw-byte listings cover each image. Compressed Award, AMI and UMC-era Phoenix modules are extracted before their code and Setup resources are interpreted. The supplied modern coreboot image is a separate source lineage. Shared Award code does not count as independent hardware confirmation.
+
+The generated [corpus inventory](../../build/research/other-roms/expanded-inventory.json) records each source size, SHA-256 and compression signature. The retained [research directory](../../build/research/expanded-roms/) contains extraction scripts, decoded components, full linear listings, Setup bindings, static paths and source excerpts. A linear listing covers bytes. It does not establish that data is executable or that every indirect call is resolved. The [upstream annotation proposal](../../build/research/expanded-roms/upstream-proposal.diff) applies cleanly to the pinned manual. It is not applied or submitted.
+
+The [pinned reverse-engineered manual](../../../reference/chipsets/umc/um888x/UMC_chipset_technical_reference_manual_RE.md) has SHA-256 `cda96be6a3848a84a7bd843e7971d18e39c92495ea1df0ecf66cc9e8a28c2e12`. It remains unchanged. Findings below are proposed annotations for upstream review. A firmware label and a verified register write establish software intent. Electrical behavior and silicon coverage require separate evidence.
+
+### Coverage and reproducibility
+
+- Award: 21 distinct main cores contain 3,482 decoded Setup records, including hidden rows, full record bytes, CMOS masks, defaults and choice pointers. Fourteen main cores are expanded from LH5 members. Seven are uncompressed. Every extracted member passes its LHA header checksum, declared length and CRC16. Shared option-ROM payloads are identified by hash. See the [extraction manifest](../../build/research/expanded-roms/award/manifest.json), [Setup bindings](../../build/research/expanded-roms/award-legacy/register-bindings.json) and [interpreter evidence](../../build/research/expanded-roms/award-legacy/findings.md).
+- AMI: three reference images have decoded POST, runtime, Setup and embedded option-ROM components. The images' native decompressors run with bounded input, output and instruction counts. The older `UD 486 GRN.rom` uses a different native entry. Special directory entry81 points to upper-bank Setup resources in the two 10/10/94 images. See the [native manifest](../../build/research/expanded-roms/ami/manifest.json) and [normal register bindings](../../build/research/expanded-roms/ami/register-bindings.json).
+- Phoenix: all four inputs have complete raw listings and native expansion of 12 compressed modules in total, including Setup and the resident prefixes. ROM reads and shadow writes remain separate during expansion. The merged images confirm that the chosen cache engine and named late prehandlers remain byte-identical. See the [native expansion manifest](../../build/research/expanded-roms/phoenix/expanded-manifest.json), [runtime byte binding](../../build/research/expanded-roms/phoenix/merged-shadow-binding.json) and [late POST operation paths](../../build/research/expanded-roms/phoenix/late-normal-operations.json).
+- Modern image: `BIOS.bin` contains coreboot CBFS. Its own master header supplies file alignment. Bounded CBFS extraction recovers romstage, ramstage, postcar, payload, bootblock and ESCD. LZMA expands ramstage and the SeaBIOS payload. The [manifest](../../build/research/expanded-roms/modern/manifest.json) distinguishes stored and expanded bytes. Mixed 16/32-bit firmware retains separate decoding views.
+
+The Daewoo `41054505.ROM` and `4105G.ROM` access host offsets76/77/79. This conflicts with the manual's unimplemented63-FF range. Their chipset identity remains unqualified, so their settings are excluded from the common UM8881 recipe. The accompanying COVER/R9FULCOM documents describe a Rhino9 Pentium compatibility test. They are not UMC register documentation.
+
+The older Phoenix4v-04 source also needs a register-meaning qualification. Its actual Setup references call HB61 fields IRQ trigger controls. Native execution of its original table interpreter confirms host accesses at800080xx and IBC accesses at800090xx. This is not a swapped-bridge decoding error. The IRQ labels conflict with the later manual's DRAM definitions. Keep these meanings specific to that source ROM until chipset and revision applicability is established. They are not included in the upstream naming proposal.
+
+Run retained scripts with `python -B`. Generated disassemblies and decoded vendor payloads stay in private research output. Upstream proposals use source identities, small instruction excerpts, register mappings and reproducible paths. No upstream submission is authorized by this research record.
+
+### HB5A normal state and turbo controls
+
+The chosen `8810AIO.32J` Phoenix reference initializes HB5A to04. Its normal cold POST record at F000:52BC calls prehandler2960 before function07CB. That prehandler unconditionally applies `HB5A |= 09` at29D1. The final value is0D, not the early table's04. The exact instruction bytes are `B0 5A E8 46 73 80 CC 09 E8 43 73`. The normal prehandler remains outside the expanded resident prefix.
+
+The other Phoenix4v-04 image initializes00 and applies the same unconditional09 overlay at58A5. Therefore0D is a chosen-reference final state, not a universal fixed value for every board. Earlier bAIos comparison stopped at the initial table and omitted this final overlay. The replacement adapter now retains the chosen reference's0D during cold initialization and timing reapplication. Physical Quake stability remains unconfirmed.
+
+`UD 486 GRN.rom` supplies named AMI bindings:
+
+| Field | Setup meaning | Native evidence | Proposed manual annotation |
+| --- | --- | --- | --- |
+| HB5A.04 | DeTurbo Speed | Option33, descriptor022F, CMOS43.08, title atSetup0A0E, normal22F2-230A | Firmware selects0 for1/6 and1 for1/3. This is a deturbo ratio selector in this image. |
+| HB5A.01 | Turbo Switch Function | Option12, descriptor013A, CMOS2D.01, normal2318-232F | Firmware enables or disables the turbo-switch function. Board pin behavior is not measured. |
+| HB5A.20 | PCI Parity Check | Option31, descriptor0223, CMOS43.02, normal1D67-1D7F | Firmware labels this PCI parity checking. This is separate from HB5A.10 DRAM parity. |
+
+The old AMI option reader uses defaults when CMOS is invalid. Executing that reader establishes default turbo-switch enabled, deturbo1/3, PCI parity enabled and DRAM parity disabled. Thus the low nibble0D has independent AMI corroboration. This does not name HB5A.08 electrically or authorize enabling PCI parity on every board.
+
+Source `UD 486 GRN.rom` SHA-256 is `824b16755b7616c149e71147088bbae33f01fd0b0e97ce7b749bf36b7f023ea3`. Source `8810AIO.32J` SHA-256 is `7ddabc826f82e295086fe04e2f462145f20d8c51911864a77c2c74aaf079499e`.
+
+### HB62 device mapping and linear burst
+
+Decoded `03C8881I.ROM` joins normal POST consumers to actual Setup strings:
+
+| Field | Option / descriptor | CMOS | Setup label and choices |
+| --- | --- | --- | --- |
+| HB62.01 | 31 / 0258 | 44.20 | Device Number Mapping Option, Disabled/Enabled. Title atSetup0A64. |
+| HB62.02 | 32 / 0260 | 44.04 | Linear Burst for Cx5x86, Disabled/Enabled. Title atSetup0A81. |
+
+The normal code at2020-2054 applies these fields with the existing revision and CPU guards. This improves the manual's description of62.01 as an early revision-E write. The label alone does not establish the exact device-number translation. Keep62.01 separate from cache timing. Do not enable62.02 on an AMD CPU as a generic speed setting.
+
+The newer `am8887.bin` sets62.01 only on its valid-CMOS, host-revision04 branch. It separately sets61.04 on a late revision04 path. The late61.04 operation is independent of the EDO type and read-speed fields. Neither observation supplies a universal board setting or a name for61.04. A valid-CMOS guard is firmware policy, not evidence that a checksum controls the hardware function.
+
+Source `03C8881I.ROM` SHA-256 is `32ba40b699da1e4b436c202b02e6c9b21ceb87746b648ab0fd55ef8febe33d33`. Source `am8887.bin` SHA-256 is `85ee46905f272eb4f12ed81a6058db98edf0ce03c1d8f889dd01e384a1ae6a08`.
+
+### Additional shadow-region cacheability labels
+
+MGV994's visible Setup descriptors attach four previously unnamed HB55 fields to ROM regions:
+
+| Setup row | HB55 mask | Label | CMOS |
+| --- | --- | --- | --- |
+| 62EC | 10 | E0000H BIOS Cacheable | 38.80 |
+| 6305 | 08 | D8000H BIOS Cacheable | 38.40 |
+| 631E | 04 | D0000H BIOS Cacheable | 38.20 |
+| 6337 | 02 | C8000H BIOS Cacheable | 38.10 |
+
+Each row has hardware selector8055, flags2002 and default0. Existing system and video controls remain55.20 and55.01. The common early interpreter writes these defaults. Complete saved-value application for2000-class rows is not closed. Proposed upstream text must state that these are early Award label associations with unmeasured electrical range and silicon applicability.
+
+Source `MGV994.BIN` SHA-256 is `2c53ebb7cfdd6ad3c6b71cdc0ec77d860805ee96ecb35fcaa79dac0de245e17c`.
+
+### Burst copy-back uses hidden descriptors
+
+Eight older Award cores pair a visible HB60.10 descriptor with a hidden HB53.40 descriptor. Both select CMOS38.02 and display Burst Copy-Back Option. The generic interpreter establishes each register selector and hardware mask. In1433 the visible row is56E2 and its hidden partner is56FB. Full record bytes are in the Award bindings.
+
+This is a software association for the manual's unnamed60.10. It does not prove that60.10 electrically enables burst copy-back. Saved-value application of the entire chipset group is not fully closed. In `ch-880crev1.bin`, the visible default sets60.10 while the hidden default clears53.40. Newer cores expose53.40 directly. Therefore these records do not justify a mandatory paired write or a new M919 tuning option.
+
+### Other final-state and parity observations
+
+The chosen Phoenix POST9C prehandler unconditionally setsHB51.04. A second Phoenix image makes that operation conditional. All four original M919 ROMs initialize that bit clear, and their audited normal owners preserve it. The existing PCI/VLB write-path interpretation remains tentative. A register value from another board is not sufficient to change M919's bus policy.
+
+Phoenix POST66 derives IBC50 from the actual HB54 shadow-region map. It maps E,C0,C8,CC,D0,D4,D8,DC to IBC bits0,7,6,5,4,3,2,1. It also setsIBC51.01. Final POSTC0 updates detected RAM-size bits while preserving that low bit. This establishes a firmware shadow-map record. It does not establish a hardware coherence prerequisite. The meaning of the adjacent IBC A3.20 pulse remains unresolved.
+
+Original M919 normal parity code coordinates HB5A.10, HB05.01 and inverseIBC41.40, in that order. The current replacement parity owner leaves the last two fields unowned. This is a separate demonstrated policy gap. It is not yet a demonstrated cause of L2-sensitive data corruption. The original M919 CPU table independently corroborates the replacement's AMD modelE/modelF HB51.02 choices. Its cache routines are excluded from the replacement implementation.
+
+Decoded AMI Setup also names HB60.08 as the LDEV sampling point. The traced choices are0 for2T2 and1 for1T2. This is another proposed annotation for an unnamed manual field. The exact option, CMOS mapping, source instructions and Setup strings are retained in the AMI register bindings. The physical signal timing remains unmeasured.
+
+The remaining unknowns include HB5D.20's electrical purpose, HB61.04, IBC41.02, complete auto-configuration and saved-value paths, unqualified Daewoo chipset identity, and physical timing margins. No generated listing, normal-state correction or emulator model establishes stable Quake operation.
 
 The reported chips are UM8881F, UM8886BF, and UM8663BF. The user's 09/15/1998 AMI host-bridge dump reports PCI revision 04. The southbridge revision remains unmeasured. The stock M919 emulator uses HB4, UM8886AF, and UM8663BF. Follow the user's direction to investigate differences only when an observed problem requires it.
 
@@ -169,12 +321,18 @@ These accesses are architecture or endpoint operations, not additional UMC regis
 
 The user confirms no PS/2 connector, only serial mouse support. SB40=01 and SB45=04 leave the manual's reported PS/2 pin-selection bits clear. The adapter does not enable guessed pin bits. Its configurable AUX capability is false, so late mouse initialization and INT15/C2 cannot issue unsupported operations. The user confirmed that this restored keyboard input. The precise controller-level failure mechanism remains unmeasured; IRQ counts did not identify physical keystrokes.
 
-Measure physical bank organization and aliasing, HB/SB revision IDs, ISA/PCI clocks and jumpers, ROM decode/shadow behavior, flash-write protection, graphics identity, and slot interrupt wiring. Retain the accepted ROM until the cache candidate passes its checks. The reported SRAM now passes bAIos qualification at 512 KB WT after U23 and U14 replacement. Post-repair independent cache-speed and DMA measurements remain unobserved.
+Measure physical bank organization and aliasing, HB/SB revision IDs, ISA/PCI clocks and jumpers, ROM decode/shadow behavior, flash-write protection, graphics identity, and slot interrupt wiring. Retain the accepted ROM until the cache candidate passes its checks. The user now reports a selected 512 KB SRAM population passing Memtest and running Quake with WB enabled. Broader timing margins and DMA measurements remain unobserved.
 
-No upstream correction is established. Candidate areas for a reproducer are AF lock ordering, the HB5B status/write discrepancy, missing emulator DRAM mapping, and inferred SB57 protection. Determine whether each difference is a manual omission, an emulator limit, or an AMI defect before proposing a change. Public submission requires a user request.
+The earlier measurements did not establish an upstream correction. The expanded study above now provides ROM-derived annotation proposals with explicit evidence limits. Earlier reproducer candidates include AF lock ordering, the HB5B status/write discrepancy, missing emulator DRAM mapping, and inferred SB57 protection. Public submission requires a user request.
 
 ## Physical cache diagnosis
 
-The reported socket labels put Bank 0 (U20-U23) at the outside edge, Bank 1 at U11-U14, and TAG at U19. A 55AA55AA read became 57AA55AA while uncached RAM retained 55AA55AA. The differing byte is byte 3, D24-D31. Replacing U23 moved the first reported failure from Bank 0 byte 3 to Bank 1 byte 3 without changing Bank 1. Replacing U14 then restored 512 KB WT qualification. This confirms the two byte-3 sockets; other byte/socket ordering remains unknown. Tag, timing and socket faults can also cause data mismatches, so localization remains a suspect lane rather than an unconditional chip verdict.
+The reported socket labels put Bank 0 (U20-U23) at the outside edge, Bank 1 at U11-U14, and TAG at U19. A 55AA55AA read became 57AA55AA while uncached RAM retained 55AA55AA. The differing byte is byte 3, D24-D31. Replacing U23 moved the first reported failure from Bank 0 byte 3 to Bank 1 byte 3 without changing Bank 1. Replacing U14 then restored 512 KB WT qualification. The later physical tests establish the complete Bank 0 map: U23=D24-D31, U22=D16-D23, U21=D8-D15 and U20=D0-D7. The remaining Bank 1 byte lanes are unverified. Tag, timing and socket faults can also cause data mismatches, so localization remains a suspect lane rather than an unconditional chip verdict.
 
 The user's 09/15/1998 AMI snapshots show HB50/HB51=3C/F5 in manual mode and 0C/55 in auto mode. Both retain HB5A=0D and HB61=20. Those DOS snapshots do not by themselves prove the earlier qualification branch or effective external cache. CTCM's subsequent 8-KiB L1/16-KiB L2 classification and its dirty-tag detectability notice do not establish a working 512-KiB external cache. No runtime timing changes were made from these snapshots.
+
+## Selected SRAM and ViRGE result
+
+The user rejected twelve SRAM chips before selecting a full 512 KB population that passes Memtest and runs Quake in WB. Some rejected parts pass a TL866II or work in other boards. Two UMC parts were identified as faulty during random-sequence testing. Do not classify all rejected parts as dead, or either vendor as universally incompatible. The [Winbond W24512AK-15 datasheet](https://www.syntax.com.tw/upload/pdf/IC-W24512AK-15.pdf) and [UMC UM61512AK-15 datasheet](https://images.100y.com.tw/pdf_file/37-UMC-UM61512.pdf) have identical pin/control interfaces but different write-data and turnaround limits. Winbond requires 9 ns data-valid-to-write-end versus UMC's 7 ns, and permits output drive immediately after write end versus UMC's 5 ns minimum delay. No socket waveform or exact final die population was recorded, so these specifications do not prove the physical cause.
+
+The user confirms S3 ViRGE compatibility. Reset screen corruption remains unresolved. Shared PCI aperture sizing reserves the full usable VGA ROM window, not just its legacy header. UMC shadow controls remain in the adapter. Disk IRQ14 acknowledgment is shared, as is the corrected delayed-completion/DRQ polling used by the composed firmware and Presario.
