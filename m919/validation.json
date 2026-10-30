@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "hold": "Indefinite hardware hold: defective motherboard. Do not rebuild or retest until explicitly resumed.",
+  "hold": "Selected 512 KB WB hardware passes Memtest and Quake. Remaining features and wider compatibility are deferred; routine updates require explicit inclusion.",
   "resources": [
     "reference",
     "tools/86box/source",
@@ -14,6 +14,7 @@
       "id": "build",
       "argv": [
         "powershell",
+        "-NoProfile",
         "-File",
         "m919/tools/build.ps1"
       ]
@@ -21,579 +22,60 @@
   ],
   "checks": [
     {
-      "id": "01-build",
+      "id": "shared-defaults",
       "argv": [
         "python",
-        "m919/tools/test-build.py"
-      ]
-    },
-    {
-      "id": "boot-source",
-      "argv": [
-        "python",
-        "m919/tools/test-boot-source.py",
-        "--image",
+        "-B",
+        "shared/tools/checkpoint_proof.py",
         "m919/build/baios-m919.bin"
       ]
     },
     {
-      "id": "cache-a20-live",
+      "id": "ata-completion",
       "argv": [
         "python",
-        "m919/tools/cache_proof.py",
-        "cache-a20-live"
+        "-B",
+        "shared/tools/ata_completion_proof.py",
+        "m919/build/baios-m919.bin"
       ]
     },
     {
-      "id": "cache-ami-diagnostic-live",
+      "id": "manual-adapters",
       "argv": [
         "python",
-        "m919/tools/cache_proof.py",
-        "cache-ami-diagnostic-live"
+        "-B",
+        "m919/tools/manual_proof.py"
       ]
     },
     {
-      "id": "cache-early-live",
+      "id": "reset-video",
       "argv": [
         "python",
-        "m919/tools/cache_proof.py",
-        "cache-early-live"
+        "-B",
+        "m919/tools/test-vga-reset.py",
+        "m919/build/baios-m919.bin"
       ]
     },
     {
-      "id": "cache-enable-live",
+      "id": "rom-integrity",
       "argv": [
         "python",
-        "m919/tools/cache_proof.py",
-        "cache-enable-live"
-      ]
-    },
-    {
-      "id": "cache-failure-report-live",
-      "argv": [
-        "python",
-        "m919/tools/cache_proof.py",
-        "cache-failure-report-live"
-      ]
-    },
-    {
-      "id": "cache-live",
-      "argv": [
-        "python",
-        "m919/tools/cache_proof.py",
-        "cache-live"
-      ]
-    },
-    {
-      "id": "cache-location-report-live",
-      "argv": [
-        "python",
-        "m919/tools/cache_proof.py",
-        "cache-location-report-live"
-      ]
-    },
-    {
-      "id": "cache-pattern-report-live",
-      "argv": [
-        "python",
-        "m919/tools/cache_proof.py",
-        "cache-pattern-report-live"
-      ]
-    },
-    {
-      "id": "cache-persistence",
-      "argv": [
-        "python",
-        "m919/tools/timing_proof.py",
-        "cache-persistence"
-      ]
-    },
-    {
-      "id": "cache-recovery-boundaries-live",
-      "argv": [
-        "python",
-        "m919/tools/cache_proof.py",
-        "cache-recovery-boundaries-live"
-      ]
-    },
-    {
-      "id": "cache-recovery-live",
-      "argv": [
-        "python",
-        "m919/tools/cache_proof.py",
-        "cache-recovery-live"
-      ]
-    },
-    {
-      "id": "cache-speed",
-      "argv": [
-        "python",
-        "m919/tools/timing_proof.py",
-        "cache-speed"
-      ]
-    },
-    {
-      "id": "cache-wb-transition",
-      "argv": [
-        "python",
-        "m919/tools/timing_proof.py",
-        "cache-wb-transition"
-      ]
-    },
-    {
-      "id": "cache-writeback",
-      "argv": [
-        "python",
-        "m919/tools/timing_proof.py",
-        "cache-writeback"
-      ]
-    },
-    {
-      "id": "cache-wt-regression",
-      "argv": [
-        "python",
-        "m919/tools/timing_proof.py",
-        "cache-wt-regression"
-      ]
-    },
-    {
-      "id": "fast-restoration",
-      "argv": [
-        "python",
-        "m919/tools/timing_proof.py",
-        "fast-restoration"
-      ]
-    },
-    {
-      "id": "hardware-cache-discovery",
-      "argv": [
-        "python",
-        "m919/tools/test-hardware.py",
-        "--case",
-        "cache-discovery"
-      ]
-    },
-    {
-      "id": "hardware-cache-policy",
-      "argv": [
-        "python",
-        "m919/tools/test-hardware.py",
-        "--case",
-        "cache-policy"
-      ]
-    },
-    {
-      "id": "hardware-cache-settings",
-      "argv": [
-        "python",
-        "m919/tools/test-hardware.py",
-        "--case",
-        "cache-settings"
-      ]
-    },
-    {
-      "id": "hardware-cpu",
-      "argv": [
-        "python",
-        "m919/tools/test-hardware.py",
-        "--case",
-        "cpu"
-      ]
-    },
-    {
-      "id": "hardware-geometry",
-      "argv": [
-        "python",
-        "m919/tools/test-hardware.py",
-        "--case",
-        "geometry"
-      ]
-    },
-    {
-      "id": "hardware-memory-services",
-      "argv": [
-        "python",
-        "m919/tools/test-hardware.py",
-        "--case",
-        "memory-services"
-      ]
-    },
-    {
-      "id": "hardware-pci",
-      "argv": [
-        "python",
-        "m919/tools/test-hardware.py",
-        "--case",
-        "pci"
-      ]
-    },
-    {
-      "id": "hardware-ram-test",
-      "argv": [
-        "python",
-        "m919/tools/test-hardware.py",
-        "--case",
-        "ram-test"
-      ]
-    },
-    {
-      "id": "hardware-sio",
-      "argv": [
-        "python",
-        "m919/tools/test-hardware.py",
-        "--case",
-        "sio"
-      ]
-    },
-    {
-      "id": "pci-rom",
-      "argv": [
-        "python",
-        "m919/tools/pci_rom_proof.py"
-      ]
-    },
-    {
-      "id": "post-a20",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "a20"
-      ]
-    },
-    {
-      "id": "post-alternate-ram",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "alternate-ram"
-      ]
-    },
-    {
-      "id": "post-aux-policy",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "aux-policy"
-      ]
-    },
-    {
-      "id": "post-boot",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "boot"
-      ]
-    },
-    {
-      "id": "post-cd",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "cd"
-      ]
-    },
-    {
-      "id": "post-clock",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "clock"
-      ]
-    },
-    {
-      "id": "post-cold",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "cold"
-      ]
-    },
-    {
-      "id": "post-cpu",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "cpu"
-      ]
-    },
-    {
-      "id": "post-devices",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "devices"
-      ]
-    },
-    {
-      "id": "post-dos",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "dos"
-      ]
-    },
-    {
-      "id": "post-fdc-capabilities",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "fdc-capabilities"
-      ]
-    },
-    {
-      "id": "post-floppy-missing",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "floppy-missing"
-      ]
-    },
-    {
-      "id": "post-floppy-swap",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "floppy-swap"
-      ]
-    },
-    {
-      "id": "post-himem",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "himem"
-      ]
-    },
-    {
-      "id": "post-keyboard",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "keyboard"
-      ]
-    },
-    {
-      "id": "post-keyboard-absent",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "keyboard-absent"
-      ]
-    },
-    {
-      "id": "post-keyboard-policy",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "keyboard-policy"
-      ]
-    },
-    {
-      "id": "post-no-media",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "no-media"
-      ]
-    },
-    {
-      "id": "post-option-roms",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "option-roms"
-      ]
-    },
-    {
-      "id": "post-policy",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "policy"
-      ]
-    },
-    {
-      "id": "post-policy-clock",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "policy-clock"
-      ]
-    },
-    {
-      "id": "post-policy-clock-no-errors",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "policy-clock-no-errors"
-      ]
-    },
-    {
-      "id": "post-positions",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "positions"
-      ]
-    },
-    {
-      "id": "post-ram",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "ram"
-      ]
-    },
-    {
-      "id": "post-setup",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "setup"
-      ]
-    },
-    {
-      "id": "post-warm",
-      "argv": [
-        "python",
-        "m919/tools/test-post.py",
-        "--case",
-        "warm"
-      ]
-    },
-    {
-      "id": "reference",
-      "argv": [
-        "python",
-        "m919/tools/test-reference.py"
-      ]
-    },
-    {
-      "id": "reference-native",
-      "argv": [
-        "python",
-        "m919/tools/test-reference.py",
-        "--native"
-      ]
-    },
-    {
-      "id": "timing-boundaries",
-      "argv": [
-        "python",
-        "m919/tools/timing_boundaries.py",
-        "all"
-      ]
-    },
-    {
-      "id": "timing-order",
-      "argv": [
-        "python",
-        "m919/tools/timing_proof.py",
-        "timing-order"
-      ]
-    },
-    {
-      "id": "timing-parity",
-      "argv": [
-        "python",
-        "m919/tools/timing_proof.py",
-        "timing-parity"
-      ]
-    },
-    {
-      "id": "timing-review",
-      "argv": [
-        "python",
-        "m919/tools/timing_proof.py",
-        "timing-review"
-      ]
-    },
-    {
-      "id": "timing-settings",
-      "argv": [
-        "python",
-        "m919/tools/timing_proof.py",
-        "timing-settings"
+        "-B",
+        "tools/verify-rom.py",
+        "m919",
+        "--image",
+        "build/baios-m919.bin"
       ]
     }
   ],
-  "case_sets": [
-    {
-      "script": "m919/tools/test-post.py",
-      "argument": "--case",
-      "exclude": [
-        "all"
-      ]
-    },
-    {
-      "script": "m919/tools/test-hardware.py",
-      "argument": "--case"
-    },
-    {
-      "script": "m919/tools/cache_proof.py",
-      "variable": "CASES",
-      "argument": null,
-      "covered_by": {
-        "cache-discovery": "hardware-cache-discovery",
-        "cache-policy": "hardware-cache-policy",
-        "cache-settings": "hardware-cache-settings",
-        "cache-dma": "hardware-cache-policy"
-      }
-    },
-    {
-      "script": "m919/tools/timing_proof.py",
-      "variable": "CASES",
-      "argument": null,
-      "covered_by": {
-        "timing-controls": "timing-settings",
-        "timing-crc": "cache-persistence"
-      }
-    },
-    {
-      "script": "m919/tools/timing_boundaries.py",
-      "variable": "CASES",
-      "argument": null,
-      "covered_by": {
-        "profiles": "timing-boundaries",
-        "masks": "timing-boundaries",
-        "checksums": "timing-boundaries",
-        "persistence": "timing-boundaries",
-        "parity-halt": "timing-boundaries",
-        "tag-range": "timing-boundaries"
-      }
-    }
-  ],
+  "case_sets": [],
   "historical_checks": [],
   "candidates": [
     {
       "id": "candidate",
       "argv": [
         "powershell",
+        "-NoProfile",
         "-File",
         "m919/tools/build.ps1",
         "-OutputDirectory",
@@ -610,16 +92,8 @@
     }
   ],
   "coverage_notes": [
-    "Each native and hardware dispatcher case runs separately. The standalone cache, timing, timing-boundary and PCI-ROM checks cover the commands that those dispatchers do not run.",
-    "Current hardware wrappers cover the complete geometry and native-RAM proofs. Cache-policy also runs cache-dma; timing-settings includes timing-controls; cache-persistence includes timing-crc. No M919 hardware policy is changed."
+    "The held-port checkpoint runs the explicit shared-defaults, ATA-completion, replacement-adapter and ROM-integrity checks above.",
+    "Legacy POST/profile/certificate dispatchers remain historical tools, not evidence for the replacement adapter. Wider feature validation must be reconciled before this port joins routine updates."
   ],
-  "wrapped_tests": {
-    "m919/tools/geometry_proof.py": [
-      "hardware-geometry",
-      "hardware-memory-services"
-    ],
-    "m919/tools/ram_proof.py": [
-      "hardware-ram-test"
-    ]
-  }
+  "wrapped_tests": {}
 }

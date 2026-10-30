@@ -20,8 +20,6 @@ chipset_settings_load:
     call rtc_read
     cmp al, 0xD2
     je .recovery
-    cmp al,0x55
-    je .record
     cmp al,CHIP_RECORD_TAG
     jne .done
 .record:
@@ -41,30 +39,9 @@ chipset_settings_load:
     add bl, al
     jnz .bad
 .validate:
-    cmp dl,0x55
-    jne .new_record
-    ; Preserve the original three-field record before adding profile metadata.
-    test byte [fs:C_CHIP],0x0F
-    jnz .bad
-    cmp byte [fs:C_CHIP+1],1
-    ja .bad
-    cmp byte [fs:C_CHIP+2],1
-    ja .bad
-    mov bx,3
-.legacy_reserved:
-    cmp byte [fs:C_CHIP+bx],0
-    jne .bad
-    inc bx
-    cmp bx,CHIP_SIZE
-    jb .legacy_reserved
-    mov byte [fs:C_CHIP+7],1
-    mov byte [fs:C_CHIP+8],0x80
-.new_record:
     mov si, C_CHIP
     call chipset_valid
     jc .bad
-    ; Hardware changes can remove Fast's benefit without corrupting the record.
-    call chipset_profile_apply
     jmp .done
 .bad:
     mov di, C_CHIP
@@ -79,19 +56,6 @@ chipset_settings_load:
     ret
 chipset_settings_save:
     pushad
-    mov bx,0
-.compare:
-    mov al,[fs:C_CHIP+bx]
-    cmp al,[fs:U_CHIP+bx]
-    jne .changed
-    inc bx
-    cmp bx,CHIP_OPTION_BYTES
-    jb .compare
-    jmp .save
-.changed:
-    mov si,U_CHIP
-    call cache_validation_clear
-.save:
     mov si,U_CHIP
     call chipset_record_save
     popad
@@ -107,13 +71,13 @@ chipset_record_save:
     jne .validate
     mov dl,0xD2
 .validate:
+    mov bx,CHIP_OPTION_BYTES
+.clear_reserved:
+    mov byte [fs:si+bx],0
+    inc bx
+    cmp bx,CHIP_SIZE
+    jb .clear_reserved
     call chipset_valid
-    jc .bad
-    mov al,[fs:si+8]
-    and al,0xC0
-    cmp al,0xC0
-    jne .publish
-    call chipset_fast_available
     jc .bad
 .publish:
     mov ax,0x0069
@@ -180,33 +144,44 @@ chipset_valid:
     inc bx
     cmp bx,CHIP_OPTION_BYTES
     jb .byte
-    mov al,[fs:si+8]
-    and al,0x30
-    cmp al,0x30
+    mov al,[fs:si+7]
+    and al,6
+    cmp al,6
     je .bad
-    mov al,[fs:si+CHIP_CERT_OFFSET]
-    test al,al
-    jz .profile
-    cmp al,CHIP_CERT_TAG
-    jne .bad
-.profile:
+    mov al,[fs:si+7]
+    and al,0x18
+    cmp al,0x18
+    je .bad
     mov al,[fs:si+8]
-    and al,0xC0
-    cmp al,0x80
-    je .good
-.tuple:
-    call chipset_profile_tuple
-    mov al,[cs:chipset_profiles+bx]
-    cmp [fs:si],al
-    jne .bad
-    mov al,[fs:si+3]
-    and al,0x30
-    cmp al,[cs:chipset_profiles+bx+1]
-    jne .bad
-    mov al,[fs:si+5]
-    and al,2
-    cmp al,[cs:chipset_profiles+bx+2]
-    jne .bad
+    mov cx,4
+.ternary:
+    mov dl,al
+    and dl,3
+    cmp dl,3
+    je .bad
+    shr al,2
+    loop .ternary
+    mov al,[fs:si+11]
+    and al,3
+    cmp al,3
+    je .bad
+    mov al,[fs:si+11]
+    and al,0x1C
+    cmp al,0x10
+    ja .bad
+    mov bx,16
+.irq_byte:
+    mov al,[fs:si+bx]
+    mov ah,al
+    and al,15
+    cmp al,11
+    ja .bad
+    shr ah,4
+    cmp ah,11
+    ja .bad
+    inc bx
+    cmp bx,18
+    jb .irq_byte
 .good:
     popad
     clc
@@ -230,7 +205,7 @@ chipset_apply:
     mov cl,[fs:HW_CACHE_MAP]
     and cl,0x0F
     or cl,[fs:C_CHIP+3]
-    and cl,0xBF             ; AMI keeps the unprimed cache in WT before testing.
+    and cl,0x3F             ; Apply timing with L2 disabled and WT selected.
     mov eax,0x80000050 | (CFG_PLATFORM_HOST_PCI_DEVICE << 11)
     call pci_write
     mov eax,0x80000050 | (CFG_PLATFORM_HOST_PCI_DEVICE << 11)
@@ -239,6 +214,9 @@ chipset_apply:
     and ch,0x0E
     or ch,1
     or ch,[fs:C_CHIP]
+    mov al,ch
+    call chipset_l1_protocol
+    mov ch,al
     mov eax,0x80000050 | (CFG_PLATFORM_HOST_PCI_DEVICE << 11)
     call pci_write
     call chipset_apply_timing
@@ -290,29 +268,10 @@ chipset_post_ram_cache:
     call chipset_parity_apply
     cmp byte [fs:C_CHIP+2],0
     jne .policy
-    cmp byte [fs:HW_CACHE_CODE],0
-    je .absent
-    call cache_supported_extent
-    jc .absent
-    call cache_validation_identity
-    call cache_validation_reuse
-    jnc .policy
     post_code 0x24
-    call post_l2_test_begin
     call cache_qualify
     test byte [fs:HW_CACHE_FLAGS],2
     jnz cache_recovery
-    test byte [fs:HW_CACHE_FLAGS],1
-    jz .policy
-    call post_l2_test_passed
-    call cache_validation_save
-    jmp .policy
-.absent:
-    cmp byte [fs:C_CHIP+CHIP_CERT_OFFSET],0
-    je .policy
-    mov si,C_CHIP
-    call cache_validation_clear
-    call chipset_record_save
 .policy:
     mov eax,cr0
     cmp byte [fs:C_CHIP+1],0
@@ -336,10 +295,16 @@ chipset_late_cache:
     call cache_enable
     mov eax,cr0
     cmp byte [fs:C_CHIP+1],0
-    je .policy
+    jne .l1_enabled
+    wbinvd
+    or eax,0x60000000
+    jmp .policy
+.l1_enabled:
     and eax,0x9FFFFFFF
 .policy:
     mov cr0,eax
+    call board_rom_tuning
+    call board_pci_runtime_policy
     mov al,0x69
     call rtc_read
     cmp al,0xD2
@@ -355,3 +320,4 @@ chipset_ram_before_cache db 13,10,'RAM check before L2 enable failed. Safe setti
 chipset_ram_safe_failure db 13,10,'RAM check failed with safe settings and L2 off. Check memory configuration.',13,10,0
 
 %include "hardware/timing.inc"
+%include "hardware/rom-tuning.inc"

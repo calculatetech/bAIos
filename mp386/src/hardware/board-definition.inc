@@ -27,8 +27,6 @@
 %define BOARD_MOUSE_INIT mp386_mouse_init
 %define BOARD_FPU_PROBE_ALLOWED mp_fpu_probe_allowed
 %define BOARD_FPU_CONFIGURE mp_fpu_configure
-%define BOARD_DEFAULT_BOOT_FIRST 3
-%define BOARD_DEFAULT_BOOT_REST 0x0201
 %define BOARD_LATE_MEMORY_POLICY mp_memory_finish
 %define POST_PORT 0x80
 %define KBC_DATA 0x60

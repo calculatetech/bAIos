@@ -32,6 +32,7 @@ startup:
     mov ds,ax
     jmp far [0x67]
 .normal:
+    board_video_blank 1
     wbinvd
     mov eax,cr0
     or eax,0x60000000
@@ -41,24 +42,6 @@ startup:
     out 0x0D,al
     out 0xDA,al
     post_code_early 0x10
-    mov eax,0x80000054 | (CFG_PLATFORM_HOST_PCI_DEVICE << 11)
-    mov dx,0xCF8
-    out dx,eax
-    mov dx,0xCFC
-    mov eax,0x00004000
-    out dx,eax
-    mov eax,0x80000050 | (CFG_PLATFORM_HOST_PCI_DEVICE << 11)
-    mov dx,0xCF8
-    out dx,eax
-    mov dx,0xCFC
-    mov eax,0x00010000
-    out dx,eax
-    mov eax,0x80000058 | (CFG_PLATFORM_HOST_PCI_DEVICE << 11)
-    mov dx,0xCF8
-    out dx,eax
-    mov dx,0xCFC
-    mov eax,0x00000F00
-    out dx,eax
     jmp chipset_initialize
 .ram_ready:
     mov edi,esp
@@ -144,6 +127,17 @@ startup:
     mov word [0x482],KB_BUFFER_END
     mov byte [0x400+KB_EXT_FLAGS],0x10
     call cache_initialize
+    ; IBC51 describes installed RAM in 4 MiB units, independently of CMOS.
+    mov eax,[fs:S_INSTALLED_KIB32]
+    add eax,1024
+    shr eax,12
+    jnz .ibc_size
+    inc eax
+.ibc_size:
+    shl al,1
+    mov bh,al
+    mov bl,0x51
+    call isa_write
     call init_pic_pit
     call init_rtc
     call init_at_prerequisites

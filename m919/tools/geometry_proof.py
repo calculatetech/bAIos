@@ -93,8 +93,9 @@ class DRAM:
 
 
 def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revision=4, outside_wrap=False, memory=None,cpu_signature=0xDEAD04F0,rom_image=None):
-    result=build(PORT,'build/hardware-tests/geometry')
-    if rom_image is not None:
+    if rom_image is None:
+        result=build(PORT,'build/hardware-tests/geometry')
+    else:
         from shared.tools.rom import verify
         result=verify(PORT,rom_image)
     rom=Path(result['path']);listing=Listing(rom.with_suffix('.lst'))
@@ -104,10 +105,14 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     u=Uc(UC_ARCH_X86,UC_MODE_16)
     u.mem_map(0,0x10200000)
     u.mem_write(layout['base'],rom.read_bytes())
+    # The UMC manual documents the chipset's high reset-ROM alias.
+    u.mem_map(0xFFFE0000,0x20000)
+    u.mem_write(0xFFFE0000,rom.read_bytes())
     d=memory if memory is not None else DRAM(modules,flat,alias,fault,revision,outside_wrap)
     original_data=dict(d.data)
     if memory is not None:memory.machine=u
     cmos=bytearray(getattr(memory,'initial_cmos',bytes(128)));index=0;config_address=0;terminal=[];remapping=[True]
+    other_pci={}
     cs=Cs(CS_ARCH_X86,CS_MODE_16)
     init=code+listing.symbol('ram_initialize')
     ready=code+listing.symbol('.ram_ready','startup')
@@ -130,7 +135,8 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
             if memory is not None and getattr(memory,'composed',False):
                 return memory.pci_read(config_address,port,size)
             offset=(config_address&0xFC)+(port-0xCFC)
-            return sum(d.registers.get(offset+i,0)<<(8*i) for i in range(size))
+            registers=d.registers if (config_address>>11)&31==cfg['platform']['host_pci_device'] else other_pci.setdefault(config_address&0xFFFFFF00,{})
+            return sum(registers.get(offset+i,0)<<(8*i) for i in range(size))
         if port==0x71:return cmos[index&127]
         if port in d.gates:return d.gates[port]
         if memory is not None:return memory.incoming(uc,port,size)
@@ -144,7 +150,8 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
             if memory is not None and getattr(memory,'composed',False):
                 memory.pci_write(config_address,port,size,value)
             else:
-                for i in range(size):d.registers[offset+i]=(value>>(8*i))&255
+                registers=d.registers if (config_address>>11)&31==cfg['platform']['host_pci_device'] else other_pci.setdefault(config_address&0xFFFFFF00,{})
+                for i in range(size):registers[offset+i]=(value>>(8*i))&255
                 d.writes.append((offset,size,value))
         elif port==0x70:index=value
         elif port==0x71:cmos[index&127]=value

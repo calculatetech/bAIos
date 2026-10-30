@@ -1,5 +1,4 @@
 %include "pc/cpu.inc"
-%include "pc/crc32.inc"
 %include "hardware/chipset.inc"
 %include "hardware/memory.inc"
 %include "hardware/cache.inc"
@@ -97,6 +96,7 @@ board_a20_handoff:
     ret
 warm_reset:
     cli
+    board_video_blank 1
     xor ax,ax
     mov ds,ax
     mov word [0x472],0x1234
@@ -119,6 +119,8 @@ warm_reset:
     mov al,0xEE
     jmp keyboard_halt
 controlled_defaults_restart:
+    cli
+    board_video_blank 1
     wbinvd
     mov al,0xFE
     call kbc_command

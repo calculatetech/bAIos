@@ -1,3 +1,4 @@
+%include "setup/defaults.inc"
 %define STATE_BASE          0x0020
 %define B_DRIVE             0x004A ; Donor router's current physical BIOS boot drive.
 %define S_PRESENT           STATE_BASE + 0
@@ -66,6 +67,7 @@
 %define C_IDE               0x0190 ; Controller + two12-byte policy records.
 %define U_IDE               0x01B0 ; Draft of the same25-byte record.
 %define S_IDE               0x01D0 ; Selected physical disk's12-byte policy.
+%define S_PIO32             0x01DE ; Board-qualified ATA dword data I/O, default off.
 %define S_GEOMETRY          0x01DC ; Explicit BIOS heads/sectors; zero = proven Auto.
 %define S_MULTIPLE_MAX      0x01E0
 %define S_MULTIPLE          0x01E1

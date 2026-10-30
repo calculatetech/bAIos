@@ -63,40 +63,6 @@ post_ui_cache:
     popad
     ret
 
-post_l2_test_begin:
-    push si
-    mov si,cache_test_running
-    call post_l2_test_text
-    pop si
-    ret
-post_l2_test_passed:
-    push si
-    mov si,u_post_passed
-    call post_l2_test_text
-    pop si
-    ret
-post_l2_test_text:
-    pushad
-    push ds
-    push es
-    push cs
-    pop ds
-    mov ax,0xB800
-    mov es,ax
-    push si
-    ui_text 7,3,cache_test_title,0x0B
-    mov di,7*160+24*2
-    call post_clear_value
-    pop si
-    mov bh,7
-    call setup_text
-    pop es
-    pop ds
-    popad
-    ret
-cache_test_title db 'L2 Cache Test',0
-cache_test_running db 'Testing...',0
-
 post_memory_banks:
     pushad
     mov bl,[fs:HW_RAM_BANKS]

@@ -187,11 +187,13 @@ init_keyboard:
     call kbc_wait_input_clear
     jc .pre_b4_failed
     post_code 0xB5
+%ifndef BOARD_KBC_NO_AUX_COMMANDS
     mov al, 0xA7
     call kbc_command
     jc .pre_b5_failed
     call kbc_wait_input_clear
     jc .pre_b5_failed
+%endif
     post_code 0xB6
     call kbc_drain
     jc .pre_b6_failed

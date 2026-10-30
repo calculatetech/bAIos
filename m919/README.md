@@ -6,13 +6,17 @@ The user runs an AMI BIOS dated 05/06/96 and reports many bugs. The user identif
 
 ## Physical baseline
 
-The user reports an AMD 5x86-133, one 16 MiB SIMM, PCI graphics, and a 3.5-inch 1.44 MB drive A. The installed cache is socketed 512 KiB 15 ns SRAM. After repair of a bent socket pin and replacement of U23 and U14, the user reports successful bAIos qualification at 512 KB WT. The adapter requests validated cache enabled in Write-Through mode by default. Write-Back remains selectable. Hardware stays in Write-Through before qualification. The adapter primes clean tags in Write-Through before switching to requested Write-Back for testing and runtime use. Absent or failed SRAM remains disabled. Revision 1.5 does not use the later proprietary cache module. Jumpers select cache size and CPU electrical configuration. Chip markings are UM8881F, UM8886BF, UM8663BF, and M5818. Revision 1.5 has four 72-pin SIMM sockets, labeled 0 through 3; socket 0 is at the outside edge. Keep the current working SIMM placement. Chipset bank numbers are not a confirmed socket map. The exact graphics card remains to be measured.
+The tested board is revision 1.5 with an AMD 5x86 on a 33 MHz bus, 16 MiB RAM, UM8881F, UM8886BF and UM8663BF. The user reports a selected 512 KB SRAM population passing Memtest and running Quake with write-back enabled. Twelve rejected chips do not establish twelve defective parts. Some passed a programmer or worked in other boards. Memtest random sequences exposed faults missed by the short POST test.
+
+S3 ViRGE and ViRGE/GX are compatible with normal display and DOS operation. The user confirmed the reset display fix in0.5.4. Normal reset entries blank the old VGA display before hardware setup and restore it after successful VGA initialization. AT shutdown-service continuations keep their existing display state. Trio64 also worked. The precise final SRAM part/date-code population and test duration are not recorded. Preserve its placement and settings.
+
+Revision 1.5 uses ordinary socketed SRAM, not the later proprietary cache module. Cache size and bank organization are measured. Normal defaults request L1 and L2 enabled with WB policy. The controller sequence primes clean tags in WT before switching to WB. Failed or absent cache remains off. Safe recovery disables both caches. A valid saved WT/off choice remains authoritative.
 
 The board has serial mouse connections and no PS/2 mouse connector. `platform.aux_bios_supported` defaults to false. Setup hides PS/2 Mouse, unsupported extra serial address pairs, and ISA Serial Discovery. Hidden controls are also excluded from keyboard navigation. A valid older CMOS record keeps its other parameters; only that unavailable selector is normalized. The AUX initialization and INT15/C2 interface issue no mouse-controller commands. Serial ports remain available.
 
 ## Source boundary
 
-`src/bios.asm` composes the complete donor core from repository-root `shared/src/firmware/`. That core owns POST presentation, visible RAM testing, Setup/CMOS defaults and recovery, halt/error tones, generic BIOS services, disk/floppy read-write, RTC/input/mouse, boot policy, APM, and El Torito. Generic donor bodies remain unchanged where they have no board access. Presario source and supplied ROMs remain unchanged; broader Presario adoption is later work.
+`src/bios.asm` composes the complete donor core from repository-root `shared/src/firmware/`. That core owns POST presentation, visible RAM testing, Setup/CMOS defaults and recovery, halt/error tones, generic BIOS services, disk/floppy read-write, RTC/input/mouse, boot policy, APM, and El Torito. Generic donor bodies remain unchanged where they have no board access. Presario also consumes the shared Setup, IDE, ATA polling and IRQ14 owners. Supplied reference ROMs remain unchanged.
 
 `src/hardware/` supplies UMC startup/RAM probing, PCI board policy and external VGA initialization, shadow/cache reporting, CMOS chipset policy, UM8663 port routing, native IDE channel selection, floppy drive/motor mapping, and reset. Root `shared/src/pc/pci.inc` owns generic PCI access, enumeration, resource allocation and INT1A. It does not issue donor VLSI, SMC, or Compaq VGA-offset accesses. `port.json` supplies identity/version/date, ROM geometry, and hardware policy through generated `CFG_*` variables. The consumed porting seeds and former partial POST shell have been removed.
 
@@ -22,37 +26,37 @@ The RAM adapter measures both physical bank pairs, chooses supported single/pair
 
 Installed and usable extended counts have separate 32-bit state fields. The RAM test, POST, Setup, and diagnostics use those fields. INT15/AH88 and CMOS extended-memory words have an explicit 64512 KiB (63 MiB) ceiling. They never wrap. The modeled two-region maximum is 256 MiB; the shared count readers keep the word contract for ports that have not adopted wide publication.
 
-The processor label comes from the [shared finite CPU recognition list](../shared/README.md). Without CPUID, class tests return generic 386, 486 or later (`486+`), or legacy Cyrix. Product ambiguities remain visible. Recognition does not imply board support or derive a clock, voltage or multiplier. Normal and F9 defaults enable CPU L1. Existing saved L1 settings remain unchanged until defaults are loaded. Safe recovery disables both caches. External L2 has its own Enabled/Disabled setting. SRAM sizing follows AMI's forced-hit alias method, with opposing writable data and full data/tag qualification before ordinary enable. Cache size comes from the measured map rather than register readback. POST shows L2 Cache Test directly below the RAM bank line while full qualification runs. The test status changes from Testing... to Passed. Summary reports its measured capacity and effective WT/WB/Off state. Recovery defaults disable failed cache. Qualification failures identify the pattern, address, cache bank and affected byte lanes. Data-pattern failures also show the expected and read values. Bank 0 is U20-U23 at the outside edge; Bank 1 is U11-U14; U19 is TAG. The repaired failures confirm byte 3 (D24-D31) at U23 in Bank 0 and U14 in Bank 1. Other byte-to-socket assignments are unverified, so the error screen retains the bank socket group. A data mismatch identifies a suspect lane, not a guaranteed chip diagnosis. Temporary register/value dumps are removed. L2 failure applies safe settings with L2 disabled, then waits for a key before restart. Saving Enabled again allows another qualification; a prior notice is not a permanent lockout. New UMC chipset records use tag 56h. Valid older 55h records migrate in RAM to Manual with their waits, L1 and L2 settings preserved; loading does not write CMOS.
+The processor label uses the [shared recognition list](../shared/README.md). Recognition does not imply board support or derive clock, voltage or multiplier. Cache qualification uses the shared short SRAM patterns and address witnesses inside the complete non-M919 reference controller sequence. Ordinary cache and tag-address checks follow sizing. Summary reports measured capacity and effective WT/WB/Off state. Failures retain their stage, address, expected value and read value. The chipset record uses tag 57h; incompatible older records fall back to defaults without writing CMOS on load. There is no persistent cache-test certificate.
+
+The measured Bank 0 byte map is U23=D24-D31, U22=D16-D23, U21=D8-D15 and U20=D0-D7. Thus Err-Bits `00080000` and `00100000` identify U22's lane; `02000000` and `04000000` identify U23's lane. Each pair of hex digits represents eight data bits. Bank 1 uses U11-U14; only its D24-D31 mapping to U14 is confirmed. U19 is TAG. A lane result alone does not distinguish a chip from its socket, trace or timing.
 
 IDE discovery probes all four physical positions. The existing donor API represents the first two detected ATA/ATAPI devices, with actual channel/master/slave port tables and truthful labels. An ATA disk on the secondary channel can boot as 80h. Supporting four simultaneous logical BIOS records is later work. Floppy swapping maps both commands/motors and returned unit identity in the M919 adapter.
 
-PCI BIOS advertises bus zero only. BARs must fit the configured I/O pool through 10000h or MMIO pool `pci_memory_base` through exclusive `pci_memory_end`. Unsupported resources remain undecoded. BF IDE IDs 1060:673A/673B use readback-qualified compatibility mode. Fixed-native, mixed, ignored mode writes and rejected I/O resources remain unusable without AF fallback or legacy task-file probes. Saved Enabled remains a policy request. Slot 0C/0D/0E pin links follow the native AMI ABCD/DABC/CABD tables. Stock 86Box uses a different 0E rotation. Physical interrupt wiring remains unmeasured.
+PCI BIOS advertises bus zero only. BARs must fit the configured I/O pool through 10000h or MMIO pool `pci_memory_base` through exclusive `pci_memory_end`. Unsupported resources remain undecoded. BF IDE uses readback-qualified compatibility mode. Fixed-native, mixed, ignored mode writes and rejected I/O resources remain unusable without AF fallback or legacy task-file probes. Saved Enabled remains a policy request. Slot routing uses the identical board interrupt tables from the four original M919 ROMs. Auto assignment excludes active onboard ISA devices. Manual choices that conflict with those devices remain unassigned. Active onboard ISA devices use edge triggering, including after a previous PCI assignment. Compatibility IDE reserves IRQ14/15 only while enabled and usable. Wider physical slot-routing coverage remains unmeasured.
 
-Valid VGA providers can declare 32, 48 or 64 KiB. The adapter shadows the full declared extent and starts later ROM discovery after it. HB54 uses 02h through 32 KiB, 06h through 48 KiB, and 0Eh through 64 KiB. Bits 04h and 08h select separate 16 KiB regions at C8000h and CC000h. The UM8663 startup retains the configured whole-register C0/C1 seeds. Later saved routing preserves C0's upper nibble and C1 mask 30h. C2 wake/init changes preserve unrelated bits, and C3/C4 remain unchanged.
+Valid VGA providers can declare 32, 48 or 64 KiB. Shared PCI mechanics also measure the VGA expansion-ROM aperture. The adapter shadows the larger usable extent and starts later ROM discovery after it. A 32 KB header inside a 64 KB aperture must not expose a second VGA image at C8000. Temporary PCI command/BAR changes are restored; runtime decode is disabled after shadowing. HB54 uses 02h through 32 KiB, 06h through 48 KiB, and 0Eh through 64 KiB. Bits 04h and 08h select separate 16 KiB regions at C8000h and CC000h. The UM8663 startup retains the configured whole-register C0/C1 seeds. Later saved routing preserves C0's upper nibble and C1 mask 30h. C2 wake/init changes preserve unrelated bits, and C3/C4 remain unchanged.
 
 The floppy adapter detects enhanced-controller commands before using them. Legacy controllers use the standard command sequence. Failed POST seeks retain the normal controller/version/stage/status evidence. After RAM sizing, the adapter releases fast A20 so HIMEM can control the 8042 gate; INT15 memory moves preserve the previous gate state. Keyboard handoff retains queued input and checks the board command policy. Warm reset keeps the existing write-back/flush sequence and reopens A20 before issuing the reset pulse. This allows reset-vector access after HIMEM closes the gate.
 
 Keep the proven shared floppy driver unchanged. All four supplied AMI DMA routines also program DMA without software cache-flush instructions. CPU and bus-master coherence is a hardware contract; the software model distinguishes WT/WB CPU policy and hardware snooping. Its pass does not establish the physical board's cache wiring. New changes need a demonstrated requirement or failure and source-backed justification. Chipset differences stay in adapters; proven improvements can enter shared code.
 
-## Memory and cache profiles
+## Setup defaults and timing
 
-Chipset > Memory follows the Presario profile screen. Set `Timing Profile Clock` to the bus-clock jumper setting: 25, 33, 40 or 50 MHz. This input selects timing rows; it does not measure or program the clock. `DRAM Speed` accepts Unknown, 60 ns or 70 ns. Unknown uses the 70 ns row. The retained AMI Normal table has the same timings for both ratings.
+Normal and F9 defaults use the shared CD, floppy, hard-disk boot order. Valid saved settings remain unchanged. The45 chipset controls are grouped as CPU and Cache, PCI Bus, PCI Interrupts, Local Bus, ISA Bus, Memory, and ROM Shadow and Cache. Choices are sorted for display without changing saved encodings. Defaults select three DRAM waits, 3-2-2-2 L2 reads, FPM, normal refresh and no posted writes. They do not infer the bus clock or installed SRAM speed.
 
-Normal uses the AMI wait/burst tuples. Compatibility uses the successful conservative timing tuple. Fast uses the documented minimum wait/burst encodings and appears only when it can improve an available path. If changed hardware removes Fast's benefit, loading selects Normal and preserves the other settings. Manual unlocks read/write waits and EDO burst timing. Presets update their raw timings together; editing the cache burst selects Manual. The first three rows, Profiles/Memory Access headings, colors and columns retain the donor layout. All nine memory controls fit on one page. DRAM wait choices run from 0 through 3. Every enable/disable popup lists Enabled first, with stored bit meanings preserved.
+The controls include host posting waits and burst writes, PCI posting, device response, locking, parking, master preemption, parity, explicit clock ratios, four interrupt-link assignments, IDE trigger mode, local-device sampling, resource locking, ROM shadows and video-ROM cacheability. Cyrix linear burst and AMI load/store tuning require positive processor identification. Device-number mapping is limited to the qualified host revision. Mandatory system/VGA shadows remain automatic. Fast Boot uses the shared RAM-test policy. IDE block mode and optional32-bit ATA transfers use shared data-transfer helpers. Faster controller PIO modes and four simultaneous disk records remain unfinished.
 
-Memory also provides FPM/EDO, refresh and parity controls. Enable parity only with parity SIMMs. Reporting stays masked while RAM parity is initialized; Esc still requires a nondestructive initialization pass. Cache provides independent L1/L2 requests, WT/WB, read burst and early write. Bus Timing provides CPU posted writes, burst writes and burst copyback. Geometry remains measured. Unknown register meanings, voltage, multiplier, ROM cacheability and memory holes are not editable.
+The selected PCI VGA provider also selects the original AMI normal bus policy. This raised the user's Landmark and Doom results. The user accepts the resulting PCI throughput. The qualified host receives the normal cache-line and latency header settings. The subsequent host-header change produced no reported performance gain. An explicit PCI ratio remains independent of the AMI automatic CPU-speed tables.
 
-The first L2 test runs immediately after the RAM test under the selected timings. It tests the full measured capacity with four opposing/address patterns and tag/backing-RAM checks. Grouped loops reduce repeated instruction work without reducing coverage. L2 remains off through the final Setup gate, then the existing late owner enables it. Its capacity and status appear only in Summary.
+The [tuning omissions report](docs/research/m919-registers.md#tuning-omissions-in-candidate-053) distinguishes unfinished controls, automatic policies and unqualified register meanings. Shared APM is present. Chipset power management and SMM remain deferred. When Memory Parity is selected, Fast Boot still initializes extended-memory parity before reporting is enabled. A visible Memory Parity control does not establish full parity support: the additional AMI parity-control coordination remains unfinished.
 
-Successful validation is stored in the checksummed chipset record. An unchanged boot rediscovers hardware, checks the ROM/CPU/RAM/cache identity and reuses that result. A saved memory/cache/bus timing change, defaults, recovery, changed map/CPU or different system ROM requires a full test. Draft edits, discard, unchanged save, disk/ports/theme changes and date/time edits preserve the result. Delete received during the RAM test enters Setup before L2 qualification. Saving Setup does not certify untested cache. This removes repeated full tests; it does not detect a new fault in a chip with the same identity. Save a changed cache parameter to request a fresh full test.
-
-WT uses eight tag bits; WB uses seven plus dirty. L2 remains off if installed RAM exceeds capacity times 256 for WT or times 128 for WB. A 512 KiB cache therefore covers 128 MiB in WT or 64 MiB in WB. WB is an exposed native AMI policy, but its physical operation and timing margins remain to be confirmed. The software model checks dirty external cache separately from CPU policy, including flush, eviction, DMA and warm reset. The runtime floppy/DMA service has no added flushes.
+The old profile and persistent-certificate design is not part of this replacement. Remaining controls and wider timing qualification stay separate. L2 qualification runs after the RAM test; runtime activation remains after the final Setup gate. Both policies retain the selected reference's seven tag bits plus dirty, with a cacheable extent of capacity times 128. A 512 KB cache therefore covers 64 MiB in this sequence. Do not extend it merely because WT could use another tag format.
 
 ## Shared RAM test
 
 `shared/src/firmware/ram-test.inc` owns the visible RAM test. Ports supply the detected capacity and reserved state area. The test backs up 2 KiB at a time into excluded EBDA scratch, tests every usable dword with three full pattern passes, and restores the original bytes. Separate address witnesses detect tied low address lines. CPU cache stays disabled during the test.
 
-The owner excludes live firmware state and the VGA/ROM window. It services the existing keyboard owner every 16 KiB or less and updates progress every 64 KiB. Esc skips, Delete requests Setup, and Pause retains the interrupted test until a fresh make. All exits restore the original machine gates and context before returning or using the existing recovery owner. Presario can adopt this shared implementation in its later refactor.
+The owner excludes live firmware state and the VGA/ROM window. It services the existing keyboard owner every 16 KiB or less and updates progress every 64 KiB. Esc skips, Delete requests Setup, and Pause retains the interrupted test until a fresh make. All exits restore the original machine gates and context before returning or using the existing recovery owner. Presario uses its configured block and scratch bounds in the same shared owner.
 
 Run `python -B m919/tools/test-hardware.py --case ram-test` for coverage, randomized restoration, boundaries, failures, address aliases and native interaction checks. The comparison build uses the checked-in RAM baseline, without private Git history or mutable output from another fixture. Recorded instruction counts and host execution times are software measurements. They do not establish physical POST time or SIMM wiring.
 
@@ -123,68 +127,17 @@ Do not assume that a recent MMTool or UEFI utility understands this ROM generati
 
 ## Work and commands
 
-The port roadmap is [docs/roadmap.md](docs/roadmap.md). The first firmware contract is [M919-002 POST](docs/plans/M919-002-post.md).
+Build a bench image with:
 
-Run PowerShell with `-NoProfile` and Python with `-B`. Keep generated files under `m919/build/`.
+    powershell -NoProfile -File m919/tools/build.ps1
 
-Build and verify from the repository root:
+The fixed image is `build/baios-m919.bin`. Complete candidates follow the [repository naming policy](../docs/repository-layout.md). `build/LATEST.txt` identifies the current bench image and last completed candidate. Emulator, fixture and source-review results do not replace physical testing of a new image.
 
-    pwsh -NoProfile -File m919/tools/build.ps1
-    pwsh -NoProfile -File m919/tools/verify-rom.ps1
-    python -B m919/tools/test-build.py
-    python -B m919/tools/test-reference.py
-    python -B m919/tools/test-reference.py --native
-    python -B m919/tools/test-hardware.py --case ram-test
-    python -B m919/tools/test-hardware.py --case geometry
-    python -B m919/tools/test-hardware.py --case memory-services
-    python -B m919/tools/test-hardware.py --case cpu
-    python -B m919/tools/test-hardware.py --case pci
-    python -B m919/tools/test-hardware.py --case sio
-    python -B m919/tools/cache_proof.py cache-discovery
-    python -B m919/tools/cache_proof.py cache-policy
-    python -B m919/tools/cache_proof.py cache-settings
-    python -B m919/tools/cache_proof.py cache-dma
-    python -B m919/tools/cache_proof.py cache-location-report-live
-    python -B m919/tools/cache_proof.py cache-recovery-boundaries-live
-    python -B m919/tools/timing_proof.py timing-settings
-    python -B m919/tools/timing_proof.py timing-order
-    python -B m919/tools/timing_proof.py cache-persistence
-    python -B m919/tools/timing_proof.py timing-crc
-    python -B m919/tools/timing_proof.py timing-parity
-    python -B m919/tools/timing_proof.py cache-writeback
-    python -B m919/tools/timing_proof.py cache-speed
-    python -B m919/tools/timing_boundaries.py all
-    python -B m919/tools/test-post.py --case all
+Current replacement checks are:
 
-The output is `build/baios-m919.bin`. `build/rom-checksums.json` records its size, SHA-256, and configured identity. The build wrapper uses the maintained root implementation in `shared/tools/rom.py`. Output must stay below this port's `build/` directory. The verifier checks size, whole-image byte sum, reset pointer and entry, date, and AT model byte.
+    python -B m919/tools/manual_proof.py
+    python -B shared/tools/ata_completion_proof.py m919/build/baios-m919.bin
+    python -B shared/tools/checkpoint_proof.py m919/build/baios-m919.bin
+    python -B tools/verify-rom.py m919 --image build/baios-m919.bin
 
-The separate `cpu`, `pci` and `sio` hardware cases execute the composed firmware against independent external devices. They cover caller state and guarded names, installed PCI services, bounded BARs, AMI-wired interrupt delivery, VGA copy/extent, BF readback through ATA/boot, saved IDE reset/reload and UART/printer/FDC transactions. They do not replace the frozen donor matrix or physical hardware measurements. Build a review candidate with `python -B tools/build-rom.py m919 --output build/hardware-adapters`, then verify it with `python -B tools/verify-rom.py m919 --image build/hardware-adapters/baios-m919.bin`. The build test uses its own `build/build-tests/current` output and preserves the current main ROM.
-
-The maintained harness uses the actual donor state and public services. `--case all` runs every named first-deliverable check once. Individual cases are `boot`, `setup`, `policy`, `policy-clock`, `ram`, `no-media`, `cd`, `warm`, `floppy-swap`, `aux-policy`, `fdc-capabilities`, `a20`, `himem`, `keyboard-policy`, `keyboard`, `keyboard-absent`, `floppy-missing`, `alternate-ram`, `cpu`, `positions`, `option-roms`, `policy-clock-no-errors`, and `dos`. `cold` selects the primary boot fixture. `clock` and `devices` select Setup and device checks. These aliases are excluded from `all`. This is the first-deliverable validation set, not a complete physical compatibility matrix.
-
-The cases cover primary/secondary and mixed ATAPI/ATA boot, actual RAM progress/Esc, native Setup editing and saved hardware readback, invalid-CMOS/RTC recovery and warning tone gates, and poisoned option-ROM/VGA returns. DOS cases use a disposable retained-card copy and exact MS-DOS 6.22 media; SYS.COM performs the system transfer inside DOS. Guest checks exercise native DOS file writes, multisector CHS, EDD read-write, IRQ6/DMA2 floppy services, and Ctrl+Alt+Delete reset with L1 enabled and dirty extended RAM. The warm case also boots real DOS/HIMEM from floppy twice through the installed IRQ1 reset path.
-
-The read-only DOS input is cached at `tools/deps/ms-dos/6.22-boot.ima`. Private media copies remain under `m919/build/`. The `cd` case checks native secondary-channel El Torito loading and controller status with synthetic media.
-
-Normal POST ends at FFh and follows the saved donor boot order. Without bootable media, it displays `No boot device available` and `Press any key to retry`. Setup preserves the donor colors, frame, layout, fonts, settings, and defaults. The retired 0300h POST-only diagnostic ABI is not present; tests use `shared/src/pc/state.inc` and port-private hardware slots.
-
-The harness checks actual VGA cells against the donor frame, columns and attributes, and checks the installed 8x16 font against the retained VGA provider. `post-dump-render.png` renders those captured cells; it is not an emulator screenshot. The C000 context test wraps a disposable retained VGA ROM copy with an artificial poisoned return. It does not establish physical VGA behavior. The absent-keyboard test replaces external controller/PIT/RTC/VGA devices and follows the real startup continuation through the error policy. It is not a stock 86Box detached-keyboard test.
-
-The user confirmed physical DOS boot, floppy operation, HIMEM and EMM386 loading, and working keyboard input after the no-AUX correction. Temporary stage/IRQ/footer instrumentation has been removed. Normal POST failure messages and troubleshooting remain. Guest keyboard tests inject D2 scans through IRQ1; they do not prove host GUI input. The accepted physical result supplies input evidence. Emulator tests do not establish RAM wiring, timing margins, flash protection, or broader hardware compatibility. Exact results and image hashes remain in `.agent/test-results/m919-post.json`.
-
-Build the portable, read-only PCI configuration inspector with `python -B shared/tools/build-pci-registers.py m919`. It writes `build/diagnostics/PCIDUMP.COM`, reads all 256 host-bridge bytes through PCI BIOS B108, and supports DOS stdout redirection. A failure reports the byte offset and PCI status. It does not change chipset settings.
-
-These commands assemble the shared inspection programs. They do not build a BIOS or execute a hardware test:
-
-    New-Item -ItemType Directory -Force m919/build/diagnostics | Out-Null
-    & "$env:LOCALAPPDATA/bin/NASM/nasm.exe" -f bin -o m919/build/diagnostics/RTCCHECK.COM shared/tests/dos/rtc-test.asm
-    & "$env:LOCALAPPDATA/bin/NASM/nasm.exe" -D RTC_BOOT_TEST -f bin -o m919/build/diagnostics/rtc-test.bin shared/tests/dos/rtc-test.asm
-    & "$env:LOCALAPPDATA/bin/NASM/nasm.exe" -f bin -o m919/build/diagnostics/HWSTATE.COM shared/tests/dos/hw-state.asm
-    & "$env:LOCALAPPDATA/bin/NASM/nasm.exe" -f bin -o m919/build/diagnostics/MOUSECHK.COM shared/tests/dos/mouse-test.asm
-
-The copied inspector keeps its donor interface:
-
-    python -B m919/tools/inspect-vhd.py --help
-    python -B m919/tools/inspect-vhd.py <dynamic-vhd-path>
-
-The [board manual](docs/user-manual.pdf) and [register evidence](docs/research/m919-registers.md) belong to this port. Preview cleanup with `pwsh -NoProfile -File tools/clean-build.ps1 -WhatIf` from repository root, or invoke `m919/tools/clean-build.ps1` directly. The current main ROM/listing/configuration/checksums, diagnostics, hardware reports and final/post captures remain. Completed candidates, builds, VM directories and disposable media are removed. Keep an unresolved failed diagnosis in `build/diagnostics`; do not hand its fixtures to cleanup.
+The manual proof entry point includes settings/save/reload, VGA initialization through later ROM discovery, ordinary-cache failure rejection and supported cache/CPU controls. The ATA proof enters public INT13 with interrupts initially clear, services the shared IRQ14 owner while polling, and checks bounded PIO exclusion and delayed completion. The short `build/diagnostics/L2CHECK.COM` tests only its DOS-owned allocation. Its I0 result does not qualify all SRAM cells or timing margins. Memtest and real DOS workloads remain necessary hardware observations.

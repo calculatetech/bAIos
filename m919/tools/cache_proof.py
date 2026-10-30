@@ -8,7 +8,7 @@ import importlib.util
 from collections import OrderedDict
 from pathlib import Path
 from capstone import Cs, CS_ARCH_X86, CS_MODE_16
-from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_READ
+from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
 from unicorn import x86_const as x
 
 PORT=Path(__file__).resolve().parents[1]
@@ -1204,15 +1204,82 @@ def enable_live():
     return [row]
 
 
-CASES={'cache-recovery-boundaries-live':recovery_boundaries_live,'cache-location-report-live':location_report_live,'cache-pattern-report-live':pattern_report_live,'cache-ami-diagnostic-live':ami_diagnostic_live,'cache-a20-live':a20_live,'cache-failure-report-live':failure_report_live,'cache-recovery-live':recovery_live,'cache-early-live':early_discovery,'cache-enable-live':enable_live,'cache-live':live,'cache-discovery':discovery,'cache-policy':policy,'cache-settings':settings,'cache-dma':dma}
+def standard(cases=None):
+    from shared.tools.rom import build
+    from geometry_proof import invoke
+    image=build(PORT,'build/tests/standard-cache/image')['path']
+    rows=[]
+    cases=cases if cases is not None else [dict(kib=64,ram=8),dict(kib=512,df=True),dict(kib=512,banks=2),dict(kib=1024,banks=2),
+           dict(kib=64,ram=8,fault=0x1234),dict(kib=64,ram=8,fault=0xFFFF),dict(kib=64,ram=8,alias=5),
+           dict(kind='absent'),dict(kind='stored')]
+    for options in cases:
+        d=SRAM(**{k:v for k,v in options.items() if k!='df'})
+        row,fixture=mapped(d.modules,expected=options.get('ram',16),memory=d,rom_image=image)
+        u,_,listing,state,cmos,step=fixture
+        base=u.reg_read(x.UC_X86_REG_FS)<<4
+        detected=d.read(base+0x1036,1)[0]
+        real=d.kind=='real'
+        assert bool(detected)==real,(options,detected)
+        saved=dict(d.data)
+        before=d.cache_interval_instructions
+        entry=(u.reg_read(x.UC_X86_REG_CS)<<4)+listing.symbol('cache_qualify')
+        old_es=u.reg_read(x.UC_X86_REG_ES)
+        def setup(uc,address,size,user):
+            if address==entry and options.get('df'):
+                uc.reg_write(x.UC_X86_REG_EFLAGS,uc.reg_read(x.UC_X86_REG_EFLAGS)|0x400)
+        def aperture(uc,access,address,size,value,user):
+            if d.registers.get(0x5A,0)&0x40:
+                assert 0x100000<=address and address+size<=0x100000+d.capacity,('Unsafe SRAM test window',hex(address),size)
+        setup_hook=u.hook_add(UC_HOOK_CODE,setup)
+        aperture_hook=u.hook_add(UC_HOOK_MEM_READ|UC_HOOK_MEM_WRITE,aperture)
+        invoke(fixture,'cache_qualify',count=5000000)
+        u.hook_del(setup_hook);u.hook_del(aperture_hook)
+        assert u.reg_read(x.UC_X86_REG_ES)==old_es
+        assert bool(u.reg_read(x.UC_X86_REG_EFLAGS)&0x400)==bool(options.get('df'))
+        flags=d.read(base+0x1038,1)[0]
+        failed=d.sram_fault is not None or d.sram_alias is not None
+        assert flags==(2 if real and failed else 1 if real else 0),(options,flags)
+        changed={key for key in set(d.data)|set(saved) if d.data.get(key,d.initial(key))!=saved.get(key,d.initial(key))}
+        assert all(0x6000<=key[1]<0x7000 or base<=key[1]<base+8192 for key in changed),('SRAM check modified live DRAM',options,changed)
+        assert not d.registers.get(0x5A,0)&0xC0 and not d.registers.get(0x50,0)&0x80
+        # The shared test must stay proportional to SRAM, not installed RAM.
+        work=d.cache_interval_instructions-before
+        assert work<d.capacity*5+1000,(options,work)
+        d.qualifying=False
+        for wb in (False,True):
+            d.write(base+state['C_CHIP']+2,1,0)
+            d.write(base+state['C_CHIP']+3,1,0x40 if wb else 0)
+            invoke(fixture,'cache_enable')
+            enabled=bool(d.registers.get(0x50,0)&0x80)
+            assert enabled==(real and not failed),(options,wb,enabled)
+            if enabled:
+                assert d.l2_wb()==wb
+                assert bool(d.registers.get(0x51,0)&1)!=wb
+                u.reg_write(x.UC_X86_REG_CR0,0x60000010)
+                for address in (0x100000,0x100040):
+                    d.write(address,4,0x12345678)
+                    assert d.read(address,4)==bytes.fromhex('78563412')
+            # The actual chipset owner disables the active policy before a new selection.
+            invoke(fixture,'chipset_apply')
+            assert not d.registers.get(0x50,0)&0x80
+        d.write(base+state['C_CHIP']+2,1,1)
+        invoke(fixture,'cache_enable')
+        assert not d.registers.get(0x50,0)&0x80
+        assert not d.read(base+0x1038,1)[0]&4
+        rows.append(dict(options=options,flags=flags,instructions=work,dram_preserved=True))
+        print('standard cache',options,'PASS',flush=True)
+    return rows
+
+
+CASES={'cache-standard':standard,'cache-recovery-boundaries-live':recovery_boundaries_live,'cache-location-report-live':location_report_live,'cache-pattern-report-live':pattern_report_live,'cache-ami-diagnostic-live':ami_diagnostic_live,'cache-a20-live':a20_live,'cache-failure-report-live':failure_report_live,'cache-recovery-live':recovery_live,'cache-early-live':early_discovery,'cache-enable-live':enable_live,'cache-live':live,'cache-discovery':discovery,'cache-policy':policy,'cache-settings':settings,'cache-dma':dma}
 
 
 def check(case):
     result={'cases':CASES[case]()}
     sources=('m919/src/hardware/cache.inc','m919/src/hardware/startup-core.inc','m919/src/hardware/chipset-core.inc',
              'm919/src/hardware/board-definition.inc','m919/src/hardware/post-core.inc','m919/tools/cache_proof.py','m919/tools/geometry_proof.py',
-             'm919/src/hardware/timing.inc','m919/src/hardware/cache-validation.inc','m919/src/hardware/chipset-data.inc',
-             'shared/src/firmware/bios.asm','shared/src/pc/crc32.inc')
+             'm919/src/hardware/timing.inc','m919/src/hardware/parity.inc','m919/src/hardware/chipset-data.inc',
+             'shared/src/firmware/bios.asm','shared/src/pc/cache-test.inc')
     result['source_sha256']={p:hashlib.sha256((REPOSITORY/p).read_bytes()).hexdigest() for p in sources}
     target=PORT/'build/research/hardware'/f'{case}.json'
     target.parent.mkdir(parents=True,exist_ok=True)

@@ -16,7 +16,7 @@ ata_detect_primary:
     cmp byte [fs:C_IDE],0
     je .done
     cmp word [fs:HW_IDE_BDF],0xFFFF
-    je .position
+    je .done
     cmp byte [fs:HW_IDE_USABLE],1
     jne .done
 .position:
@@ -79,6 +79,13 @@ ata_detect_primary:
 .detected:
     cmp word [ss:bp+2],2
     jae .next                 ; The donor currently exposes two logical devices.
+    mov ax,STATE_SEG
+    mov es,ax
+    mov al,[es:BOARD_IDE_32BIT_POLICY]
+    mov cx,[ss:bp+2]
+    shr al,cl
+    and al,1
+    mov [fs:S_PIO32],al
     mov ax,[ss:bp+2]
     shl ax,5
     add ax,STATE_SEG

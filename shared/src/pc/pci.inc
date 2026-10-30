@@ -79,7 +79,12 @@ pci_initialize:
     shr eax,16
     and al,0x7F
     jnz .irq
+%ifdef BOARD_PCI_FIXED_RESOURCES
+    call BOARD_PCI_FIXED_RESOURCES
+    jc .fixed_resources
+%endif
     call pci_allocate_bars
+.fixed_resources:
     call board_pci_device
 .irq:
     call board_pci_irq
@@ -387,3 +392,86 @@ pci_int1a:
     popad
     pop bp
     iret
+
+; AX=validated VGA end paragraph, BX=provider BDF (FFFF for ISA).
+pci_vga_rom_extent:
+    ; A PCI aperture may exceed the legacy header and contain a VGA mirror.
+    pushf
+    cli
+    pushad
+    mov bp,sp                  ; POPAD's saved EAX at +28 carries the result AX.
+    cmp bx,0xFFFF
+    je .done
+    movzx eax,bx
+    shl eax,8
+    or eax,0x80000004
+    call pci_read
+    push ax
+    mov cx,ax
+    and cl,0xFD
+    movzx eax,bx
+    shl eax,8
+    or eax,0x80000004
+    call pci_command_write
+    movzx eax,bx
+    shl eax,8
+    or eax,0x80000030
+    call pci_read
+    push eax
+    movzx eax,bx
+    shl eax,8
+    or eax,0x80000030
+    mov ecx,0xFFFFFFFE
+    call pci_write
+    call pci_read
+    and eax,0xFFFFF800
+    neg eax
+    mov esi,eax
+    pop ecx
+    movzx eax,bx
+    shl eax,8
+    or eax,0x80000030
+    call pci_write
+    pop cx
+    movzx eax,bx
+    shl eax,8
+    or eax,0x80000004
+    call pci_command_write
+    ; Keep the validated header extent if the BAR provides no usable size.
+    cmp esi,0x800
+    jb .done
+    cmp esi,0x10000
+    ja .done
+    lea eax,[esi-1]
+    test eax,esi
+    jnz .done
+    shr esi,4
+    add si,0xC000
+    cmp si,[ss:bp+28]
+    jbe .done
+    mov [ss:bp+28],si
+.done:
+    popad
+    popf
+    ret
+pci_vga_rom_release:
+    ; Runtime VGA uses its complete shadow; do not expose a second ROM alias.
+    pushf
+    cli
+    pushad
+    cmp bx,0xFFFF
+    je .done
+    movzx eax,bx
+    shl eax,8
+    or eax,0x80000030
+    call pci_read
+    mov ecx,eax
+    and cl,0xFE
+    movzx eax,bx
+    shl eax,8
+    or eax,0x80000030
+    call pci_write
+.done:
+    popad
+    popf
+    ret

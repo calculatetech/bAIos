@@ -44,7 +44,7 @@ def nvram(types=0,valid=True,clock='valid',boot=2,l1=False,swap=False):
 
 def fixture(name,disks,ram=16384,types=0,valid=True,clock='valid',defines=(),cdroms=(),dirty_display=False,cpu=None,ram_flags=4,l1=False,missing_floppy=False,legacy_mouse=False,bpb_heads=16,dirty_vga_init=False,no_errors_clock=False,failed_provider=False):
     _,c=configuration(PORT)
-    r=build(PORT,'build/full-core/'+name,defines)
+    r=build(PORT,'build/tests/post/'+name+'/image',defines)
     folder=PORT/'build/tests/post'/name;vm=folder/'vm';roms=folder/'roms'
     vm.mkdir(parents=True,exist_ok=True)
     em=dict(c['emulator']);em.update(cpu or {})
@@ -58,6 +58,7 @@ def fixture(name,disks,ram=16384,types=0,valid=True,clock='valid',defines=(),cdr
          'TEST_DIRTY_DISPLAY':int(dirty_display),'TEST_CPU_FIRST':ord('4') if cpu else ord('A'),
          'TEST_ERROR_BITS':2 if missing_floppy else 1 if no_errors_clock else 0,'TEST_FLOPPY_FAILED':int(missing_floppy),'TEST_CLOCK_NO_ERRORS':int(no_errors_clock)}
     cfg.update(TEST_BPB_HEADS=bpb_heads,TEST_EXPECT_HEADS=bpb_heads,TEST_DIRTY_VGA_INIT=int(dirty_vga_init))
+    cfg['TEST_L2_ENABLED']=1
     (folder/'test-configuration.inc').write_text(''.join(f'%define {k} {v}\n' for k,v in cfg.items()))
     assemble(PORT/('tests/core-failed-provider.asm' if failed_provider else 'tests/core-boot.asm'),folder/'boot.bin',[folder,PORT/'tests'])
     hd=''
@@ -126,7 +127,7 @@ exit_enabled = 1
     if legacy_mouse:
         n[0x5D:0x68]=b'P1\x01'+bytes((1,2,1,2,0,1,1,1))
         n[0x68]=(-sum(n[0x5D:0x68]))&255
-    (vm/'nvr/m919.nvr').write_bytes(n)
+    (vm/'nvr'/(em['machine']+'.nvr')).write_bytes(n)
     return vm,roms,r
 
 def execute(name,disks,expected=0x60,**options):
@@ -350,6 +351,8 @@ def a20():
     return {'name':'8042-A20-alias/FDC-seek','exit':actual,'rom_sha256':r['sha256']}
 
 def floppy_missing():
+    _,config=configuration(PORT)
+    em=config['emulator']
     results=[execute('core-floppy-missing',{0:65},types=0x40,missing_floppy=True)]
     vm,roms,r=fixture('core-floppy-disabled',{0:65},types=0x40)
     boot=vm.parent/'disabled.bin';assemble(PORT/'tests/core-disabled-floppy.asm',boot,[PORT/'tests'])
@@ -357,7 +360,7 @@ def floppy_missing():
     n=nvram(0x40)
     n[0x5D:0x68]=b'P1\x01'+bytes((1,2,1,2,0,0,0,1))
     n[0x68]=(-sum(n[0x5D:0x68]))&255
-    (vm/'nvr/m919.nvr').write_bytes(n)
+    (vm/'nvr'/(em['machine']+'.nvr')).write_bytes(n)
     media=vm.parent/'present.img';shutil.copyfile(REPOSITORY/'tools/deps/ms-dos/6.22-boot.ima',media)
     cfg=(vm/'86box.cfg').read_text().replace('[Floppy and CD-ROM drives]',f'[Floppy and CD-ROM drives]\nfdd_01_fn = {media.as_posix()}')
     (vm/'86box.cfg').write_text(cfg)
@@ -369,6 +372,8 @@ def floppy_missing():
     return results
 
 def dos(warm=False,swap=False,himem=False,keyboard=False):
+    _,config=configuration(PORT)
+    em=config['emulator']
     source=REPOSITORY/'tools/deps/ms-dos/6.22-boot.ima'
     if not source.exists():raise FileNotFoundError('Copy the read-only MS-DOS6.22 boot IMA into '+str(source))
     assert hashlib.sha256(source.read_bytes()).hexdigest()=='9d620dc19afb29a77324bc0e262ceffeac918632ff2a0ccea685427ff85e27cd'
@@ -402,7 +407,7 @@ def dos(warm=False,swap=False,himem=False,keyboard=False):
     if swap:
         cfg=cfg.replace('fdd_01_fn','fdd_02_fn').replace('fdd_01_type = 35_2hd','fdd_01_type = none').replace('fdd_02_type = none','fdd_02_type = 35_2hd')
     (vm/'86box.cfg').write_text(cfg)
-    (vm/'nvr/m919.nvr').write_bytes(nvram(0x40,boot=1,l1=warm,swap=swap))
+    (vm/'nvr'/(em['machine']+'.nvr')).write_bytes(nvram(0x40,boot=1,l1=warm,swap=swap))
     result=run_86box(vm,roms,timeout=110)
     assert result==0x67,('DOS6.22 SYS and native HDD/FDD read/write',result)
     f=Fat16(disk)
@@ -410,7 +415,7 @@ def dos(warm=False,swap=False,himem=False,keyboard=False):
     for n in ('IO.SYS','MSDOS.SYS','COMMAND.COM'):assert f.read(n)==Fat12(source).read(n)
     f.vhd.file.close()
     (vm/'86box.cfg').write_text(cfg if himem or keyboard else '\n'.join(line for line in cfg.splitlines() if not line.startswith(('fdd_01_fn','fdd_02_fn')))+'\n')
-    (vm/'nvr/m919.nvr').write_bytes(nvram(0x40,boot=2,l1=warm,swap=swap))
+    (vm/'nvr'/(em['machine']+'.nvr')).write_bytes(nvram(0x40,boot=2,l1=warm,swap=swap))
     result=run_86box(vm,roms,timeout=150)
     assert result==(0x68 if keyboard else 0x67),('DOS6.22 HDD boot/keyboard IRQ1 and native services',result)
     dma_evidence=None
@@ -424,12 +429,14 @@ def dos(warm=False,swap=False,himem=False,keyboard=False):
     return {'name':'DOS6.22-HIMEM/EMM386/IRQ1/timer/console/LED' if keyboard else 'DOS6.22-HIMEM/XMS/HMA' if himem else 'DOS6.22-warm' if warm else 'DOS6.22','exit':result,'swap':swap,'rom_sha256':r['sha256'],'source_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'DMA_EMM386':dma_evidence}
 
 def cd():
+    _,config=configuration(PORT)
+    em=config['emulator']
     vm,roms,r=fixture('core-cd-secondary',{},cdroms=(2,))
     boot=vm.parent/'cd-boot.bin';assemble(PORT/'tests/core-cd.asm',boot,[PORT/'tests'])
     iso=disc(media=0,count=1);iso[21*2048:21*2048+512]=boot.read_bytes()
     media=vm.parent/'cd.iso';media.write_bytes(iso)
     cfg=(vm/'86box.cfg').read_text().replace('cdrom_01_parameters = 1, atapi',f'cdrom_01_parameters = 1, atapi\ncdrom_01_host_drive = 200\ncdrom_01_image_path = {media.as_posix()}')
-    (vm/'86box.cfg').write_text(cfg);(vm/'nvr/m919.nvr').write_bytes(nvram(boot=3))
+    (vm/'86box.cfg').write_text(cfg);(vm/'nvr'/(em['machine']+'.nvr')).write_bytes(nvram(boot=3))
     actual=run_86box(vm,roms,timeout=100)
     assert actual==0x68,('Secondary El Torito load/status',actual)
     print('Secondary native El Torito: 68',flush=True)
@@ -437,6 +444,8 @@ def cd():
 
 def floppy_warm():
     """Boot real DOS/HIMEM twice through IRQ1 Ctrl-Alt-Delete."""
+    _,config=configuration(PORT)
+    em=config['emulator']
     source=REPOSITORY/'tools/deps/ms-dos/6.22-boot.ima'
     assert hashlib.sha256(source.read_bytes()).hexdigest()=='9d620dc19afb29a77324bc0e262ceffeac918632ff2a0ccea685427ff85e27cd'
     vm,roms,r=fixture('core-floppy-warm-himem',{},types=0x40)
@@ -452,7 +461,7 @@ def floppy_warm():
     chip=bytes((0xF0,1,0,0x20,0,0,0,1,0,0))+bytes(14)
     n[0x69]=0x56;n[0x6A]=(-0x56-sum(chip))&255
     n[0x6B:0x80]=chip[:21];n[0x33:0x36]=chip[21:]
-    (vm/'nvr/m919.nvr').write_bytes(n)
+    (vm/'nvr'/(em['machine']+'.nvr')).write_bytes(n)
     result=run_86box(vm,roms,timeout=120)
     assert result==0x67,('DOS6.22 floppy/HIMEM Ctrl-Alt-Delete warm reset',result)
     print(f'DOS6.22 floppy/HIMEM Ctrl-Alt-Delete warm: {result:02X}',flush=True)

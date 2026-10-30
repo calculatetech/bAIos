@@ -70,6 +70,13 @@ Write all Setup help in plain, human-friendly language. Explain what the setting
 
 All user-visible choice lists must be sorted by their displayed values. Use ascending numeric order for numbers and alphabetical order for text. Show each value once. Mark the existing value as Default instead of adding a duplicate entry. Map display positions to stored values so that sorting does not change saved settings or hardware behavior.
 
+## Variable hardware configuration
+
+<!-- cpk-rule-owner: variable-hardware-configuration -->
+<!-- cpk-rule-guard: Do not hardcode assumed values for hardware configuration that can change. -->
+
+Do not hardcode assumed values for hardware configuration that can change. Detect the installed configuration, read a documented hardware selector, or use an explicit user setting. This includes cache capacity and bank population. If the value cannot be established, report it as unknown and leave the dependent feature disabled. A previous bench configuration is not a permanent board property.
+
 ## Repository layout and build hygiene
 
 <!-- cpk-rule-route-only: repository-layout -->
