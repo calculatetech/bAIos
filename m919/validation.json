@@ -22,6 +22,64 @@
   ],
   "checks": [
     {
+      "id": "attainable-tuning",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/tuning_proof.py",
+        "--image",
+        "m919/build/baios-m919.bin",
+        "--case",
+        "game-port",
+        "--case",
+        "ecp-dma",
+        "--case",
+        "parity-controls",
+        "--case",
+        "parity-fast-boot",
+        "--case",
+        "t4-policy",
+        "--case",
+        "choices",
+        "--case",
+        "final-state",
+        "--case",
+        "host-cache"
+      ]
+    },
+    {
+      "id": "sio-tuning",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/sio_proof.py",
+        "--image",
+        "m919/build/baios-m919.bin"
+      ]
+    },
+    {
+      "id": "pio-tuning",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/pio_proof.py",
+        "m919/build/baios-m919.bin",
+        "--port",
+        "m919",
+        "--output",
+        "m919/build/tests/pipeline-pio/proof.json"
+      ]
+    },
+    {
+      "id": "ide-completeness",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/ide_completeness_proof.py",
+        "m919/build/baios-m919.bin"
+      ]
+    },
+    {
       "id": "shared-defaults",
       "argv": [
         "python",
@@ -65,6 +123,47 @@
         "m919",
         "--image",
         "build/baios-m919.bin"
+      ]
+    },
+    {
+      "id": "shared-dma-cascade",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tools/dma_cascade_proof.py",
+        "m919/build/baios-m919.bin",
+        "--output",
+        "m919/build/tests/pipeline-dma-cascade/proof.json"
+      ]
+    },
+    {
+      "id": "setup-ownership",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/tuning_proof.py",
+        "--image",
+        "m919/build/baios-m919.bin",
+        "--case",
+        "setup-owners",
+        "--case",
+        "device-bounds",
+        "--case",
+        "device-commit",
+        "--case",
+        "ide-labels",
+        "--output",
+        "m919/build/tests/pipeline-setup-ownership/proof.json"
+      ]
+    },
+    {
+      "id": "reset-protected",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/test-vga-reset.py",
+        "m919/build/baios-m919.bin",
+        "--warm-mode"
       ]
     }
   ],

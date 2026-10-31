@@ -279,8 +279,7 @@ settings_save:
     pushad
     push fs
     call load_bios_state
-    mov al, 0x69
-    call rtc_read
+    call settings_recovery_read
     movzx di, al            ; Keep prior recovery selection until the whole save succeeds.
     mov bh, [fs:U_SLAVE]
     xor bh, 1
@@ -312,6 +311,10 @@ settings_save:
 .write:
     mov ax, 0x0038          ; Invalidate before data; signature published last.
     call rtc_write
+%if BOARD_ATA_DEVICE_COUNT = 4
+    call settings_format_prepare
+    jc .bad
+%endif
     call ide_settings_save
     jc .bad
     call ports_settings_save
@@ -391,8 +394,7 @@ settings_save:
 .bad:
     cmp di, 0xD2
     jne .restore
-    mov ax, 0xD269          ; A later base-settings failure must retain Compatibility.
-    call rtc_write
+    call settings_recovery_publish ; A later failure must retain Compatibility.
 .restore:
     pop fs
     popad
@@ -1041,11 +1043,11 @@ setup_main:
     je .exit_action
     cmp byte [fs:U_PAGE], 1
     jne .choices
-    cmp byte [fs:U_IDE_DEVICE], 1
+    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
     jbe .ide_select
     cmp byte [fs:U_FIELD], 2
     jb .choices
-    cmp byte [fs:U_FIELD], 3
+    cmp byte [fs:U_FIELD], BOARD_ATA_DEVICE_COUNT+1
     ja .choices
     mov al, [fs:U_FIELD]
     sub al, 2
@@ -1087,7 +1089,7 @@ setup_main:
     call setup_edit_begin
     jmp .redraw
 .tab:
-    cmp byte [fs:U_IDE_DEVICE], 1
+    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
     ja .tab_pane
     mov byte [fs:U_IDE_DEVICE], 0xFF
     mov byte [fs:U_FIELD], 0
@@ -1151,7 +1153,11 @@ setup_main:
 .non_chip_field:
     cmp byte [fs:U_PAGE], 3
     jne .old_field
+%ifdef BOARD_PORTS_SETUP_COUNT
+    mov bl, BOARD_PORTS_SETUP_COUNT-1
+%else
     mov bl, 6
+%endif
 .old_field:
     cmp byte [fs:U_PAGE], 2
     jne .drive_field_limit
@@ -1159,8 +1165,8 @@ setup_main:
 .drive_field_limit:
     cmp byte [fs:U_PAGE], 1
     jne .field_limit
-    mov bl, 6
-    cmp byte [fs:U_IDE_DEVICE], 1
+    mov bl, BOARD_ATA_DEVICE_COUNT+4
+    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
     ja .field_limit
     mov bl, IDE_FIELD_COUNT-1
 .field_limit:
@@ -1198,7 +1204,7 @@ setup_main:
     je .input
     cmp byte [fs:U_PAGE], 1
     jne .old_change
-    cmp byte [fs:U_IDE_DEVICE], 1
+    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
     ja .old_change
     call ide_ui_change
     jmp .redraw
@@ -1223,7 +1229,7 @@ setup_main:
 %endif
     jmp .redraw
 .non_chip_escape:
-    cmp byte [fs:U_IDE_DEVICE], 1
+    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
     ja .escape_pane
     mov al, [fs:U_IDE_DEVICE]
     add al, 2
@@ -1416,7 +1422,7 @@ post_debug_summary:
     pop ax
     ; Header at row0; complete frame on rows1..11, blank row12.
     mov di, 1*160
-    mov cx, 11
+    mov cx, 9+BOARD_ATA_DEVICE_COUNT
 .frame:
     mov word [es:di], 0x0BBA
     mov word [es:di+158], 0x0BBA
@@ -1430,10 +1436,10 @@ post_debug_summary:
     call .rule
     mov di, 8*160
     call .rule
-    mov di, 11*160
+    mov di, (9+BOARD_ATA_DEVICE_COUNT)*160
     call .rule
-    mov word [es:11*160], 0x0BC8
-    mov word [es:11*160+158], 0x0BBC
+    mov word [es:(9+BOARD_ATA_DEVICE_COUNT)*160], 0x0BC8
+    mov word [es:(9+BOARD_ATA_DEVICE_COUNT)*160+158], 0x0BBC
     call post_header
     ui_text 2, 3, u_summary_processor, 0x0B
     call post_processor_name
@@ -1482,61 +1488,62 @@ post_debug_summary:
     mov di, 7*160+20*2
     call .floppy
     call ports_summary
-    call post_device_label
-    mov di,9*160+3*2
-    mov bh,0x0B
-    call setup_text
-    mov bp, 9*160
-    call .device
     push fs
-    mov ax, fs
-    add ax, 0x20
-    mov fs, ax
+    mov bp,9*160
+    mov cx,BOARD_ATA_DEVICE_COUNT
+.disk:
+    push cx
     call post_device_label
-    mov di,10*160+3*2
+    mov di,bp
+    add di,3*2
     mov bh,0x0B
     call setup_text
-    mov bp, 10*160
     call .device
+    mov ax,fs
+    add ax,0x20
+    mov fs,ax
+    add bp,160
+    pop cx
+    loop .disk
     pop fs
-    mov bp, 13                    ; First message row after the blank separator.
+    mov bp, 11+BOARD_ATA_DEVICE_COUNT                    ; First message row after the blank separator.
     cmp byte [fs:C_ERROR], 0
     je .recovery
-    mov bp, 14
-    ui_text 13, 3, u_warnings, 0x0E
+    mov bp, 12+BOARD_ATA_DEVICE_COUNT
+    ui_text 11+BOARD_ATA_DEVICE_COUNT, 3, u_warnings, 0x0E
     test byte [fs:C_ERROR], 1
     jz .floppy_warning
-    ui_text 13, 18, u_clock_warning, 0x0E
+    ui_text 11+BOARD_ATA_DEVICE_COUNT, 18, u_clock_warning, 0x0E
 .floppy_warning:
     test byte [fs:C_ERROR], 2
     jz .settings_warning
-    ui_text 13, 24, u_floppy_warning, 0x0E
+    ui_text 11+BOARD_ATA_DEVICE_COUNT, 24, u_floppy_warning, 0x0E
 .settings_warning:
     test byte [fs:C_ERROR], 4
     jz .keyboard_warning
-    ui_text 13, 31, u_settings_warning, 0x0E
+    ui_text 11+BOARD_ATA_DEVICE_COUNT, 31, u_settings_warning, 0x0E
 .keyboard_warning:
     test byte [fs:C_ERROR], 8
     jz .rom_warning
-    ui_text 13, 40, u_keyboard_warning, 0x0E
+    ui_text 11+BOARD_ATA_DEVICE_COUNT, 40, u_keyboard_warning, 0x0E
 .rom_warning:
     test byte [fs:C_ERROR], 0x10
     jz .recovery
-    ui_text 13, 49, u_rom_warning, 0x0E
+    ui_text 11+BOARD_ATA_DEVICE_COUNT, 49, u_rom_warning, 0x0E
 .recovery:
     mov al, 0x36
     call rtc_read
     and al, 0xBF
     cmp al, 0x1A
     jne .done
-    mov bp, 14
-    ui_text 13, 54, u_summary_recovery, 0x0C
+    mov bp, 12+BOARD_ATA_DEVICE_COUNT
+    ui_text 11+BOARD_ATA_DEVICE_COUNT, 54, u_summary_recovery, 0x0C
 .done:
 %ifdef BOARD_FLOPPY_POST_DETAILS
     test byte [fs:C_ERROR],2
     jz .no_floppy_details
     call BOARD_FLOPPY_POST_DETAILS
-    mov bp,15
+    mov bp,13+BOARD_ATA_DEVICE_COUNT
 .no_floppy_details:
 %endif
     mov dx, bp
@@ -1631,6 +1638,17 @@ post_debug_summary:
     mov bh, 7
     call setup_text
     add di, 4*2
+%ifdef BOARD_ATA_PIO_MAX
+%ifdef BOARD_ATA_PIO_ADAPTER
+    mov al,[fs:S_PIO_MODE]
+    add al,'0'
+    mov ah,7
+    call setup_color
+    stosw
+%else
+    call ide_pio_mode_text
+%endif
+%endif
     mov ax, 0x0B5D
     call setup_color
     stosw
@@ -1841,28 +1859,27 @@ setup_change:
     or [fs:bx], al
     ret
 .hdd:
-    cmp cl, 6
+    cmp cl, BOARD_ATA_DEVICE_COUNT+4
     jne .fdc
     mov bx, U_SWAP
     mov ch, 1
     jmp .enum
 .fdc:
-    cmp cl, 5
+    cmp cl, BOARD_ATA_DEVICE_COUNT+3
     jne .ide
     mov bx, U_PORTS+P_FLOPPY
     mov ch, 1
     jmp .enum
 .ide:
-    cmp cl, 4
+    cmp cl, BOARD_ATA_DEVICE_COUNT+2
     jne .device_policy
     mov bx, U_IDE
     mov ch, 1
     jmp .enum
 .device_policy:
-    mov bx, U_HDD
-    cmp cl, 2
-    je .hdd_limit
-    mov bx, U_SLAVE
+    mov al,cl
+    sub al,2
+    call ide_ui_enable_index
 .hdd_limit:
     mov ch, 1
     jmp .enum
@@ -1897,12 +1914,20 @@ setup_enum_store:
     pushad
     cmp byte [fs:U_PAGE],1
     jne .boot
-    cmp byte [fs:U_IDE_DEVICE],1
+    cmp byte [fs:U_IDE_DEVICE],BOARD_ATA_DEVICE_COUNT-1
     ja .boot
     popad
     popf
     jmp ide_ui_store
 .boot:
+%ifdef BOARD_PORTS_SETUP_COMMIT
+    cmp byte [fs:U_PAGE],3
+    jne .ordinary_store
+    popad
+    popf
+    jmp BOARD_PORTS_SETUP_COMMIT
+.ordinary_store:
+%endif
     cmp byte [fs:U_PAGE], 2
     jne .store
     cmp byte [fs:U_FIELD], 4
@@ -1990,31 +2015,30 @@ setup_choices:
     jne .boot
     cmp dl, 2
     jb .value
-    cmp dl, 6
+    cmp dl, BOARD_ATA_DEVICE_COUNT+4
     jne .fdc
     mov bx, U_SWAP
     mov si, u_seek_values
     mov cx, 2
     jmp .enum
 .fdc:
-    cmp dl, 5
+    cmp dl, BOARD_ATA_DEVICE_COUNT+3
     jne .ide
     mov bx, U_PORTS+P_FLOPPY
     mov si, u_seek_values
     mov cx, 2
     jmp .enum
 .ide:
-    cmp dl, 4
+    cmp dl, BOARD_ATA_DEVICE_COUNT+2
     jne .device_policy
     mov bx, U_IDE
     mov si, u_seek_values
     mov cx, 2
     jmp .enum
 .device_policy:
-    mov bx, U_HDD
-    cmp dl, 2
-    je .hdd
-    mov bx, U_SLAVE
+    mov al,dl
+    sub al,2
+    call ide_ui_enable_index
 .hdd:
     mov si, u_hdd_values
     mov cx, 2
@@ -2528,7 +2552,7 @@ setup_draw:
     pop di
     jmp .done
 .drives:
-    cmp byte [fs:U_IDE_DEVICE], 1
+    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
     ja .channel
     call ide_ui_draw
     jmp .done
@@ -2550,74 +2574,69 @@ setup_draw:
     mov cl, 1
     call setup_field_color
     call setup_text
-    mov di, 8 * 160 + UI_LABEL_COL * 2
-    mov si, u_hdd_policy
-    mov cl, 2
+    xor bp,bp
+.ide_policy:
+    mov bx,bp
+    shl bx,1
+    mov si,[cs:u_ide_policy_labels+bx]
+    mov di,bp
+    add di,8
+    imul di,160
+    push di
+    add di,UI_LABEL_COL*2
+    mov cx,bp
+    add cl,2
     call setup_field_color
-    and bh, 0x0F
+    and bh,0x0F
     call setup_text
-    movzx bx, byte [fs:U_HDD]
-    shl bx, 1
-    mov si, [u_hdd_values + bx]
-    mov di, 8 * 160 + UI_VALUE_COL * 2
-    mov cl, 2
+    pop di
+    add di,UI_VALUE_COL*2
+    mov cx,bp
+    add cl,2
     call setup_field_color
-    cmp byte [fs:U_HDD], 0
-    je .master_disabled
-    mov al, [fs:U_IDE + 1 + IDE_TYPE]
+    push bx
+    mov ax,bp
+    call ide_ui_enable_index
+    cmp byte [fs:bx],0
+    je .ide_disabled
+    mov bx,bp
+    imul bx,IDE_RECORD_SIZE
+    mov al,[fs:U_IDE+1+bx+IDE_TYPE]
+    pop bx
     call ide_ui_type_text
-    jmp .master_arrow
-.master_disabled:
-    mov si, u_ide_none
+    jmp .ide_arrow
+.ide_disabled:
+    pop bx
+    mov si,u_ide_none
     call setup_text
-.master_arrow:
+.ide_arrow:
     call setup_submenu_arrow
-.slave:
-    mov di, 9 * 160 + UI_LABEL_COL * 2
-    mov si, u_slave_policy
-    mov cl, 3
-    call setup_field_color
-    and bh, 0x0F
-    call setup_text
-    movzx bx, byte [fs:U_SLAVE]
-    shl bx, 1
-    mov si, [u_hdd_values + bx]
-    mov di, 9 * 160 + UI_VALUE_COL * 2
-    mov cl, 3
-    call setup_field_color
-    cmp byte [fs:U_SLAVE], 0
-    je .slave_disabled
-    mov al, [fs:U_IDE + 1 + IDE_RECORD_SIZE + IDE_TYPE]
-    call ide_ui_type_text
-    jmp .slave_arrow
-.slave_disabled:
-    mov si, u_ide_none
-    call setup_text
-.slave_arrow:
-    call setup_submenu_arrow
+    inc bp
+    cmp bp,BOARD_ATA_DEVICE_COUNT
+    jb .ide_policy
 .controller:
-    ui_text 11, UI_LABEL_COL, u_ide_controller, 0x07
+    ui_text BOARD_ATA_DEVICE_COUNT+9, UI_LABEL_COL, u_ide_controller, 0x07
     movzx bx, byte [fs:U_IDE]
     shl bx, 1
     mov si, [u_seek_values + bx]
-    mov di, 11 * 160 + UI_VALUE_COL * 2
-    mov cl, 4
+    mov di, (BOARD_ATA_DEVICE_COUNT+9) * 160 + UI_VALUE_COL * 2
+    mov cl, BOARD_ATA_DEVICE_COUNT+2
     call setup_field_color
     call setup_text
-    ui_text 12, UI_LABEL_COL, u_fdc, 0x07
+    ui_text BOARD_ATA_DEVICE_COUNT+10, UI_LABEL_COL, u_fdc, 0x07
     movzx bx, byte [fs:U_PORTS+P_FLOPPY]
     shl bx, 1
     mov si, [u_seek_values + bx]
-    mov di, 12 * 160 + UI_VALUE_COL * 2
-    mov cl, 5
+    mov di, (BOARD_ATA_DEVICE_COUNT+10) * 160 + UI_VALUE_COL * 2
+    mov cl, BOARD_ATA_DEVICE_COUNT+3
     call setup_field_color
     call setup_text
-    ui_text 13, UI_LABEL_COL, u_swap, 0x07
+    ui_text BOARD_ATA_DEVICE_COUNT+11, UI_LABEL_COL, u_swap, 0x07
     movzx bx, byte [fs:U_SWAP]
     shl bx, 1
     mov si, [u_seek_values + bx]
-    mov di, 13 * 160 + UI_VALUE_COL * 2
-    mov cl, 6
+    mov di, (BOARD_ATA_DEVICE_COUNT+11) * 160 + UI_VALUE_COL * 2
+    mov cl, BOARD_ATA_DEVICE_COUNT+4
     call setup_field_color
     call setup_text
     jmp .done
@@ -2744,7 +2763,7 @@ setup_field_highlight:
     mov si, u_drive_rows
     cmp byte [fs:U_PAGE], 1
     jne .boot
-    cmp byte [fs:U_IDE_DEVICE], 1
+    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
     ja .value
     mov si, u_ide_rows
     jmp .value
@@ -2775,7 +2794,13 @@ setup_field_highlight:
     ret
 
 u_clock_rows db 5,6,7
-u_drive_rows db 5,6,8,9,11,12,13
+u_drive_rows db 5,6
+%assign ide_row 8
+%rep BOARD_ATA_DEVICE_COUNT
+    db ide_row
+%assign ide_row ide_row+1
+%endrep
+    db BOARD_ATA_DEVICE_COUNT+9,BOARD_ATA_DEVICE_COUNT+10,BOARD_ATA_DEVICE_COUNT+11
 u_boot_rows db 5,6,7,8,9,10,11
 %ifdef BOARD_FAST_BOOT_SETTING
     db 12
@@ -2792,6 +2817,9 @@ u_boot_labels dw u_boot_order,u_boot_second,u_boot_third,u_boot_fourth,u_seek,u_
 u_ide_rows db 5,6,7,8,9,10,11,14,15,16
 %ifdef BOARD_IDE_32BIT_POLICY
     db 17
+%endif
+%ifdef BOARD_ATA_PIO_POLICY
+    db 18
 %endif
 u_exit_rows db 5,6
 
@@ -2849,14 +2877,16 @@ setup_field_available:
     je .ports
     cmp byte [fs:U_PAGE], 1
     jne .available
-    cmp byte [fs:U_IDE_DEVICE], 1
+    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
     jbe .device
     cmp cl, 2
     jb .available
-    cmp cl, 3
+    cmp cl, BOARD_ATA_DEVICE_COUNT+1
     ja .available
+%if BOARD_ATA_DEVICE_COUNT = 2
     cmp byte [fs:U_IDE], 0
     je .unavailable
+%endif
     jmp .available
 .device:
     cmp cl, 1                     ; None must still allow a new disk type.
@@ -2929,7 +2959,7 @@ setup_help:
 .old_help_page:
     cmp bx, 1
     jne .normal_help
-    cmp byte [fs:U_IDE_DEVICE], 1
+    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
     ja .channel_help
 %ifdef BOARD_IDE_32BIT_POLICY
     cmp byte [fs:U_FIELD],10
@@ -2938,23 +2968,37 @@ setup_help:
     jmp .topic
 .ordinary_ide_help:
 %endif
+%ifdef BOARD_ATA_PIO_POLICY
+    cmp byte [fs:U_FIELD],11
+    jne .ordinary_pio_help
+    mov bx,IDE_PIO_HELP_TOPIC
+    jmp .topic
+.ordinary_pio_help:
+%endif
     movzx bx, byte [fs:U_FIELD]
     add bx, 14
     jmp .topic
 .channel_help:
-    cmp byte [fs:U_FIELD], 6
+    cmp byte [fs:U_FIELD], BOARD_ATA_DEVICE_COUNT+4
     jne .channel_existing
     mov bx, 35
     jmp .topic
 .channel_existing:
     cmp byte [fs:U_FOCUS], 1
     jne .normal_help
-    cmp byte [fs:U_FIELD], 5
+    mov al,[fs:U_FIELD]
+    sub al,2
+    cmp al,BOARD_ATA_DEVICE_COUNT
+    jae .channel_controls
+    mov bx,8
+    jmp .topic
+.channel_controls:
+    cmp byte [fs:U_FIELD], BOARD_ATA_DEVICE_COUNT+3
     jne .ide_help
     mov bx, 31             ; Existing Floppy Controller topic.
     jmp .topic
 .ide_help:
-    cmp byte [fs:U_FIELD], 4
+    cmp byte [fs:U_FIELD], BOARD_ATA_DEVICE_COUNT+2
     jne .normal_help
     mov bx, 24
     jmp .topic
@@ -3022,6 +3066,23 @@ setup_help:
     imul bx, bx, 6
     mov si, [u_help_topics + bx]
     mov bp, bx
+    cmp byte [fs:U_PAGE],1
+    jne .boot_title
+    cmp byte [fs:U_IDE_DEVICE],BOARD_ATA_DEVICE_COUNT-1
+    jbe .help_title
+    cmp byte [fs:U_FOCUS],1
+    jne .help_title
+    movzx ax,byte [fs:U_FIELD]
+    sub ax,2
+    cmp ax,BOARD_ATA_DEVICE_COUNT
+    jae .help_title
+    shl ax,1
+    push bx
+    mov bx,ax
+    mov si,[u_ide_policy_labels+bx]
+    pop bx
+    jmp .help_title
+.boot_title:
     cmp byte [fs:U_PAGE], 2
     jne .help_title
     cmp byte [fs:U_FOCUS], 1
@@ -3491,6 +3552,10 @@ u_help_topics:
 IDE_DWORD_HELP_TOPIC equ ($-u_help_topics)/6
     dw u_ide_dword,u_help_ide_dword1,u_help_ide_dword2
 %endif
+%ifdef BOARD_ATA_PIO_POLICY
+IDE_PIO_HELP_TOPIC equ ($-u_help_topics)/6
+    dw u_ide_pio,u_help_ide_pio1,u_help_ide_pio2
+%endif
 %ifdef BOARD_FAST_BOOT_SETTING
 FAST_BOOT_HELP_TOPIC equ ($-u_help_topics)/6
     dw u_fast_boot,u_help_fast1,u_help_fast2
@@ -3502,6 +3567,31 @@ u_help_fast2 db 'Off runs the full test and is the default.',0
 u_ide_dword db '32-bit ATA Transfers',0
 u_help_ide_dword1 db 'Uses 32-bit data transfers on supported IDE.',0
 u_help_ide_dword2 db 'Disabled uses the compatible 16-bit default.',0
+%endif
+%ifdef BOARD_ATA_PIO_POLICY
+u_ide_pio db 'PIO Mode Limit',0
+u_help_ide_pio1 db 'Limits IDE speed. Auto selects the fastest safe mode.',0
+u_help_ide_pio2 db 'Faster modes need the actual 33 MHz timing clock.',0
+u_ide_pio_values dw u_auto,u_ide_pio0,u_ide_pio1,u_ide_pio2,u_ide_pio3,u_ide_pio4
+u_ide_pio_choices dw u_ide_pio0,u_ide_pio1,u_ide_pio2,u_ide_pio3,u_ide_pio4,u_auto
+u_ide_pio0 db '0',0
+u_ide_pio1 db '1',0
+u_ide_pio2 db '2',0
+u_ide_pio3 db '3',0
+u_ide_pio4 db '4',0
+ide_ui_pio_value:
+    mov cl,[fs:U_IDE_DEVICE]
+    shl cl,1
+    mov al,[fs:U_CHIP+(BOARD_ATA_PIO_POLICY-C_CHIP)]
+    shr al,cl
+    and al,3
+    shr cl,1
+    mov ah,[fs:U_CHIP+(BOARD_ATA_PIO_POLICY_HIGH-C_CHIP)]
+    shr ah,cl
+    and ah,1
+    shl ah,2
+    or al,ah
+    ret
 %endif
 u_help_standard1 db 'System date, time, and detected memory.',0
 u_help_standard2 db 'Select a clock field to edit it.',0
@@ -3568,10 +3658,24 @@ ide_ui_record:
     mov si, bx
     ret
 ide_ui_enable_pointer:
-    mov bx, U_HDD
-    cmp byte [fs:U_IDE_DEVICE], 0
-    je .done
-    mov bx, U_SLAVE
+    push ax
+    mov al,[fs:U_IDE_DEVICE]
+    call ide_ui_enable_index
+    pop ax
+    ret
+ide_ui_enable_index:
+    movzx bx,al
+%if BOARD_ATA_DEVICE_COUNT = 4
+    cmp bx,2
+    jb .base
+    add bx,U_IDE+IDE_ENABLE_EXTRA-2
+    ret
+.base:
+%endif
+    test bx,bx
+    mov bx,U_HDD
+    jz .done
+    mov bx,U_SLAVE
 .done:
     ret
 
@@ -3598,6 +3702,10 @@ ide_ui_parameters:
     je .translation
     cmp al, 8
     je .block
+%ifdef BOARD_ATA_PIO_POLICY
+    cmp al,11
+    je .pio
+%endif
 %ifdef BOARD_IDE_32BIT_POLICY
     cmp al,10
     je .dword
@@ -3642,6 +3750,18 @@ ide_ui_parameters:
     and al,1
     mov si,u_seek_values
     mov cx,2
+    jmp .ready
+%endif
+%ifdef BOARD_ATA_PIO_POLICY
+.pio:
+    call ide_ui_pio_value
+    test al,al
+    jnz .pio_position
+    mov al,6
+.pio_position:
+    dec al
+    mov si,u_ide_pio_choices
+    mov cx,6
 %endif
 .ready:
     mov bx,U_CHIP_VALUE
@@ -3660,6 +3780,10 @@ ide_ui_store:
     je .translation
     cmp byte [fs:U_FIELD],8
     je .block
+%ifdef BOARD_ATA_PIO_POLICY
+    cmp byte [fs:U_FIELD],11
+    je .pio
+%endif
 %ifdef BOARD_IDE_32BIT_POLICY
     cmp byte [fs:U_FIELD],10
     je .dword
@@ -3696,6 +3820,34 @@ ide_ui_store:
     mov al,dl
     shl al,cl
     or [fs:U_CHIP+(BOARD_IDE_32BIT_POLICY-C_CHIP)],al
+    jmp .done
+%endif
+%ifdef BOARD_ATA_PIO_POLICY
+.pio:
+    mov cl,[fs:U_IDE_DEVICE]
+    shl cl,1
+    mov al,3
+    shl al,cl
+    not al
+    and [fs:U_CHIP+(BOARD_ATA_PIO_POLICY-C_CHIP)],al
+    mov al,dl
+    inc al
+    cmp al,6
+    jb .pio_encoded
+    xor al,al
+.pio_encoded:
+    mov ah,al
+    and al,3
+    shl al,cl
+    or [fs:U_CHIP+(BOARD_ATA_PIO_POLICY-C_CHIP)],al
+    shr cl,1
+    mov al,1
+    shl al,cl
+    not al
+    and [fs:U_CHIP+(BOARD_ATA_PIO_POLICY_HIGH-C_CHIP)],al
+    shr ah,2
+    shl ah,cl
+    or [fs:U_CHIP+(BOARD_ATA_PIO_POLICY_HIGH-C_CHIP)],ah
 %endif
 .done:
     popad
@@ -3806,11 +3958,9 @@ ide_ui_set_type:
 
 ide_ui_draw:
     pushad
-    mov si, u_hdd_policy
-    cmp byte [fs:U_IDE_DEVICE], 0
-    je .title
-    mov si, u_slave_policy
-.title:
+    movzx bx,byte [fs:U_IDE_DEVICE]
+    shl bx,1
+    mov si,[cs:u_ide_policy_labels+bx]
     mov di, 3 * 160 + 23 * 2
     mov bh, 0x0B
     call setup_text
@@ -3846,6 +3996,10 @@ ide_ui_draw:
     je .block
     cmp bp, 9
     je .edd
+%ifdef BOARD_ATA_PIO_POLICY
+    cmp bp,11
+    je .pio
+%endif
 %ifdef BOARD_IDE_32BIT_POLICY
     cmp bp,10
     je .dword
@@ -3894,6 +4048,13 @@ ide_ui_draw:
     shr bl,cl
     and bx,1
     mov si,u_seek_values
+    jmp .enum
+%endif
+%ifdef BOARD_ATA_PIO_POLICY
+.pio:
+    call ide_ui_pio_value
+    movzx bx,al
+    mov si,u_ide_pio_values
 %endif
 .enum:
     shl bx, 1
@@ -4211,6 +4372,9 @@ u_ide_labels dw u_ide_enabled,u_ide_type,u_ide_cyl,u_ide_heads,u_ide_sectors
 %ifdef BOARD_IDE_32BIT_POLICY
     dw u_ide_dword
 %endif
+%ifdef BOARD_ATA_PIO_POLICY
+    dw u_ide_pio
+%endif
 IDE_FIELD_COUNT equ ($-u_ide_labels)/2
 u_ide_number_offsets dw IDE_CYLINDERS,IDE_HEADS,IDE_SECTORS,IDE_PRECOMP,IDE_LANDING
 u_ide_number_max dw 65535,16,63,65535,65535
@@ -4223,7 +4387,11 @@ u_ide_block_values dw u_auto,u_off,u_ide_block2,u_ide_block4,u_ide_block8
 u_ide_block_choices dw u_ide_block2,u_ide_block4,u_ide_block8,u_ide_block16
     dw u_ide_block32,u_ide_block64,u_ide_block128,u_auto,u_off
 u_ide_edd_values dw u_on,u_off
+%if BOARD_ATA_DEVICE_COUNT = 4
+u_ide_controller db 'Onboard IDE Controller',0
+%else
 u_ide_controller db 'Primary IDE Controller',0
+%endif
 u_ide_disk_group db 'DISK CONFIGURATION',0
 u_ide_transfer_group db 'TRANSFER OPTIONS',0
 u_ide_enabled db 'Device',0
@@ -4256,7 +4424,7 @@ u_ide_block32 db '32 sectors',0
 u_ide_block64 db '64 sectors',0
 u_ide_block128 db '128 sectors',0
 u_help_ide_enabled1 db 'Disabled stops the BIOS from using this drive.',0
-u_help_ide_enabled2 db 'The other drive keeps its own settings.',0
+u_help_ide_enabled2 db 'Other drives keep their own settings.',0
 u_help_ide_type1 db 'Auto detects. None leaves it to an expansion card.',0
 u_help_ide_type2 db 'Choose User to enter the drive details yourself.',0
 u_help_ide_translation1 db 'Choose how the BIOS addresses this hard disk.',0
@@ -4280,6 +4448,9 @@ u_help_ide_controller2 db 'Disabled turns off its hard disk and CD drives.',0
 
 ports_ui_parameters:
     movzx bx, byte [fs:U_FIELD]
+%ifdef BOARD_PORTS_SETUP_PARAMETERS
+    jmp BOARD_PORTS_SETUP_PARAMETERS
+%else
     mov cx, bx
     movzx cx, byte [cs:ports_limits+bx]
     inc cx
@@ -4288,6 +4459,7 @@ ports_ui_parameters:
     shr bx, 1
     add bx, U_PORTS
     ret
+%endif
 
 ; AL=candidate. The same sibling rule governs arrows and popup navigation.
 ports_ui_choice_valid:
@@ -4340,7 +4512,11 @@ ports_ui_change:
 .valid:
     call ports_ui_choice_valid
     jc .cycle
+%ifdef BOARD_PORTS_SETUP_COMMIT
+    call setup_enum_store
+%else
     mov [fs:bx], al
+%endif
     popad
     ret
 
@@ -4362,10 +4538,16 @@ ports_ui_draw:
     call setup_field_color
     and bh, 15
     call setup_text
+%ifdef BOARD_PORTS_SETUP_PARAMETERS
+    mov bx,bp
+    call BOARD_PORTS_SETUP_PARAMETERS
+    movzx bx,byte [fs:bx]
+%else
     mov bx, bp
     shl bx, 1
     mov si, [cs:u_ports_values+bx]
     movzx bx, byte [fs:U_PORTS+bp]
+%endif
     shl bx, 1
     mov si, [cs:si+bx]
     add di, (UI_VALUE_COL-UI_LABEL_COL)*2
@@ -4374,7 +4556,11 @@ ports_ui_draw:
     call setup_text
 .next:
     inc bp
+%ifdef BOARD_PORTS_SETUP_COUNT
+    cmp bp, BOARD_PORTS_SETUP_COUNT
+%else
     cmp bp, 8
+%endif
     jb .field
     popad
     ret
@@ -4390,7 +4576,11 @@ u_fdc db 'Floppy Controller',0
 u_mouse db 'PS/2 Mouse',0
 u_isa db 'ISA Serial Discovery',0
 u_ports_rows db BOARD_PORTS_ROWS
+%ifdef BOARD_PORTS_SETUP_LABELS
+u_ports_labels dw BOARD_PORTS_SETUP_LABELS
+%else
 u_ports_labels dw u_uart_a,u_uart_b,u_uart_pair,u_parallel,u_parallel_mode,u_fdc,u_mouse,u_isa
+%endif
 u_ports_values dw BOARD_PORTS_VALUES
 u_uart_values dw u_disabled,u_com1,u_com2,u_com3,u_com4
 u_pair_values dw u_pair0,u_pair1,u_pair2,u_pair3
@@ -4469,3 +4659,12 @@ u_summary_com db 'COM Ports',0
 u_summary_lpt db 'LPT Ports',0
 
 %include BOARD_PORTS_SETUP_STRINGS
+
+u_ide_policy_labels:
+%if BOARD_ATA_DEVICE_COUNT = 4
+    dw u_hdd_policy,u_slave_policy,u_ide_policy3,u_ide_policy4
+u_ide_policy3 db 'Secondary IDE Master',0
+u_ide_policy4 db 'Secondary IDE Slave',0
+%else
+    dw u_hdd_policy,u_slave_policy
+%endif

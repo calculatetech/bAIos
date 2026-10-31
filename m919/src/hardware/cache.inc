@@ -198,8 +198,6 @@ cache_enable:
     jne .done
     test byte [fs:HW_CACHE_FLAGS],1
     jz .done
-    call cache_supported_extent
-    jc .done
     call cache_reference_span_supported
     jc .done
 .activate:
@@ -513,35 +511,12 @@ cache_run:
     popad
     popf
     ret
-cache_supported_extent:
-    push si
-    mov si,C_CHIP
-    call cache_record_supported_extent
-    pop si
-    ret
-cache_record_supported_extent:
-    pushad
-    mov eax,[fs:HW_CACHE_BYTES]
-    mov cl,7             ; Both policies use the reference's 7+1 tag format.
-    shl eax,cl
-    mov ecx,[fs:S_EXTENDED_KIB32]
-    add ecx,1024
-    shl ecx,10
-    cmp ecx,eax
-    popad
-    ja .bad
-    clc
-    ret
-.bad:
-    stc
-    ret
 cache_recovery:
     call post_error_tone
     mov di,C_CHIP
     call chipset_safe_defaults
     call chipset_apply
-    mov ax,0xD269
-    call rtc_write
+    call settings_recovery_publish
     mov ax,0x5A36
     call rtc_write
     call post_message_cursor

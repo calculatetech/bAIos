@@ -1,6 +1,8 @@
 chipset_parity_apply:
     cmp byte [fs:C_CHIP+6],0
     jne .initialize
+    xor bl,bl
+    call chipset_parity_controls
     in al,0x61
     or al,4
     out 0x61,al
@@ -46,6 +48,8 @@ chipset_parity_apply:
     wbinvd
     cache_data_leave
     mov cr0,ebp
+    mov bl,0x10
+    call chipset_parity_controls
     pop ax
     or al,4
     out 0x61,al
@@ -53,4 +57,31 @@ chipset_parity_apply:
     out 0x61,al
     popad
     popf
+    ret
+
+; BL=10 enables reporting, BL=0 disables it. Byte writes avoid PCI status.
+chipset_parity_controls:
+    pushad
+    cache_read 0x5A
+    and al,0xEF
+    or al,bl
+    mov cl,al
+    cache_write 0x5A,cl
+    shr bl,4
+    cache_read 0x05
+    and al,0xFE
+    or al,bl
+    mov cl,al
+    cache_write 0x05,cl
+    mov eax,0x80000040 | (CFG_PLATFORM_ISA_PCI_DEVICE << 11)
+    mov dx,0xCF8
+    out dx,eax
+    mov dx,0xCFD
+    in al,dx
+    and al,0xBF
+    xor bl,1
+    shl bl,6
+    or al,bl
+    out dx,al
+    popad
     ret

@@ -938,9 +938,10 @@ def tuning_cases(image,shared=True):
                 (7,[0,1,2,3],['Auto','Normal','Large','LBA']),
                 (8,list(range(9)),['Auto','Disabled','2 sectors','4 sectors','8 sectors','16 sectors','32 sectors','64 sectors','128 sectors']),
                 (9,[0,1],['Enabled','Disabled']),
-                (10,[0,1],['Disabled','Enabled'])]
+                (10,[0,1],['Disabled','Enabled']),
+                (11,list(range(6)),['Auto','0','1','2','3','4'])]
     ide_ui_cases=0
-    for device in (0,1):
+    for device in range(4):
         for field,raws,labels in ide_fields:
             displayed=[]
             for raw in raws:
@@ -948,10 +949,15 @@ def tuning_cases(image,shared=True):
                 d.write(base+state['U_IDE_DEVICE'],1,device)
                 d.write(base+state['U_PAGE'],1,1);d.write(base+state['U_FIELD'],1,field)
                 address=base+state['U_IDE']+1+12*device
-                if field==0:d.write(base+(state['U_HDD'] if device==0 else state['U_SLAVE']),1,raw)
-                elif field==10:d.write(base+state['U_CHIP']+13,1,(1<<(1-device))|(raw<<device))
+                if field==0:
+                    enabled=state['U_HDD'] if device==0 else state['U_SLAVE'] if device==1 else state['U_IDE']+49+device-2
+                    d.write(base+enabled,1,raw)
+                elif field==10:d.write(base+state['U_CHIP']+13,1,(15&~(1<<device))|(raw<<device))
+                elif field==11:
+                    d.write(base+state['U_CHIP']+20,1,(255&~(3<<(device*2)))|((raw&3)<<(device*2)))
+                    d.write(base+state['U_CHIP']+23,1,(raw>>2)<<device)
                 else:d.write(address+{7:1,8:2,9:3}[field],1,raw)
-                before_ide=d.read(base+state['U_IDE'],25);before_chip=d.read(base+state['U_CHIP'],24)
+                before_ide=d.read(base+state['U_IDE'],51);before_chip=d.read(base+state['U_CHIP'],24)
                 invoke(fixture,'ide_ui_parameters')
                 position=d.read(base+state['U_CHIP_VALUE'],1)[0]
                 table=u.reg_read(x.UC_X86_REG_SI)
@@ -960,7 +966,7 @@ def tuning_cases(image,shared=True):
                 displayed.append((position,label))
                 u.reg_write(x.UC_X86_REG_AL,position)
                 invoke(fixture,'setup_enum_store')
-                assert d.read(base+state['U_IDE'],25)==before_ide
+                assert d.read(base+state['U_IDE'],51)==before_ide
                 assert d.read(base+state['U_CHIP'],24)==before_chip
                 ide_ui_cases+=1
             shown=[label for _,label in sorted(displayed)]

@@ -45,6 +45,13 @@ ports_settings_load:
     pushad
     mov di, C_PORTS
     call ports_defaults
+%if BOARD_ATA_DEVICE_COUNT = 4
+    call settings_format
+    cmp al,1
+    je .packed
+    test al,al
+    jnz .bad
+%endif
     mov al, 0x5D
     call rtc_read
     cmp al, 'P'
@@ -77,6 +84,12 @@ ports_settings_load:
     mov si, C_PORTS
     call ports_valid
     jnc .done
+    jmp .bad
+%if BOARD_ATA_DEVICE_COUNT = 4
+.packed:
+    call ports_packed_load
+    jnc .done
+%endif
 .bad:
     mov di, C_PORTS
     call ports_defaults
@@ -105,6 +118,11 @@ ports_settings_save:
     mov si, U_PORTS
     call ports_valid
     jc .bad
+%if BOARD_ATA_DEVICE_COUNT = 4
+    call ports_packed_save
+    popad
+    ret
+%endif
     mov ax, 0x005D
     call rtc_write
     mov bl, 'P'+'1'+1
@@ -159,6 +177,59 @@ ports_settings_save:
     popad
     stc
     ret
+
+%if BOARD_ATA_DEVICE_COUNT = 4
+ports_packed_load:
+    pushad
+    sub sp,5
+    mov bp,sp
+    mov di,bp
+    mov al,0x6C
+    mov cx,5
+    call settings_record_read
+    jc .bad
+    cmp word [ss:bp],0x0250
+    jne .bad
+    test byte [ss:bp+4],0xC0
+    jnz .bad
+    add di,3
+    mov si,C_PORTS
+    mov bx,ports_packed_masks
+    mov cx,8
+    call settings_unpack
+    call ports_valid
+    lea sp,[bp+5]
+    popad
+    ret
+.bad:
+    lea sp,[bp+5]
+    popad
+    stc
+    ret
+
+ports_packed_save:
+    pushad
+    sub sp,5
+    mov bp,sp
+    mov word [ss:bp],0x0250
+    mov byte [ss:bp+2],0
+    mov word [ss:bp+3],0
+    lea di,[bp+3]
+    mov si,U_PORTS
+    mov bx,ports_packed_masks
+    mov cx,8
+    call settings_pack
+    mov di,bp
+    mov cx,5
+    mov bx,2
+    call settings_record_checksum
+    mov ax,0x006C
+    call settings_record_write
+    lea sp,[bp+5]
+    popad
+    ret
+ports_packed_masks db 7,7,1,3,3,1,1,1
+%endif
 
 ; AL=logical onboard selection0..4; AX=base (zero for Disabled).
 ports_uart_base:

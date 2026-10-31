@@ -156,3 +156,5 @@ Do not copy board-specific register recipes into this project-wide guide.
 
 The current worked example is [the PB430 porting lessons](../pb430/docs/porting-lessons.md).
 Its physical results qualify only the tested PB430 configuration. They do not make its hardware owners portable to another chipset.
+
+For shared ATA support, set `BOARD_ATA_PIO_MAX` to a documented ceiling from0 through4. The common driver handles capability limits, completion and reset. The generic host path requires working IORDY and retains current host strobes. A separate IDE controller or missing timing registers does not establish a lower ceiling. Use an adapter for qualified controller-specific timing. Keep that electrical qualification separate from software proof. See [the shared ATA contract](../shared/README.md).

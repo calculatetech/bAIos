@@ -90,6 +90,13 @@ init_floppy:
     inc di
     loop .clear
     and word [0x0410], 0xFF3E
+    ; DMA1 reaches the ISA bus through DMA2 channel 4, even with no FDC.
+    ; A master-clear leaves that global cascade masked.
+    mov al, 0xC0
+    out 0xD6, al
+    xor al, al
+    out 0xD2, al
+    out 0xD4, al
     cmp byte [fs:C_PORTS + P_FLOPPY], 0
     je .done
     mov al, [fs:C_TYPES]
@@ -121,13 +128,6 @@ init_floppy:
     or [0x0410], bl
 .controller:
     call floppy_controller_mode
-    ; OEM F000:309B and 26B2-26BA: DMA1 reaches the ISA bus through
-    ; DMA2 channel 4. A master-clear alone leaves this cascade masked.
-    mov al, 0xC0
-    out 0xD6, al
-    xor al, al
-    out 0xD2, al
-    out 0xD4, al
     in al, 0x21
     and al, 0xBF
     out 0x21, al

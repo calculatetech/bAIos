@@ -85,21 +85,22 @@ post_ui_disks:
     pop ds
     mov ax, 0xB800
     mov es, ax
+    mov bp,11*160
+    mov cx,BOARD_ATA_DEVICE_COUNT
+.position:
+    push cx
     call post_device_label
-    mov di,11*160+3*2
+    mov di,bp
+    add di,3*2
     mov bh,0x0B
     call setup_text
-    mov bp, 11*160
     call .device
-    mov ax, fs
-    add ax, 0x20
-    mov fs, ax
-    call post_device_label
-    mov di,12*160+3*2
-    mov bh,0x0B
-    call setup_text
-    mov bp, 12*160
-    call .device
+    mov ax,fs
+    add ax,0x20
+    mov fs,ax
+    add bp,160
+    pop cx
+    loop .position
     pop fs
     pop es
     pop ds
@@ -116,7 +117,11 @@ post_ui_disks:
     mov si, u_disabled
     cmp byte [fs:S_CONTROLLER], 0
     je .disabled
+%if BOARD_ATA_DEVICE_COUNT = 4
+    cmp byte [fs:S_ENABLED],1
+%else
     cmp byte [fs:C_HDD], 1
+%endif
     je .detected
 .disabled:
     mov bh, 7
@@ -155,22 +160,20 @@ post_ui_disk:
     pop ds
     mov ax, 0xB800
     mov es, ax
-    mov bp, 11*160
+    push fs
+    call load_bios_state
     mov ax,fs
-    cmp ax,STATE_SEG
-    jne .slave
+    pop fs
+    mov dx,fs
+    sub dx,ax
+    shr dx,5
+    imul bp,dx,160
+    add bp,11*160
     call post_device_label
-    mov di,11*160+3*2
+    mov di,bp
+    add di,3*2
     mov bh,0x0B
     call setup_text
-    jmp .result
-.slave:
-    mov bp, 12*160
-    call post_device_label
-    mov di,12*160+3*2
-    mov bh,0x0B
-    call setup_text
-.result:
     call post_ui_disks.device
 .done:
     pop es

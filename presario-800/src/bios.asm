@@ -1,8 +1,8 @@
 bits 16
 org 0
 
-%define BIOS_VERSION '0.1.3'
-%define BIOS_RELEASE_DATE '10/05/2026'
+%define BIOS_VERSION '0.2.2'
+%define BIOS_RELEASE_DATE '10/31/2026'
 %substr BIOS_DATE_PREFIX BIOS_RELEASE_DATE 1,6
 %substr BIOS_DATE_YEAR BIOS_RELEASE_DATE 9,2
 
@@ -2374,6 +2374,8 @@ ata_identify_selected:
     mov word [fs:S_IDENTIFY_TRACE + 4], 0
     mov word [fs:S_MULTIPLE_MAX], 0
     mov byte [fs:S_CHS_ONLY], 0
+    call ide_pio_begin
+    jc .done
     mov word [fs:S_GEOMETRY], 0
     cmp byte [fs:S_CONTROLLER], 0
     je .done
@@ -2556,6 +2558,7 @@ ata_identify_selected:
 .identified:
     mov byte [fs:S_IDENTIFY_TRACE], 7
     mov byte [fs:S_STATUS], 0
+    call ide_pio_identify
     jmp .snapshot
 .identify_failed:
     post_code 0x7F
@@ -2764,12 +2767,16 @@ publish_disk_cmos:
 disk_cmos_offsets: db 0, 1, 2, 5, 6, 8, 12, 13, 14
 
 ata_select_ready:
+    call ide_pio_guard
+    jc .return
     mov dx, ATA_DRIVE
     mov al, 0xA0
     or al, [fs:S_ATA_DEVICE]
     out dx, al
     call ata_delay
     jmp ata_wait_ready
+.return:
+    ret
 
 ata_no_data_command:
     mov dx, ATA_COMMAND
@@ -2778,58 +2785,8 @@ ata_no_data_command:
 
 presario_shared "pc/chs-geometry.inc"
 
-ata_reset:
-    push dx
-    call ata_reset_bus
-    call ata_select_ready
-    jc .done
-    ; SRST affects both positions. Restore each configured CHS disk before
-    ; returning to the original selected record and subsequent transfers.
-    push fs
-    call load_bios_state
-    call .geometry
-    jc .geometry_error
-    mov ax, fs
-    add ax, 0x20
-    mov fs, ax
-    call .geometry
-    jc .geometry_error
-    pop fs
-    call ata_select_ready
-.done:
-    pop dx
-    ret
-.geometry_error:
-    mov al, [fs:S_STATUS]
-    pop fs
-    mov [fs:S_STATUS], al
-    stc
-    jmp .done
-.geometry:
-    cmp byte [fs:S_PRESENT], 1
-    je ide_initialize_geometry
-    clc
-    ret
+presario_shared "pc/ata-reset.inc"
 
-ata_reset_bus:
-    push cx
-    push dx
-    mov dx, ATA_CONTROL
-    mov al, 4
-    out dx, al
-    mov cx, 16
-.hold_srst:
-    call ata_delay
-    loop .hold_srst
-    xor al, al
-    out dx, al
-    mov cx, 5000
-.settle:
-    call ata_delay
-    loop .settle
-    pop dx
-    pop cx
-    ret
 
 ata_transfer:
     cmp byte [fs:S_COUNT], 1
@@ -3271,6 +3228,7 @@ emulator_exit:
 %include "mouse.inc"
 %include "memory.inc"
 %include "ide.inc"
+presario_shared "firmware/ide-pio.inc"
 %include "peripherals.inc"
 %include "setup.inc"
 %include "post.inc"

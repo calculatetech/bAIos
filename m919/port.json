@@ -3,8 +3,8 @@
     "vendor": "PC-Chips",
     "model": "M919",
     "revision": "1.5",
-    "version": "0.5.5",
-    "release_date": "10/30/2026"
+    "version": "0.9.7",
+    "release_date": "10/31/2026"
   },
   "rom": {
     "size": 131072,

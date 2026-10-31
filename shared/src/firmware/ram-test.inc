@@ -372,8 +372,7 @@ chipset_visible_ram_test:
     and al, 0xBF
     cmp al, 0x1A
     je .failed
-    mov ax, 0xD269
-    call rtc_write
+    call settings_recovery_publish
     mov ax, 0x5A36
     call rtc_write
     cmp byte [fs:P_PHASE], 0

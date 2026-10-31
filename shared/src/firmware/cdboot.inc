@@ -61,7 +61,7 @@ cd_boot:
     pop bp
 .next:
     inc bp
-    cmp bp, 2
+    cmp bp, BOARD_ATA_DEVICE_COUNT
     jb .position
     ret
 
@@ -331,6 +331,25 @@ cd_read_span:
 
 ; Polled ATAPI PIO. Validate every phase, accept split data replies, and
 ; acknowledge pending device IRQ before restoring the established IRQ policy.
+%ifdef BOARD_ATA_PIO_MAX
+ide_pio_cd_guard:
+    push ax
+    push cx
+    call hardware_cd_packet_controller
+    mov cl,al
+    mov al,1
+    shl al,cl
+    test [fs:S_PIO_BLOCKED],al
+    pop cx
+    pop ax
+    jz .ready
+    mov byte [fs:CD_STATUS],ERR_TIMEOUT
+    stc
+    ret
+.ready:
+    clc
+    ret
+%endif
 cd_packet_command:
     push eax
     push ebx
@@ -340,6 +359,10 @@ cd_packet_command:
     push ebp
     mov byte [fs:CD_STATUS], 0
     mov word [fs:CD_RECEIVED], 0
+%ifdef BOARD_ATA_PIO_MAX
+    call ide_pio_cd_guard
+    jc .return
+%endif
     cd_port ATA_DRIVE
     mov al, 0xA0
     or al, [fs:CD_DEVICE]

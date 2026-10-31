@@ -59,8 +59,8 @@ board_floppy_perpendicular:
 
 board_floppy_summary_details:
     pushad
-    ui_text 14,3,umc_floppy_details,0x0B
-    mov di,14*160+28*2
+    ui_text 12+BOARD_ATA_DEVICE_COUNT,3,umc_floppy_details,0x0B
+    mov di,(12+BOARD_ATA_DEVICE_COUNT)*160+28*2
     mov al,[fs:HW_FDC_VERSION]
     call setup_hex8
     call .separator

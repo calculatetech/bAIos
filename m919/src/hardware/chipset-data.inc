@@ -1,6 +1,6 @@
 CHIP_GROUP_COUNT equ 7
 CHIP_FIELD_COUNT equ 45
-CHIP_OPTION_BYTES equ 20
+CHIP_OPTION_BYTES equ 24
 CHIP_RECORD_TAG equ 0x57
 chip_group_0:
     chipset_field chip_l1,1,0,1,2,chip_enable_values,chip_l1_help1,chip_l1_help2
@@ -100,9 +100,10 @@ chip_rows_5 db 5,6,7,8,9,10,11
 chip_rows_6 db 5,6,7,8,9,10,11
 chip_headers db 0
 ; Three DRAM waits, 3-2-2-2 cache burst, FPM, WB, no posting.
-chipset_default db 0,DEFAULT_CACHE_ENABLED,1-DEFAULT_CACHE_ENABLED,(DEFAULT_CACHE_WRITE_BACK << 6),0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+chipset_default db 0,DEFAULT_CACHE_ENABLED,1-DEFAULT_CACHE_ENABLED,(DEFAULT_CACHE_WRITE_BACK << 6),0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
     times CHIP_SIZE-CHIP_OPTION_BYTES db 0
-chipset_masks db 0xF0,1,1,0x70,0x90,3,1,0xFF,0xFF,7,0x0F,0x7F,1,3,1,0xFC,0xFF,0xFF,0x0F,1
+; Byte21 retains its old packed bit as opaque compatibility data.
+chipset_masks db 0xF0,1,1,0x70,0x90,3,1,0xFF,0xFF,7,0x0F,0x7F,1,0x0F,1,0xFC,0xFF,0xFF,0x0F,1,0xFF,1,3,0x0F
     times CHIP_SIZE-CHIP_OPTION_BYTES db 0xFF
 u_chip_menu db 'Chipset',0
 u_chip_title db 'bAIos Setup > Chipset',0

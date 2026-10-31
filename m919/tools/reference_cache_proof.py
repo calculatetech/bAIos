@@ -184,7 +184,7 @@ def rejected_extents(image):
     u.reg_write(x.UC_X86_REG_DI, state['C_CHIP'])
     invoke(fixture, 'chipset_defaults')
     rejected = []
-    for code, installed_kib in ((5, 2048), (6, 4096), (3, 65536)):
+    for code, installed_kib in ((5, 2048), (6, 4096)):
         d.write(base + 0x1036, 1, code)
         d.write(base + 0x1038, 1, 5)
         d.write(base + 0x103C, 4, 0x8000 << code)
@@ -193,8 +193,89 @@ def rejected_extents(image):
         assert not d.registers.get(0x50, 0) & 0x80
         assert d.read(base + 0x1038, 1) == b'\x01'
         rejected.append(dict(size_code=code, installed_kib=installed_kib))
-    print('Incomplete fill span / unsupported tag extent rejected PASS', flush=True)
+    print('Incomplete reference fill span rejected PASS', flush=True)
     return rejected
+
+
+def partial_extent_cases(image):
+    """Exercise firmware activation; upper-range bypass is a device-model contract."""
+    from cache_proof import SRAM, guest
+    from geometry_proof import DRAM
+    rows = []
+    for wb in (False, True):
+        d = SRAM(kib=256, ram=64)
+        _, fixture = mapped(d.modules, expected=64, memory=d, rom_image=image)
+        u, _, _, state, _, _ = fixture
+        base = u.reg_read(x.UC_X86_REG_FS) << 4
+        u.reg_write(x.UC_X86_REG_DI, state['C_CHIP'])
+        invoke(fixture, 'chipset_defaults')
+        d.write(base + state['C_CHIP'] + 1, 1, 0)  # Isolate L2 from L1.
+        d.write(base + state['C_CHIP'] + 3, 1, 0x40 if wb else 0)
+        invoke(fixture, 'chipset_apply')
+        invoke(fixture, 'cache_qualify', count=12000000)
+        assert d.read(base + 0x1038, 1) == b'\x01'
+        assert int.from_bytes(d.read(base + 0x103C, 4), 'little') == 256 * 1024
+        d.qualifying = False
+        invoke(fixture, 'cache_enable', count=3000000)
+        assert d.read(base + 0x1038, 1) == b'\x05'
+        assert d.registers[0x50] & 0xC0 == (0xC0 if wb else 0x80)
+        assert not d.registers[0x51] & 1
+        low, high = 0x102B60, 0x2102B60  # Same cache index, above the 32MiB tag range.
+        assert d.cacheable(low) and not d.cacheable(high) and low % d.capacity == high % d.capacity
+        before_hits = d.hits
+        guest(fixture, 'partial-cache-extent', f'''cli
+lgdt [gdtr]
+mov eax,cr0
+or al,1
+mov cr0,eax
+jmp dword 8:protected
+bits 32
+protected:
+mov ax,16
+mov ds,ax
+mov es,ax
+mov dword [{low}],0x55AA1234
+mov eax,[{low}]
+mov eax,[{low}]
+mov dword [{high}],0xA55A8765
+mov eax,[{low}]
+mov [0x8500],eax
+mov eax,[{high}]
+mov [0x8504],eax
+wbinvd
+mov eax,[{low}]
+mov [0x8508],eax
+mov eax,[{high}]
+mov [0x850C],eax
+wbinvd
+mov eax,cr0
+and eax,0xFFFFFFFE
+mov cr0,eax
+jmp word 0:real
+bits 16
+real:
+xor ax,ax
+mov ds,ax
+mov es,ax
+jmp done
+align 8
+gdt:
+dq 0,0x00CF9A000000FFFF,0x00CF92000000FFFF
+gdtr:
+dw 23
+dd gdt
+done:
+''')
+        observed = struct.unpack('<4I', d.read(0x8500, 16))
+        assert observed == (0x55AA1234, 0xA55A8765) * 2, observed
+        assert DRAM.read(d, low, 4) == struct.pack('<I', 0x55AA1234)
+        assert DRAM.read(d, high, 4) == struct.pack('<I', 0xA55A8765)
+        assert d.hits > before_hits and (not wb or d.l2_copybacks > 0)
+        assert int.from_bytes(d.read(base + state['S_EXTENDED_KIB32'], 4), 'little') == 64 * 1024 - 1024
+        assert int.from_bytes(d.read(base + state['S_INSTALLED_KIB32'], 4), 'little') == 64 * 1024 - 1024
+        rows.append(dict(wb=wb, cache_kib=256, installed_mib=64, cached_address=low,
+                         uncached_address=high, before_after_flush=observed, full_ram_reported=True))
+    return rows
 
 
 def run(image):
@@ -210,9 +291,10 @@ def run(image):
         rows.append(row)
         print('Reference operation order / complete reads / L1 policy', wb, code, l1, 'PASS', flush=True)
     rejected = rejected_extents(image)
+    partial = partial_extent_cases(image)
     target = PORT / 'build/tests/manual-rebuild/reference-cache.json'
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(dict(comparisons=rows, rejected=rejected), indent=2) + '\n')
+    target.write_text(json.dumps(dict(comparisons=rows, rejected=rejected, partial=partial), indent=2) + '\n')
     return rows
 
 

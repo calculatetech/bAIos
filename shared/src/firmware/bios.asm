@@ -604,27 +604,13 @@ int13:
     push fs
     call load_bios_state
     mov word [fs:S_BLOCK_SIZE], 512
-    cmp dl, 0x80
-    je .first_drive
-    cmp dl, 0x81
+    call ata_select_bios_disk
+    jnc .selected_drive
+    cmp dl,0x80
     jne .invalid_drive
-    cmp byte [fs:S_PRESENT], 1
-    jne .invalid_drive
-    cmp byte [fs:0x200 + S_PRESENT], 1
-    jne .invalid_drive
-    jmp .slave_drive
-.first_drive:
-    cmp byte [fs:S_PRESENT], 1
-    je .drive_ok
-    cmp byte [fs:0x200 + S_PRESENT], 1
-    jne .drive_ok           ; Retain absent80h status/capability behavior.
-.slave_drive:
-    push ax
-    mov ax, fs
-    add ax, 0x20
-    mov fs, ax
-    pop ax
-    mov word [fs:S_BLOCK_SIZE], 512
+    ; Retain the established absent80h status/capability behavior.
+.selected_drive:
+    mov word [fs:S_BLOCK_SIZE],512
     jmp .drive_ok
 .invalid_drive:
     call .clear_dap_if_packet
@@ -1250,7 +1236,11 @@ ata_report_device:
     call print_string
     cmp byte [fs:S_CONTROLLER], 0
     je .disabled
+%if BOARD_ATA_DEVICE_COUNT = 4
+    cmp byte [fs:S_ENABLED],1
+%else
     cmp byte [fs:C_HDD], 1
+%endif
     jne .disabled
     mov si, msg_ata
     cmp byte [fs:S_PRESENT], 1
@@ -1294,10 +1284,24 @@ ata_identify_selected:
     mov word [fs:S_IDENTIFY_TRACE + 4], 0
     mov word [fs:S_MULTIPLE_MAX], 0
     mov byte [fs:S_CHS_ONLY], 0
+%ifdef BOARD_ATA_PIO_MAX
+%ifdef BOARD_ATA_PIO_ADAPTER
+    mov byte [fs:S_PIO_MODE],0
+    mov byte [fs:S_PIO_LIMIT],0
+    call ide_pio_guard
+%else
+    call ide_pio_begin
+%endif
+    jc .done
+%endif
     mov word [fs:S_GEOMETRY], 0
     cmp byte [fs:S_CONTROLLER], 0
     je .done
+%if BOARD_ATA_DEVICE_COUNT = 4
+    cmp byte [fs:S_ENABLED],1
+%else
     cmp byte [fs:C_HDD], 1
+%endif
     jne .done
     mov byte [fs:S_IDENTIFY_TRACE], 1
 %ifdef EMULATOR_IDENTIFY_TIMEOUT
@@ -1476,6 +1480,9 @@ ata_identify_selected:
 .identified:
     mov byte [fs:S_IDENTIFY_TRACE], 7
     mov byte [fs:S_STATUS], 0
+%ifdef BOARD_ATA_PIO_MAX
+    call ide_pio_identify
+%endif
     jmp .snapshot
 .identify_failed:
     post_code 0x7F
@@ -1534,40 +1541,100 @@ ata_packet_signature:
 ; Publish the detected drive, not a code pointer masquerading as its table.
 ; Reload the far pointer after EMM386 relocates the EBDA.
 ; POST owns publication; option ROMs can reuse these vectors afterward.
-disk_refresh_vector:
+ ; DL=BIOS disk number. Only present ATA records owe a BIOS number.
+ata_select_bios_disk:
     push ax
+    push bx
+    push cx
+    call load_bios_state
+    mov bl,dl
+    sub bl,0x80
+    jc .missing
+    mov cx,BOARD_ATA_DEVICE_COUNT
+.position:
+    cmp byte [fs:S_PRESENT],1
+    jne .next
+    test bl,bl
+    jz .found
+    dec bl
+.next:
+    mov ax,fs
+    add ax,0x20
+    mov fs,ax
+    loop .position
+.missing:
+    call load_bios_state
+    stc
+    jmp .done
+.found:
+    clc
+.done:
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; A loaded BPB describes the actual boot disk, not every Auto disk.
+ata_bpb_owner:
+    push ax
+    push dx
+    push fs
+    push es
+    mov dx,fs
+    call load_bios_state
+    mov al,[fs:B_DRIVE]
+    push dx
+    mov dl,al
+    call ata_select_bios_disk
+    pop dx
+    jc .done
+    mov ax,fs
+    cmp ax,dx
+    jne .other
+    clc
+    jmp .done
+.other:
+    stc
+.done:
+    pop es
+    pop fs
+    pop dx
+    pop ax
+    ret
+
+disk_refresh_vector:
+    pushad
     push es
     push fs
     call load_bios_state
-    xor ax, ax
-    mov es, ax
-    mov byte [es:0x0475], 0
-    mov dword [es:0x0104], 0
-    mov dword [es:0x0118], 0
-    cmp byte [fs:S_PRESENT], 1
-    jne .slave
-    inc byte [es:0x0475]
-    mov word [es:0x0104], S_FDPT
-    mov [es:0x0106], fs
-.slave:
-    cmp byte [fs:0x200 + S_PRESENT], 1
-    jne .done
-    mov ax, fs
-    add ax, 0x20
-    cmp byte [es:0x0475], 0
-    jne .second
-    mov word [es:0x0104], S_FDPT
-    mov [es:0x0106], ax
-    jmp .count
-.second:
-    mov word [es:0x0118], S_FDPT
-    mov [es:0x011A], ax
+    xor ax,ax
+    mov es,ax
+    mov byte [es:0x0475],0
+    mov dword [es:0x0104],0
+    mov dword [es:0x0118],0
+    mov cx,BOARD_ATA_DEVICE_COUNT
+.position:
+    cmp byte [fs:S_PRESENT],1
+    jne .next
+    mov di,0x0104
+    cmp byte [es:0x0475],0
+    je .pointer
+    mov di,0x0118
+    cmp byte [es:0x0475],1
+    jne .count
+.pointer:
+    mov word [es:di],S_FDPT
+    mov [es:di+2],fs
 .count:
     inc byte [es:0x0475]
-.done:
+.next:
+    mov ax,fs
+    add ax,0x20
+    mov fs,ax
+    loop .position
     pop fs
     pop es
-    pop ax
+    popad
     ret
 
 publish_disk_table:
@@ -1631,7 +1698,7 @@ publish_disk_cmos:
     jz .type
     cmp ah, 2
     mov ah, 0xF0
-    jne .type
+    jb .type
     mov ah, 0xFF
 .type:
     mov al, 0x12
@@ -1684,12 +1751,20 @@ publish_disk_cmos:
 disk_cmos_offsets: db 0, 1, 2, 5, 6, 8, 12, 13, 14
 
 ata_select_ready:
+%ifdef BOARD_ATA_PIO_MAX
+    call ide_pio_guard
+    jc .return
+%endif
     ata_port ATA_DRIVE
     mov al, 0xA0
     or al, [fs:S_ATA_DEVICE]
     out dx, al
     call ata_delay
     jmp ata_wait_ready
+%ifdef BOARD_ATA_PIO_MAX
+.return:
+    ret
+%endif
 
 ata_no_data_command:
     ata_port ATA_COMMAND
@@ -1698,58 +1773,10 @@ ata_no_data_command:
 
 %include "pc/chs-geometry.inc"
 
-ata_reset:
-    push dx
-    call ata_reset_bus
-    call ata_select_ready
-    jc .done
-    ; SRST affects both positions. Restore each configured CHS disk before
-    ; returning to the original selected record and subsequent transfers.
-    push fs
-    call load_bios_state
-    call .geometry
-    jc .geometry_error
-    mov ax, fs
-    add ax, 0x20
-    mov fs, ax
-    call .geometry
-    jc .geometry_error
-    pop fs
-    call ata_select_ready
-.done:
-    pop dx
-    ret
-.geometry_error:
-    mov al, [fs:S_STATUS]
-    pop fs
-    mov [fs:S_STATUS], al
-    stc
-    jmp .done
-.geometry:
-    cmp byte [fs:S_PRESENT], 1
-    je ide_initialize_geometry
-    clc
-    ret
+%ifndef BOARD_ATA_PIO_LATE
+%include "pc/ata-reset.inc"
+%endif
 
-ata_reset_bus:
-    push cx
-    push dx
-    ata_port ATA_CONTROL
-    mov al, 4
-    out dx, al
-    mov cx, 16
-.hold_srst:
-    call ata_delay
-    loop .hold_srst
-    xor al, al
-    out dx, al
-    mov cx, 5000
-.settle:
-    call ata_delay
-    loop .settle
-    pop dx
-    pop cx
-    ret
 
 ata_transfer:
     cmp byte [fs:S_COUNT], 1
@@ -1865,6 +1892,11 @@ ata_transfer:
     ret
 
 %include "pc/ata-status.inc"
+%ifdef BOARD_ATA_PIO_MAX
+%ifndef BOARD_ATA_PIO_LATE
+%include "firmware/ide-pio.inc"
+%endif
+%endif
 
 ata_read_status:
 %ifdef EMULATOR_TEST
