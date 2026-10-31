@@ -34,12 +34,10 @@ chipset_apply_timing:
     cache_read 0x5A
     and al,0x20
     or al,0x0D               ; Retain the reference's final POST overlay as well.
-    cmp byte [fs:C_CHIP+6],0
-    je .parity
-    or al,0x10
-.parity:
     mov cl,al
     cache_write 0x5A,cl
+    xor bl,bl               ; Never arm reporting before RAM has valid parity.
+    call chipset_parity_controls
     in al,0x61
     or al,4
     out 0x61,al

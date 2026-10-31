@@ -1,33 +1,8 @@
-; Scan every physical position. Keep the donor's two logical records and API.
-; Only ATA-owned fields move; common floppy, mouse, policy and CPU state do not.
-ata_identify:
-ata_detect_primary:
-    pushf
+%include "pc/primary-ata.inc"
+
+; BX=physical position, ES=root, FS=its runtime record. No task-file access.
+hardware_ata_position:
     pushad
-    push ds
-    push es
-    push fs
-    call load_bios_state
-    call ide_apply_controller
-    sub sp,4
-    mov bp,sp
-    mov word [ss:bp],0         ; Next physical position.
-    mov word [ss:bp+2],0       ; Next donor logical record.
-    cmp byte [fs:C_IDE],0
-    je .done
-    cmp word [fs:HW_IDE_BDF],0xFFFF
-    je .done
-    cmp byte [fs:HW_IDE_USABLE],1
-    jne .done
-.position:
-    mov ax,STATE_SEG+0x40
-    mov fs,ax
-    mov es,ax
-    xor di,di
-    xor ax,ax
-    mov cx,0x100
-    rep stosw
-    mov bx,[ss:bp]
     mov [fs:HW_POSITION],bl
     mov si,umc_primary_ports
     test bl,2
@@ -38,7 +13,7 @@ ata_detect_primary:
     mov cx,9
 .port:
     mov ax,[cs:si]
-    mov [es:di],ax
+    mov [fs:di],ax
     add si,2
     add di,2
     loop .port
@@ -46,148 +21,16 @@ ata_detect_primary:
     and al,1
     shl al,4
     mov [fs:S_ATA_DEVICE],al
+    mov byte [fs:S_CONTROLLER],0
+    cmp byte [es:C_IDE],0
+    je .done
+    cmp word [es:HW_IDE_BDF],0xFFFF
+    je .done
+    cmp byte [es:HW_IDE_USABLE],1
+    jne .done
     mov byte [fs:S_CONTROLLER],1
-    mov byte [fs:C_HDD],1
-    mov ax,STATE_SEG
-    mov es,ax
-    mov si,C_IDE+1
-    cmp word [ss:bp+2],0
-    je .policy
-    add si,IDE_RECORD_SIZE
-.policy:
-    mov di,S_IDE
-    mov cx,IDE_RECORD_SIZE
-.byte:
-    mov al,[es:si]
-    mov [fs:di],al
-    inc si
-    inc di
-    loop .byte
-    test byte [fs:HW_POSITION],1
-    jnz .identify
-    push bp
-    call ata_reset_bus
-    pop bp
-.identify:
-    push bp
-    call ata_identify_selected
-    pop bp
-    cmp byte [fs:S_PRESENT],1
-    je .detected
-    cmp byte [fs:S_ATAPI],1
-    jne .next
-.detected:
-    cmp word [ss:bp+2],2
-    jae .next                 ; The donor currently exposes two logical devices.
-    mov ax,STATE_SEG
-    mov es,ax
-    mov al,[es:BOARD_IDE_32BIT_POLICY]
-    mov cx,[ss:bp+2]
-    shr al,cl
-    and al,1
-    mov [fs:S_PIO32],al
-    mov ax,[ss:bp+2]
-    shl ax,5
-    add ax,STATE_SEG
-    mov es,ax
-    mov si,S_PRESENT
-    mov di,S_PRESENT
-    mov cx,S_WARM_BOOT-S_PRESENT
-    call .copy
-    mov si,S_FDPT
-    mov di,S_FDPT
-    mov cx,S_SETUP_REQUEST-S_FDPT
-    call .copy
-    mov si,S_PACKET_BYTES
-    mov di,S_PACKET_BYTES
-    mov cx,C_TYPES-S_PACKET_BYTES
-    call .copy
-    mov si,S_IDE
-    mov di,S_IDE
-    mov cx,C_PORTS-S_IDE
-    call .copy
-    mov si,HW_PORT_TABLE
-    mov di,HW_PORT_TABLE
-    mov cx,HW_POSITION+1-HW_PORT_TABLE
-    call .copy
-    push fs
-    call load_bios_state
-    mov al,[fs:C_HDD]
-    cmp word [ss:bp+2],0
-    je .enabled
-    mov al,[fs:C_SLAVE]
-.enabled:
-    pop fs
-    mov [es:C_HDD],al
-    test al,al
-    jnz .announce
-    mov byte [es:S_PRESENT],0
-    mov byte [es:S_ATAPI],0
-.announce:
-    push fs
-    push es
-    pop fs
-    push bp
-    call post_ui_disk
-    pop bp
-    pop fs
-    inc word [ss:bp+2]
-.next:
-    inc word [ss:bp]
-    cmp word [ss:bp],4
-    jb .position
 .done:
-    add sp,4
-    call load_bios_state
-    call disk_refresh_vector
-    call publish_disk_cmos
-    in al,0xA1
-    and al,0x3F               ; Primary IRQ14 and secondary IRQ15.
-    out 0xA1,al
-    in al,0x21
-    and al,0xFB
-    out 0x21,al
-    pop fs
-    pop es
-    pop ds
     popad
-    popf
-    call load_bios_state
-    ret
-.copy:
-    mov al,[fs:si]
-    mov [es:di],al
-    inc si
-    inc di
-    loop .copy
-    ret
-
-hardware_bpb_owner:
-    push ax
-    push dx
-    push es
-    xor ax,ax
-    mov es,ax
-    mov ax,[es:0x40E]
-    mov es,ax
-    cmp byte [es:B_DRIVE],0x80
-    jb .other_boot
-    mov dx,fs
-    cmp ax,dx
-    je .first
-    cmp byte [es:S_PRESENT],1
-    jne .first
-    stc
-    jmp .done
-.other_boot:
-    stc                      ; A floppy BPB does not describe an ATA disk.
-    jmp .done
-.first:
-    clc
-.done:
-    pop es
-    pop dx
-    pop ax
     ret
 
 hardware_cd_select:
@@ -212,6 +55,134 @@ hardware_cd_packet_controller:
     shr al,1
     ret
 
+hardware_ata_channel:
+    mov al,[fs:HW_POSITION]
+    shr al,1
+    ret
+
+; The BF supports the complete PIO recipe across its silicon revisions.
+hardware_ata_pio_host:
+    call load_bios_state
+    cmp byte [fs:HW_IDE_USABLE],1
+    jne .bad
+    cmp byte [fs:C_IDE],1
+    jne .bad
+    movzx ebp,word [fs:HW_IDE_BDF]
+    mov ax,bp
+    and al,7
+    cmp al,1
+    jne .bad
+    shl ebp,8
+    or ebp,0x80000000
+    mov eax,ebp
+    call pci_read
+    cmp eax,0x673A1060
+    jne .bad
+    clc
+    ret
+.bad:
+    stc
+    ret
+
+hardware_ata_pio_allowed:
+    pushad
+    push fs
+    call hardware_ata_pio_host
+    pop fs
+    popad
+    ret
+
+hardware_ata_pio_apply:
+    push bx
+    mov bl,[fs:HW_POSITION]
+    call hardware_ata_pio_position
+    pop bx
+    ret
+
+hardware_ata_pio_reset:
+    pushad
+    mov bl,[fs:HW_POSITION]
+    and bl,2
+    xor al,al
+    call hardware_ata_pio_position
+    inc bl
+    xor al,al
+    call hardware_ata_pio_position
+    popad
+    ret
+
+; AL=mode, BL=physical position. All seven fields preserve peer bits.
+hardware_ata_pio_position:
+    pushf
+    cli
+    pushad
+    push fs
+    movzx si,al
+    imul si,3
+    add si,hardware_ata_pio_values
+    movzx di,bl
+    call hardware_ata_pio_host
+    jc .done
+    mov cx,di
+    xor cl,3
+    shl cl,1
+    mov bl,3
+    shl bl,cl
+    mov bh,[cs:si]
+    shl bh,cl
+    push di
+    mov di,0x43
+    call hardware_ata_pio_field
+    pop di
+    mov cx,di
+    and cl,1
+    xor cl,1
+    shl cl,2
+    shr di,1
+    add di,0x44
+    mov bl,15
+    shl bl,cl
+    mov bh,[cs:si+1]
+    shl bh,cl
+    push cx
+    mov cx,3
+.b:
+    call hardware_ata_pio_field
+    add di,4
+    loop .b
+    sub di,10
+    pop cx
+    mov bh,[cs:si+2]
+    shl bh,cl
+    mov cx,3
+.c:
+    call hardware_ata_pio_field
+    add di,4
+    loop .c
+.done:
+    pop fs
+    popad
+    popf
+    ret
+
+hardware_ata_pio_field:
+    mov eax,ebp
+    or ax,di
+    and al,0xFC
+    mov dx,0xCF8
+    out dx,eax
+    mov dx,di
+    and dx,3
+    add dx,0xCFC
+    in al,dx
+    mov ah,bl
+    not ah
+    and al,ah
+    or al,bh
+    out dx,al
+    ret
+hardware_ata_pio_values db 3,6,0xB, 2,5,8, 1,4,5, 0,3,2, 0,3,0
+
 post_device_label:
     push bx
     movzx bx,byte [fs:HW_POSITION]
@@ -225,20 +196,3 @@ u_umc_secondary_master db 'Secondary Master',0
 u_umc_secondary_slave db 'Secondary Slave',0
 umc_primary_ports dw 0x1F0,0x1F1,0x1F2,0x1F3,0x1F4,0x1F5,0x1F6,0x1F7,0x3F6
 umc_secondary_ports dw 0x170,0x171,0x172,0x173,0x174,0x175,0x176,0x177,0x376
-int77:
-    push ax
-    push ds
-    mov ax,0x40
-    mov ds,ax
-    mov byte [0x8E],0xFF
-    mov al,0x67               ; Specific secondary IDE IRQ15 EOI.
-    out 0xA0,al
-    mov al,0x62
-    out 0x20,al
-    xor ax,ax
-    mov ds,ax
-    mov ax,0x9100
-    int 0x15
-    pop ds
-    pop ax
-    iret

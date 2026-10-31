@@ -36,7 +36,7 @@ def constants(path):
 def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
         defaults=False, coverage=True, legacy=False, decode=False,
         caller_cr0=0x60000010,caller_flags=0x246,caller_gates=(0x23,0x40),
-        input_case=None,fault_pattern=0x55AA55AA):
+        input_case=None,fault_pattern=0x55AA55AA,cmos_seed=None,through_restart=False):
     """Bounded RAM owner proof. Reset/terminal halt are observed, not replaced."""
     raw = Path(rom).read_bytes()
     post_row = state.get('BOARD_POST_RAM_ROW', 5)
@@ -95,7 +95,7 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
     gdtr = u.reg_read(x.UC_X86_REG_GDTR)
     reserved = bytes(u.mem_read(base,8192))
     ports = {0x61:caller_gates[0], 0x92:caller_gates[1]}
-    cmos = bytearray(128)
+    cmos = bytearray(128 if cmos_seed is None else cmos_seed)
     cmos[0x36] = 0x1A if defaults else 0
     index = 0
     terminal = []
@@ -128,6 +128,8 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
             cmos[index] = value
         else:
             ports[port] = value
+            if through_restart and port == 0x64 and value == 0xFE:
+                cpu.emu_stop()
     def interrupt(cpu, number, context):
         if number == 0x10:
             return  # External display provider only.
@@ -152,7 +154,8 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
             input_sent = True
     def stop(cpu, address, size, context):
         terminal.append(context)
-        cpu.emu_stop()
+        if not through_restart or context != 'controlled_defaults_restart':
+            cpu.emu_stop()
     def fetched(cpu,address,size,context):
         nonlocal previous
         if address != previous:
@@ -261,7 +264,10 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
     elif defaults:
         assert ports.get(0x80) == 0xE7
     else:
-        assert cmos[0x69] == 0xD2 and cmos[0x36] == 0x1A, (cmos[0x69],cmos[0x36])
+        recovery_index = 0x71 if cmos_seed is not None and bytes(cmos_seed[0x33:0x36]) == b'4\x02\xca' else 0x69
+        assert cmos[recovery_index] == 0xD2 and cmos[0x36] == 0x1A, (cmos[recovery_index],cmos[0x36])
+        if through_restart:
+            assert ports.get(0x64) == 0xFE, 'Recovery did not issue a hardware reset'
     if fault is not None:
         assert injected, 'Requested fault was never injected'
     return {'kib':kib, 'ebda':hex(base), 'ranges':ranges, 'dwords':expected_dwords,
@@ -276,5 +282,6 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
             'terminal':terminal or ['returned'], 'services':len(services),
             'progress_cells':bytes(u.mem_read(0xB8000+post_row*160+24*2,16)).hex() if not legacy else None,
             'decode':decoded if decode else None,
+            'cmos_after':bytes(cmos).hex() if cmos_seed is not None else None,
             'seconds':seconds, 'rom_sha256':hashlib.sha256(raw).hexdigest(),
             'measurement':'Unicorn host execution; not physical POST time'}

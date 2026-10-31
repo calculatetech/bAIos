@@ -56,7 +56,7 @@ class Disk(legacy.Pair):
         command = self.ata.get(0x1F7)
         if command == 0xC6 and port in (0x1F7, 0x3F6) and self.reject_multiple:
             return 0x51
-        if command in (0xC4, 0xC5) and port in (0x1F7, 0x3F6):
+        if command in (0x20, 0x30, 0xC4, 0xC5) and port in (0x1F7, 0x3F6):
             if self.fail_after_words is not None and self.transfer_words >= self.fail_after_words:
                 return 0x51
             return 0x58 if self.transfer_words < self.ata[0x1F2] * 256 else 0x50
@@ -567,7 +567,7 @@ def ui():
     model = setup.Setup()
     model.open(script.copy())
     assert model.warm
-    expected = record(48, 1, 1, 1, 120, 4, 17, 128, 119)
+    expected = record(48, 2, 1, 1, 120, 4, 17, 128, 119)
     assert model.cmos[0x45:0x51] == expected, model.cmos[0x45:0x51].hex()
     model.call('settings_load')
     assert bytes(model.cpu.mem_read(model.base + 0x191, 12)) == expected
@@ -766,7 +766,7 @@ def policy_choices():
                 model.open(prefix + [0x50] * field + [0x4D] * value + [0x44, 28])
                 assert model.warm
                 expected = bytearray(record())
-                expected[offset] = value
+                expected[offset] = (0, 2, 3, 1)[value] if offset == 1 else value
                 assert model.cmos[0x45 + unit * 12:0x51 + unit * 12] == expected
                 assert model.cmos[0x45 + (1 - unit) * 12:0x51 + (1 - unit) * 12] == record()
                 disk = Disk(('ata', 'ata'))
@@ -781,8 +781,8 @@ def policy_choices():
     active = bytes(model.cpu.mem_read(model.base + 0x190, 25))
     model.open([0x43, 28, 0x44, 28])
     assert model.warm and bytes(model.cmos[0x44:0x5D]) == DEFAULT
-    assert model.cmos[0x10] == 0x40 and model.cmos[0x3B:0x3D] == b'\x13\x01'
-    assert model.cmos[0x3E:0x40] == b'\x02\0'
+    assert model.cmos[0x10] == 0x40 and model.cmos[0x3B:0x3D] == b'\x13\x03'
+    assert model.cmos[0x3E:0x40] == b'\x01\x02'
     assert bytes(model.cpu.mem_read(model.base + 0x190, 25)) == active
     for action in ('defaults', 'save'):
         model = setup.Setup()
@@ -798,7 +798,7 @@ def policy_choices():
         ending = [0x43, 1, 0x44, 28] if action == 'defaults' else [0x44, 1, 1, 1, 1, 28]
         model.open([0x50, 28, 0x50, 0x50, 28, 0x50, 0x50, 0x4D] + ending)
         changed = bytearray(nondefault)
-        changed[2] = 0
+        changed[2] = 1  # LBA advances to Normal in the sorted display list.
         assert bytes(changed) in snapshots
         assert DEFAULT not in snapshots, 'canceled Defaults changed the draft'
         if action == 'defaults':

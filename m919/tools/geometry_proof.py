@@ -101,6 +101,7 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     rom=Path(result['path']);listing=Listing(rom.with_suffix('.lst'))
     _,cfg=configuration(PORT);layout=cfg['rom'];state=constants(REPOSITORY/'shared/src/pc/state.inc')
     state.update(constants(REPOSITORY/'shared/src/setup/layout.inc'))
+    state.update(C_IDE=0xA00,U_IDE=0xA40,IDE_SETTINGS_SIZE=51)
     code=layout['code_segment']<<4
     u=Uc(UC_ARCH_X86,UC_MODE_16)
     u.mem_map(0,0x10200000)

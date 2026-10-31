@@ -1,3 +1,6 @@
+%ifndef BOARD_ATA_PIO_MAX
+%define BOARD_ATA_PIO_MAX 4
+%endif
 ; Assembly-time board composition. No runtime board detection.
 %define BOARD_DISPLAY_NAME 'Compaq Presario 800'
 %define BOARD_VENDOR 'Compaq'

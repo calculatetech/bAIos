@@ -16,6 +16,13 @@ chipset_settings_load:
     pushad
     mov di, C_CHIP
     call chipset_defaults
+%if BOARD_ATA_DEVICE_COUNT = 4
+    call settings_format
+    cmp al,1
+    je .packed
+    test al,al
+    jnz .bad
+%endif
     mov al, 0x69
     call rtc_read
     cmp al, 0xD2
@@ -43,6 +50,11 @@ chipset_settings_load:
     call chipset_valid
     jc .bad
     jmp .done
+%if BOARD_ATA_DEVICE_COUNT = 4
+.packed:
+    call chipset_packed_load
+    jnc .done
+%endif
 .bad:
     mov di, C_CHIP
     call chipset_defaults
@@ -64,6 +76,13 @@ chipset_settings_save:
 ; SI=active or draft record. Preserve verified publication and D2 on failure.
 chipset_record_save:
     pushad
+%if BOARD_ATA_DEVICE_COUNT = 4
+    call settings_format
+    cmp al,1
+    je .packed
+    test al,al
+    jnz .format_bad
+%endif
     xor dx,dx
     mov al,0x69
     call rtc_read
@@ -71,7 +90,7 @@ chipset_record_save:
     jne .validate
     mov dl,0xD2
 .validate:
-    mov bx,CHIP_OPTION_BYTES
+    mov bx,20                 ; Legacy marker bytes must remain zero.
 .clear_reserved:
     mov byte [fs:si+bx],0
     inc bx
@@ -124,6 +143,121 @@ chipset_record_save:
     popad
     stc
     ret
+%if BOARD_ATA_DEVICE_COUNT = 4
+.packed:
+    call chipset_packed_save
+    popad
+    ret
+.format_bad:
+    popad
+    stc
+    ret
+
+; CMOS71..7F: tag/checksum plus13 bytes of mask-selected policy bits.
+chipset_packed_load:
+    pushad
+    sub sp,28
+    mov bp,sp
+    mov al,0x71
+    call rtc_read
+    cmp al,0xD2
+    je .recovery
+    mov di,bp
+    mov al,0x71
+    mov cx,15
+    call settings_record_read
+    jc .bad
+    cmp byte [ss:bp],CHIP_RECORD_TAG
+    jne .bad
+    lea di,[bp+2]
+    mov si,C_CHIP
+    mov bx,chipset_masks
+    mov cx,CHIP_OPTION_BYTES
+    call settings_unpack
+    call chipset_valid
+    jc .bad
+    ; Repacking also rejects all nonzero reserved bits and padding bytes.
+    lea di,[bp+15]
+    mov cx,13
+.zero:
+    mov byte [ss:di],0
+    inc di
+    loop .zero
+    lea di,[bp+15]
+    mov cx,CHIP_OPTION_BYTES
+    call settings_pack
+    mov di,0
+.padding:
+    mov al,[ss:bp+di+2]
+    cmp al,[ss:bp+di+15]
+    jne .bad
+    inc di
+    cmp di,13
+    jb .padding
+    lea sp,[bp+28]
+    popad
+    clc
+    ret
+.recovery:
+    mov di,C_CHIP
+    call chipset_safe_defaults
+    lea sp,[bp+28]
+    popad
+    clc
+    ret
+.bad:
+    lea sp,[bp+28]
+    popad
+    stc
+    ret
+
+chipset_packed_save:
+    pushad
+    sub sp,15
+    mov bp,sp
+    mov bx,CHIP_OPTION_BYTES
+    jmp .reserved_test
+.reserved:
+    mov byte [fs:si+bx],0
+    inc bx
+.reserved_test:
+    cmp bx,CHIP_SIZE
+    jb .reserved
+    call chipset_valid
+    jc .bad
+    mov di,bp
+    mov cx,15
+.zero:
+    mov byte [ss:di],0
+    inc di
+    loop .zero
+    mov byte [ss:bp],CHIP_RECORD_TAG
+    lea di,[bp+2]
+    mov bx,chipset_masks
+    mov cx,CHIP_OPTION_BYTES
+    call settings_pack
+    mov di,bp
+    mov cx,15
+    mov bx,1
+    call settings_record_checksum
+    mov al,0x71
+    call rtc_read
+    mov ah,0
+    cmp al,0xD2
+    jne .write
+    mov ah,0xD2
+.write:
+    mov al,0x71
+    call settings_record_write
+    lea sp,[bp+15]
+    popad
+    ret
+.bad:
+    lea sp,[bp+15]
+    popad
+    stc
+    ret
+%endif
 
 chipset_cmos db 0x6B,0x6C,0x6D,0x6E,0x6F,0x70,0x71,0x72,0x73,0x74,0x75
     db 0x76,0x77,0x78,0x79,0x7A,0x7B,0x7C,0x7D,0x7E,0x7F,0x33,0x34,0x35
@@ -169,6 +303,21 @@ chipset_valid:
     and al,0x1C
     cmp al,0x10
     ja .bad
+    ; Decode each preserved low plane plus its appended high bit.
+    mov al,[fs:si+20]
+    mov ah,[fs:si+23]
+    mov cx,4
+.pio:
+    test ah,1
+    jz .pio_next
+    mov dl,al
+    and dl,3
+    cmp dl,1
+    ja .bad
+.pio_next:
+    shr al,2
+    shr ah,1
+    loop .pio
     mov bx,16
 .irq_byte:
     mov al,[fs:si+bx]
@@ -244,15 +393,13 @@ chipset_post_ram_cache:
     jnc .cache
     call post_error_tone
     call post_message_cursor
-    mov al,0x69
-    call rtc_read
+    call settings_recovery_read
     cmp al,0xD2
     je .ram_safe_failed
     mov di,C_CHIP
     call chipset_safe_defaults
     call chipset_apply
-    mov ax,0xD269
-    call rtc_write
+    call settings_recovery_publish
     mov ax,0x5A36
     call rtc_write
     mov si,chipset_ram_before_cache
@@ -305,8 +452,7 @@ chipset_late_cache:
     mov cr0,eax
     call board_rom_tuning
     call board_pci_runtime_policy
-    mov al,0x69
-    call rtc_read
+    call settings_recovery_read
     cmp al,0xD2
     je .done
     mov ax,0x0036

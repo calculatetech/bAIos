@@ -1,4 +1,10 @@
 %include "setup/defaults.inc"
+%ifndef BOARD_ATA_DEVICE_COUNT
+%define BOARD_ATA_DEVICE_COUNT 2
+%endif
+%if BOARD_ATA_DEVICE_COUNT != 2 && BOARD_ATA_DEVICE_COUNT != 4
+%error "ATA inventory supports two or four positions"
+%endif
 %define STATE_BASE          0x0020
 %define B_DRIVE             0x004A ; Donor router's current physical BIOS boot drive.
 %define S_PRESENT           STATE_BASE + 0
@@ -64,10 +70,24 @@
 %define U_HALT              0x018D
 %define U_BOOT_SECOND       0x018E
 %define U_BOOT_THIRD        0x018F
+%if BOARD_ATA_DEVICE_COUNT = 4
+%define C_IDE               0x0A00
+%define U_IDE               0x0A40
+%define IDE_ENABLE_EXTRA    49 ; First two enables remain in the base policy.
+%define IDE_SETTINGS_SIZE   51
+%else
 %define C_IDE               0x0190 ; Controller + two12-byte policy records.
 %define U_IDE               0x01B0 ; Draft of the same25-byte record.
+%define IDE_SETTINGS_SIZE   25
+%endif
+%define S_POLICY_INDEX      0x01CF ; Fixed physical policy index on four-position hosts.
+%define S_PIO_BLOCKED       0x01CA ; Root channel mask for pending mode commands.
+%define S_PIO_REQUEST       0x01CB
+%define S_PIO_LIMIT         0x01CC
+%define S_PIO_MODE          0x01CE
 %define S_IDE               0x01D0 ; Selected physical disk's12-byte policy.
 %define S_PIO32             0x01DE ; Board-qualified ATA dword data I/O, default off.
+%define S_ENABLED           0x01DF ; Physical enable result, separate from policy0.
 %define S_GEOMETRY          0x01DC ; Explicit BIOS heads/sectors; zero = proven Auto.
 %define S_MULTIPLE_MAX      0x01E0
 %define S_MULTIPLE          0x01E1
@@ -84,7 +104,6 @@
 %define IDE_PRECOMP         8
 %define IDE_LANDING         10
 %define IDE_RECORD_SIZE     12
-%define IDE_SETTINGS_SIZE   25
 %define C_PORTS             0x01E6 ; Eight active device selectors.
 %define U_PORTS             0x01EE ; Eight draft selectors, ends before200h.
 %define C_BOOT_FOURTH       0x01F6 ; Free gap after the device selectors.

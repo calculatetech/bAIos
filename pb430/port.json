@@ -1,5 +1,5 @@
 {
-  "identity": {"vendor": "Packard Bell", "model": "PB430", "revision": "1", "version": "0.1.3", "release_date": "10/14/2026"},
+  "identity": {"vendor": "Packard Bell", "model": "PB430", "revision": "1", "version": "0.2.2", "release_date": "10/31/2026"},
   "rom": {"size": 131072, "base": 917504, "code_segment": 61440, "reset_segment": 61440, "reset_entry_offset": 0, "reset_vector_offset": 131056, "checksum_offset": 131055, "model_byte": 252},
   "platform": {"state_seg": 40448, "state_kib": 8, "stack_top": 28672, "system_submodel": 1, "system_revision": 0, "aux_bios_supported": true},
   "emulator": {"machine": "pb430", "cpu_family": "i486dx", "cpu_speed": 33333333, "cpu_multi": 1, "mem_size": 16384, "gfxcard": "internal", "rom_path": "machines/pb430/PB430-Dump-2.bin", "rom_files": []}

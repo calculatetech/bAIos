@@ -26,16 +26,28 @@
 %define BOARD_FAST_BOOT_SETTING C_CHIP+12
 %define BOARD_IDE_32BIT_POLICY C_CHIP+13
 %define BOARD_ATA_DWORD_IO 1
+%define BOARD_ATA_DEVICE_COUNT 4
+%ifndef BOARD_ATA_PIO_MAX
+%define BOARD_ATA_PIO_MAX 4
+%endif
+%define BOARD_ATA_PIO_ADAPTER
+%define BOARD_ATA_PIO_POLICY C_CHIP+20
+%define BOARD_ATA_PIO_POLICY_HIGH C_CHIP+23
 %define BOARD_POST_RAM_CACHE chipset_post_ram_cache
 %define BOARD_DISPLAY_NAME CFG_IDENTITY_VENDOR,' ',CFG_IDENTITY_MODEL
 %define BOARD_VENDOR CFG_IDENTITY_VENDOR
 %define BOARD_PRODUCT CFG_IDENTITY_MODEL
 %define BOARD_CHIPSET_SETUP_POLICY "hardware/chipset-ui.inc"
 %define BOARD_CHIPSET_CAS_SETUP "hardware/chipset-options.inc"
-%define BOARD_PORTS_ROWS 5,6,0,7,8,9,(10 * CFG_PLATFORM_AUX_BIOS_SUPPORTED),0
+%define BOARD_PORTS_ROWS 5,6,7,8,9
+%define BOARD_PORTS_SETUP_COUNT 5
+%define BOARD_PORTS_SETUP_LABELS u_uart_a,u_uart_b,u_parallel,u_parallel_mode,u_ecp_dma
+%define BOARD_PORTS_SETUP_PARAMETERS board_ports_parameters
+%define BOARD_PORTS_SETUP_COMMIT board_ports_commit
+%define BOARD_PORTS_SETUP_HELP board_ports_help
 %define BOARD_BOOT_RETRY_TEST_SOURCE "../tests/core-retry.inc"
-%define BOARD_PORTS_VALUES u_uart_values,u_uart_values,u_pair_values,u_parallel_values,u_mode_values,u_seek_values,u_seek_values,u_seek_values
-%define BOARD_PORTS_MODES u_printer,u_epp,u_ecp
+%define BOARD_PORTS_VALUES u_uart_values,u_uart_values,u_parallel_values,u_mode_values,u_ecp_dma_values
+%define BOARD_PORTS_MODES u_ecp,u_epp,u_printer
 %define BOARD_PORTS_MODE_HELP 'SPP printer output, EPP, or ECP mode.'
 %define BOARD_PORTS_SETUP_STRINGS "hardware/ports-setup.inc"
 %define BOARD_FLOPPY_POST_DETAILS board_floppy_summary_details
@@ -133,8 +145,8 @@ int1a equ pci_int1a
 %define ROM_FIRST_SEG [fs:HW_VGA_END]
 %define ROM_LIMIT_SEG 0xE000
 %include "setup/layout.inc"
-%define HW_PORT_TABLE 0x1040
-%define HW_POSITION 0x1052
+%define HW_PORT_TABLE 0x0190
+%define HW_POSITION 0x01A2
 %define HW_CD_PORT_TABLE 0x1080
 %define HW_CD_POSITION 0x1092
 %define HW_FDC_VERSION 0x1100

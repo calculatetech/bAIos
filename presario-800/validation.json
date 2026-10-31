@@ -72,6 +72,27 @@
   ],
   "checks": [
     {
+      "id": "shared-ata-pio",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/pio_proof.py",
+        "presario-800/build/baios-presario800-system.rom",
+        "--case",
+        "shared-ports",
+        "--port",
+        "presario-800",
+        "--output",
+        "presario-800/build/tests/pipeline-pio/proof.json",
+        "--case",
+        "generic-guards",
+        "--case",
+        "shared-port-gaps",
+        "--case",
+        "precommand"
+      ]
+    },
+    {
       "id": "apm",
       "argv": [
         "python",
@@ -575,6 +596,17 @@
         "python",
         "presario-800/tools/test-vga141.py",
         "--emulator"
+      ]
+    },
+    {
+      "id": "shared-dma-cascade",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tools/dma_cascade_proof.py",
+        "presario-800/build/baios-presario800-system.rom",
+        "--output",
+        "presario-800/build/tests/pipeline-dma-cascade/proof.json"
       ]
     }
   ],

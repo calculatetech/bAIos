@@ -13,7 +13,7 @@ Status legend:
 
 ## Active
 
-- **BAIOS-003: Share cache initialization and transition tests across controllers.** PB430 consumes a shared short SRAM workload and shared interrupted-RAM-test marker policy. Preserve each controller's complete reference setup and reset sequence. The common phase and transition driver and the Presario/M919 cache migrations remain to be implemented.
+No task is active.
 
 ## Planned next
 
@@ -39,7 +39,9 @@ No task is declined.
 
 ## Completed
 
-- **BAIOS-009: Standardize port organization and candidate identity.** Relocated source checkouts, standardized build and diagnostic paths, protected retained inputs and completed candidates, and added version/UTC naming with latest pointers. All four build folders are clean. The focused checks and final native review passed. M919 remains on indefinite hardware hold.
+- **BAIOS-010: Complete shared PIO0–4 support.** Shared negotiation, command completion, reset restoration and effective-mode reporting cover all maintained ports. Ports can set a mode ceiling and provide controller timing operations. M919 includes PIO3/4 timing and no longer exposes a game-port control. The changed-path checks, ROM integrity checks and final native review passed. Physical PIO3/4 qualification remains separate. See the [PIO plan](plans/BAIOS-010-pio.md).
+
+- **BAIOS-009: Standardize port organization and candidate identity.** Relocated source checkouts, standardized build and diagnostic paths, protected retained inputs and completed candidates, and added version/UTC naming with latest pointers. All four build folders were cleaned. The focused checks and final native review passed. M919 was on hardware hold at this checkpoint; its port roadmap now owns resumed development.
 
 - **BAIOS-001: Move shared tools and dependencies to repository-root owners.** Moved common emulator resources, dependencies, and helper implementations to root owners. Preserved port overrides, existing commands, original references, and approved Presario ROM bytes. Validation and final review passed.
 

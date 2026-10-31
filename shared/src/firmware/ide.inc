@@ -48,7 +48,7 @@ ide_settings_valid:
     cmp byte [fs:si], 1
     ja .bad
     inc si
-    mov cx, 2
+    mov cx, BOARD_ATA_DEVICE_COUNT
 .drive:
     mov al, [fs:si + IDE_TYPE]
     call ide_type_valid
@@ -101,6 +101,12 @@ ide_settings_valid:
 .next:
     add si, IDE_RECORD_SIZE
     loop .drive
+%if BOARD_ATA_DEVICE_COUNT = 4
+    cmp byte [fs:si],1
+    ja .bad
+    cmp byte [fs:si+1],1
+    ja .bad
+%endif
     popad
     clc
     ret
@@ -115,6 +121,13 @@ ide_settings_load:
     call ide_defaults
     cmp byte [fs:C_VALID], 1
     jne .done
+%if BOARD_ATA_DEVICE_COUNT = 4
+    call settings_format
+    cmp al,1
+    je .packed
+    test al,al
+    jnz .invalid
+%endif
     mov al, 0x40
     call rtc_read
     cmp al, 'I'
@@ -135,7 +148,7 @@ ide_settings_load:
     add bl, al
     mov di, C_IDE
     mov dl, 0x44
-    mov cx, IDE_SETTINGS_SIZE
+    mov cx, 25             ; The legacy extension contains exactly two policies.
 .read:
     mov al, dl
     call rtc_read
@@ -149,6 +162,12 @@ ide_settings_load:
     mov si, C_IDE
     call ide_settings_valid
     jnc .done
+    jmp .invalid
+%if BOARD_ATA_DEVICE_COUNT = 4
+.packed:
+    call ide_packed_load
+    jnc .done
+%endif
 .invalid:
     mov di, C_IDE
     call ide_defaults
@@ -162,6 +181,11 @@ ide_settings_save:
     mov si, U_IDE
     call ide_settings_valid
     jc .bad
+%if BOARD_ATA_DEVICE_COUNT = 4
+    call ide_packed_save
+    popad
+    ret
+%endif
     mov ax, 0x0040
     call rtc_write
     mov bl, 'I' + 'D' + 1
@@ -621,12 +645,168 @@ ide_pio_write:
 
 ide_default_settings:
     db 1
-%rep 2
+%rep BOARD_ATA_DEVICE_COUNT
     db 0,0,0,0             ; Auto type/translation/block; EDD On.
     dw 1024
     db 16,63
     dw 0xFFFF,1024
 %endrep
+%if BOARD_ATA_DEVICE_COUNT = 4
+    db 1,1                 ; Extra enables; the base record owns the first two.
+%endif
+
+%ifdef PRESARIO_SHARED_OWNER
+%strcat PACKED_SETTINGS_SOURCE PRESARIO_SOURCE_DIRECTORY,"../../shared/src/firmware/settings-packed.inc"
+%include PACKED_SETTINGS_SOURCE
+%else
+%include "firmware/settings-packed.inc"
+%endif
+%if BOARD_ATA_DEVICE_COUNT = 4
+; CMOS40..6B: ID,02,checksum; controller; four type/translation bytes;
+; four6-bit block/EDD/extra-enable fields; four8-byte geometry records.
+ide_packed_load:
+    pushad
+    sub sp,44
+    mov bp,sp
+    mov di,bp
+    mov al,0x40
+    mov cx,44
+    call settings_record_read
+    jc .bad
+    cmp word [ss:bp],0x4449
+    jne .bad
+    cmp byte [ss:bp+2],2
+    jne .bad
+    mov al,[ss:bp+4]
+    mov [fs:C_IDE],al
+    mov ebx,[ss:bp+9]
+    and ebx,0xFFFFFF
+    xor di,di
+    mov si,C_IDE+1
+.drive:
+    mov al,[ss:bp+di+5]
+    mov ah,al
+    and al,0x3F
+    shr ah,6
+    mov [fs:si+IDE_TYPE],al
+    mov [fs:si+IDE_TRANSLATION],ah
+    mov al,bl
+    and al,15
+    mov [fs:si+IDE_BLOCK],al
+    mov al,bl
+    shr al,4
+    and al,1
+    mov [fs:si+IDE_EDD_OFF],al
+    mov al,bl
+    shr al,5
+    and al,1
+    cmp di,2
+    jb .reserved_enable
+    mov [fs:C_IDE+IDE_ENABLE_EXTRA-2+di],al
+    jmp .geometry
+.reserved_enable:
+    test al,al
+    jnz .bad
+.geometry:
+    push si
+    push di
+    mov ax,di
+    shl ax,3
+    add ax,bp
+    add ax,12
+    mov di,ax
+    add si,IDE_CYLINDERS
+    mov cx,8
+.byte:
+    mov al,[ss:di]
+    mov [fs:si],al
+    inc di
+    inc si
+    loop .byte
+    pop di
+    pop si
+    shr ebx,6
+    add si,IDE_RECORD_SIZE
+    inc di
+    cmp di,4
+    jb .drive
+    mov si,C_IDE
+    call ide_settings_valid
+    lea sp,[bp+44]
+    popad
+    ret
+.bad:
+    lea sp,[bp+44]
+    popad
+    stc
+    ret
+
+ide_packed_save:
+    pushad
+    sub sp,44
+    mov bp,sp
+    mov word [ss:bp],0x4449
+    mov word [ss:bp+2],2
+    mov al,[fs:U_IDE]
+    mov [ss:bp+4],al
+    xor ebx,ebx
+    xor di,di
+    mov si,U_IDE+1
+.drive:
+    mov al,[fs:si+IDE_TYPE]
+    mov ah,[fs:si+IDE_TRANSLATION]
+    shl ah,6
+    or al,ah
+    mov [ss:bp+di+5],al
+    mov al,[fs:si+IDE_BLOCK]
+    mov ah,[fs:si+IDE_EDD_OFF]
+    shl ah,4
+    or al,ah
+    cmp di,2
+    jb .flags
+    mov ah,[fs:U_IDE+IDE_ENABLE_EXTRA-2+di]
+    shl ah,5
+    or al,ah
+.flags:
+    movzx eax,al
+    mov cx,di
+    imul cx,6
+    shl eax,cl
+    or ebx,eax
+    push si
+    push di
+    mov ax,di
+    shl ax,3
+    add ax,bp
+    add ax,12
+    mov di,ax
+    add si,IDE_CYLINDERS
+    mov cx,8
+.byte:
+    mov al,[fs:si]
+    mov [ss:di],al
+    inc di
+    inc si
+    loop .byte
+    pop di
+    pop si
+    add si,IDE_RECORD_SIZE
+    inc di
+    cmp di,4
+    jb .drive
+    mov [ss:bp+9],bx
+    shr ebx,16
+    mov [ss:bp+11],bl
+    mov di,bp
+    mov cx,44
+    mov bx,3
+    call settings_record_checksum
+    mov ax,0x0040
+    call settings_record_write
+    lea sp,[bp+44]
+    popad
+    ret
+%endif
 
 ; Phoenix System BIOS1989 pp64..66. Eight bytes: C,H,S,precomp,landing.
 ; Reserved entries remain zero and cannot be selected. User is type48.

@@ -1,5 +1,7 @@
 # Mitsubishi MP386/25
 
+Version 0.3.0 uses the shared PIO0–4 service with automatic mode selection and restoration after channel reset. The current port ceiling is4. The generic path retains host strobes and requires an ATA controller that honors IORDY. Faster physical timing remains unqualified. See [the shared ATA contract](../shared/README.md).
+
 This port targets the 25 MHz 386DX board with the TI TACT83000 chipset and Intel 82385 cache controller. The Mitsubishi OEM ROM supplies the memory-controller, cache and board-wiring reference. The working hardware has 2 MiB onboard and four 4 MiB banks on the expansion card.
 
 The port boots on the physical board with expansion RAM, ROM shadowing and working 32 KiB cache. The user confirmed the reviewed POST and Setup image works. Software checks do not establish electrical stability or qualify faster RAM timings.

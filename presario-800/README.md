@@ -92,7 +92,7 @@ Precompensation 65535 means None. Precompensation and landing zone are parameter
 Translation choices are Auto, Normal, Large, and LBA. Explicit geometry takes precedence over boot-sector geometry.
 Block choices are Auto, Disabled, or 2/4/8/16/32/64/128 sectors. Auto uses up to 16 sectors when the drive supports multiple-sector commands.
 Unsupported or rejected negotiation falls back to single-sector commands before data transfer. The next multiple request re-establishes negotiation after reset.
-The controller uses 16-bit ISA PIO. DMA, 32-bit PIO, and programmable PCI timing are not available on this implementation.
+Version0.2.0 uses shared PIO0–4 negotiation and reset restoration with a ceiling of4. Auto selects the fastest permitted device mode. Data width remains16bits. The generic host path retains existing strobes and requires working IORDY. Physical PIO3/4 timing remains unqualified. DMA,32-bit transfers and programmable PCI timing remain unavailable. See [the shared ATA contract](../shared/README.md).
 The new IDE options require a physical checkpoint. The user deferred this test before the next device milestone.
 Auto retains the previously tested disk mapping. Emulator results do not prove physical CMOS persistence or device timing.
 
@@ -237,7 +237,7 @@ Clock, floppy, settings, keyboard, expansion ROM, and RAM recovery warnings appe
 Later BIOS messages and OS output use normal full-screen scrolling. The summary can scroll off screen.
 The table shows actual memory, installed bank indices, L2 state and capacity, logical floppy types, and all published COM/LPT addresses.
 The bank list includes `Interleaved` when the chipset's active interleave mode is enabled.
-Each primary ATA/ATAPI position uses one line, with its full 40-character model name followed by `[size MB PIO]` or `[ATAPI PIO]`.
+Each primary ATA/ATAPI position uses one line, with its full 40-character model name followed by `[size MB PIO4]` or `[ATAPI PIO4]` when mode4 is accepted.
 The brackets use teal. Size, units, and transfer text remain white.
 ATA size uses DOS-style MB (2,048 sectors per MB). Geometry, L1, and option ROM disk counts are omitted from the table.
 The guarded shared CPU catalogue identifies supported processor models, including Pentium P24T. It checks the vendor, signature, and available CPUID leaves. Without CPUID, it reports the supported processor class. Unknown identities show Unknown. CPU MHz is omitted.

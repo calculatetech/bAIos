@@ -103,12 +103,29 @@ warm_reset:
     in al,0x61
     and al,0xFC
     out 0x61,al
+    ; A deliberate reboot must not consume an AT shutdown-service vector.
+    mov ax,0x008F
+    call rtc_write
+    ; A V86 caller cannot execute the privileged cache flush.
+    ; Original AMI B4C9..B5C5 uses only KBC/RTC I/O on that path.
+    smsw ax
+    test al,1
+    jnz .protected
     wbinvd
     ; HIMEM can leave A20 closed; restore reset-vector addressing before RESET.
     in al,0x92
     and al,0xFE
     or al,2
     out 0x92,al
+    jmp .reset
+.protected:
+    mov al,0xD1
+    call kbc_command
+    jc .failed
+    mov al,0xDF
+    call kbc_write_data
+    jc .failed
+.reset:
     mov al,0xFE
     call kbc_command
     jc .failed

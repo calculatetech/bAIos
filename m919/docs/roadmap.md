@@ -16,7 +16,7 @@ Status legend:
 
 ## Active
 
-- **M919-010: Complete the known tuning controls.** Add the non-power-management controls supported by the aggregated ROM and chipset evidence through the existing individual-setting menus. Preserve confirmed defaults, valid saved settings, dynamic hardware detection, the complete cache sequence and no-AUX policy. Keep uncertain encodings and chipset power management deferred. Retain the existing shared APM service. The [tuning and IDE plan](plans/M919-010-tuning.md) defines the publication checkpoint, then faster PIO and complete dual-channel/four-device support through shared owners. Physical iteration uses bounded checks and a new flash candidate.
+No task is active.
 
 ## On hold
 
@@ -34,7 +34,7 @@ Status legend:
 
 ## Accepted residual risk
 
-No residual risk is accepted.
+- **M919-010: Complete the known tuning controls.** The checkpoint implements the established tuning controls, shared PIO0–4, four IDE positions, ECP DMA in Devices, and one menu owner per setting. PIO4 and VLB operation are physically confirmed. Disabling floppy now preserves ISA sound DMA. Keep the complete cache sequence, saved settings and no-AUX policy. The user accepts publication with revision3.4's Microsoft EMM386 Ctrl+Alt+Del hang and recurring floppy failure unresolved. The VLB palette corruption with ISA digital sound also occurs with the original BIOS. Further PCI/VLB tuning, unidentified register meanings and chipset power management remain deferred. Retain shared APM. The [tuning and IDE plan](plans/M919-010-tuning.md) owns the implementation and validation limits.
 
 ## Declined
 

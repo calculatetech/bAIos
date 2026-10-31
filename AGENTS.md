@@ -63,6 +63,17 @@ Keep added diagnostics outside the reference's transient cache window. Do not in
 
 Write all Setup help in plain, human-friendly language. Explain what the setting does and when to choose it. Include a documented recommended choice when one exists. Keep register names, bit numbers, raw addresses, firmware implementation details, and debugging notes in developer documentation. Fit the existing help panel and use the established help renderer.
 
+## Setup control ownership
+
+<!-- cpk-rule-owner: setup-control-ownership -->
+<!-- cpk-rule-guard: Each editable setting has one Setup menu owner. -->
+
+Keep Floppy Controller in Drives, DRAM timings in Chipset > Memory, and parallel-port DMA in Devices. Reuse the existing saved field when moving a control. Remove its old row, including any unavailable duplicate.
+
+Update descriptor tables, group and view counts, row lists, navigation, help, and availability checks together. Check the assembled, rendered pages for duplicate setting owners and rows that extend beyond their group. Include a regression check that rejects the previous faulty layout.
+
+Name every IDE device position by channel and master/slave. Use the same position identity in Drives, device submenus, help, and POST. Bind its settings to that fixed physical position, even when absent or disabled. Setup must not probe devices or change setting ownership according to the detected inventory.
+
 ## Sorted choice lists
 
 <!-- cpk-rule-owner: sorted-choice-lists -->

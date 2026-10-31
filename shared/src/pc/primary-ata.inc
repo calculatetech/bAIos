@@ -1,4 +1,7 @@
-; Presario two-position primary ATA owner; public disk services remain shared.
+%if BOARD_ATA_DEVICE_COUNT = 4
+%include "pc/ata-inventory.inc"
+%else
+; Two-position primary ATA owner; public disk services remain shared.
 ata_identify:
 ata_detect_primary:
     pushad
@@ -7,6 +10,9 @@ ata_detect_primary:
     xor ax, ax
     mov ds, ax
     call load_bios_state
+%ifdef BOARD_ATA_PIO_MAX
+    call ide_pio_discovery
+%endif
     call ide_apply_controller
     mov si, C_IDE + 1
     mov di, S_IDE
@@ -100,3 +106,4 @@ post_device_label:
     mov si,u_post_slave
 .done:
     ret
+%endif

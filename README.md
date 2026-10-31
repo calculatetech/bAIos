@@ -11,7 +11,7 @@ The project focuses on reliable startup, useful diagnostics, configurable memory
 | [Compaq Presario 800](presario-800/README.md) | Original implementation and behavior baseline. |
 | [Mitsubishi MP386/25](mp386/README.md) | Physically tested port with expansion RAM, 32 KiB cache, shared POST and decoded timing controls. |
 | [Packard Bell PB430](pb430/README.md) | Physically tested development port with extensive timing and cache controls. |
-| [PC-Chips M919](m919/README.md) | On indefinite hold because the hardware is defective. |
+| [PC-Chips M919](m919/README.md) | Active development. Revision3.4 reset and floppy limitations remain unresolved. |
 
 Read the selected port's documentation before building or flashing. A passing source check or emulator test does not establish hardware stability. Keep a known-good ROM and an external programmer available.
 
@@ -44,7 +44,7 @@ python -B shared/tests/test-emulator.py build
 
 Open `<port>/build/LATEST.txt` to find the current bench or completed candidate, including its version, sizes and programmer checksums. Completed candidates use version and UTC build time in their filenames. See the [repository layout and build policy](docs/repository-layout.md).
 
-After a shared change, run `python -B tools/update-ports.py` to build and validate the active ports in disposable source copies. M919 remains on hardware hold. The [port update pipeline](docs/port-updates.md) describes validation, retained media and candidate promotion.
+After a shared change, run `python -B tools/update-ports.py` to build and validate the active ports in disposable source copies. M919 is developed and validated separately while wider pipeline coverage remains deferred. The [port update pipeline](docs/port-updates.md) describes validation, retained media and candidate promotion.
 
 ## Repository layout
 

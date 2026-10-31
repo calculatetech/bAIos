@@ -5,8 +5,8 @@ import struct
 from pathlib import Path
 from unicorn import x86_const as x
 from pci_proof import Hardware,compose
-from cache_proof import post_module,guest
-from geometry_proof import invoke
+from cache_proof import post_module,guest,SRAM
+from geometry_proof import invoke,mapped
 from shared.tools.pci_proof import Endpoint,public_call
 from shared.tools.peripheral_proof import UART,Printer
 PORT=Path(__file__).resolve().parents[1]
@@ -33,6 +33,7 @@ class SIO(Hardware):
         for base,device in self.external_printers.items():
             if base<=port<base+3:return device,port-base
         return None
+    # Bit0 is a required reference initialization value; its electrical role is unknown.
     def fdc_on(self):return bool(self.sio[0xC0]&1 and self.sio[0xC2]&1 and not self.sio[0xC2]&0x20)
     def incoming(self,u,port,size):
         if port==0x109 and self.sio_open:return self.sio.get(self.sio_index,0xFF)
@@ -88,7 +89,25 @@ def transactions(fixture,hardware,expected_uart,expected_lpt):
     return rows
 
 
-def collection():
+def peripheral_fixture(image,initial_c2=0x7E):
+    """Run late peripheral/public owners without the retired cache-POST observer."""
+    class Peripheral(SIO):
+        def prepare(self,u):pass
+        observe=SRAM.observe
+    hardware=Peripheral()
+    hardware.sio[0xC2]=initial_c2
+    hardware.initial_cmos=cmos_ports((1,2,1,2,0,1,0,1))
+    hardware.qualifying=False
+    row,fixture=mapped(hardware.modules,expected=16,memory=hardware,rom_image=image)
+    u,d,listing,state,cmos,step=fixture
+    hardware.registers[0x50]=1 # Valid geometry for the DMA model, with external cache disabled.
+    for owner in ('settings_load','init_pic_pit','init_at_prerequisites','init_superio'):
+        invoke(fixture,owner)
+    d.write(0x9E000+state['C_IDE'],1,0)
+    return hardware,fixture
+
+
+def collection(image=None):
     rows=[]
     cases=[('empty',(False,False,False),(),(),(1,2,1,2,0,1,0,1),[],[]),
            ('one',(True,False,True),(),(),(3,4,1,3,0,1,0,1),[0x3E8],[0x278]),
@@ -112,27 +131,31 @@ def collection():
     return rows
 
 
-def routing():
-    hardware=SIO();row,fixture=compose(hardware);hardware.finish(fixture)
+def routing(image=None):
+    if image:hardware,fixture=peripheral_fixture(image)
+    else:
+        hardware=SIO();row,fixture=compose(hardware);hardware.finish(fixture)
     u,d,listing,state,cmos,step=fixture;base=0x9E000;rows=[]
     for ports,low0,owned1 in (((1,2,1,2,0,1,0,1),15,0x8F),((3,4,1,3,1,0,0,1),14,0x41),
-                            ((0,0,1,0,2,0,0,1),0,0xC1)):
-        for i,b in enumerate(ports):d.write(base+state['C_PORTS']+i,1,b)
-        hardware.sio[0xC0]=0xF0;hardware.sio[0xC1]=0x30
-        u.reg_write(x.UC_X86_REG_FS,base>>4);u.reg_write(x.UC_X86_REG_CS,0xF000)
-        invoke(fixture,'ports_apply')
-        assert hardware.sio[0xC0]==0xF0|low0 and hardware.sio[0xC1]==0x30|owned1,(ports,hardware.sio)
-        assert hardware.sio[0xC3]==0x5A and hardware.sio[0xC4]==0xA5
-        invoke(fixture,'init_peripherals')
-        expected_uart=[0x3F8,0x2F8] if ports[0]==1 else [0x3E8,0x2E8] if ports[0]==3 else []
-        expected_lpt=[0x378] if ports[3]==2 else [0x278] if ports[3]==3 else []
-        bda=d.read(0x400,14)
-        assert list(struct.unpack('<4H',bda[:8]))==expected_uart+[0]*(4-len(expected_uart))
-        assert list(struct.unpack('<3H',bda[8:]))==expected_lpt+[0]*(3-len(expected_lpt))
-        for device in hardware.uarts:device.rx=[0xA6]
-        transaction=transactions(fixture,hardware,expected_uart,expected_lpt)
-        u.reg_write(x.UC_X86_REG_CS,0xF000);u.reg_write(x.UC_X86_REG_FS,base>>4)
-        rows.append({'ports':ports,'C0':hardware.sio[0xC0],'C1':hardware.sio[0xC1],'bda':bda.hex(),'transactions':transaction})
+                            ((0,0,1,0,2,0,0,1),0,0xC1),((1,2,1,2,2,1,0,1),15,0xCF)):
+        for policy in (0,1,2,3):
+            d.write(base+state['C_CHIP']+22,1,policy)
+            for i,b in enumerate(ports):d.write(base+state['C_PORTS']+i,1,b)
+            hardware.sio[0xC0]=0xF0;hardware.sio[0xC1]=0x30;hardware.sio[0xC3]=0x5A
+            u.reg_write(x.UC_X86_REG_FS,base>>4);u.reg_write(x.UC_X86_REG_CS,0xF000)
+            invoke(fixture,'init_peripherals')
+            assert hardware.sio[0xC0]==0xD0|low0 and hardware.sio[0xC1]==0x30|owned1,(ports,hardware.sio)
+            assert hardware.sio[0xC3]==((0x1A|((policy&2)<<5)) if ports[3] and ports[4]==2 else 0x5A)
+            assert hardware.sio[0xC4]==0xA5 and not hardware.sio_open
+            expected_uart=[0x3F8,0x2F8] if ports[0]==1 else [0x3E8,0x2E8] if ports[0]==3 else []
+            expected_lpt=[0x378] if ports[3]==2 else [0x278] if ports[3]==3 else []
+            bda=d.read(0x400,14)
+            assert list(struct.unpack('<4H',bda[:8]))==expected_uart+[0]*(4-len(expected_uart))
+            assert list(struct.unpack('<3H',bda[8:]))==expected_lpt+[0]*(3-len(expected_lpt))
+            for device in hardware.uarts:device.rx=[0xA6]
+            transaction=transactions(fixture,hardware,expected_uart,expected_lpt)
+            u.reg_write(x.UC_X86_REG_CS,0xF000);u.reg_write(x.UC_X86_REG_FS,base>>4)
+            rows.append({'policy':policy,'ports':ports,'C0':hardware.sio[0xC0],'C1':hardware.sio[0xC1],'bda':bda.hex(),'transactions':transaction})
     # Awake/init RMW must precede the actual FDC command path.
     hardware.sio[0xC2]=0x7E;u.reg_write(x.UC_X86_REG_FS,base>>4)
     invoke(fixture,'floppy_controller_mode')
@@ -140,7 +163,7 @@ def routing():
     return rows
 
 
-def saved_ide():
+def saved_ide(image=None):
     rows=[]
     for initial,expected in ((1,0),(0,1)):
         keys=[0x50,28]+[0x50]*(4 if initial else 2)+[0x4D,0x44,28]
@@ -176,14 +199,25 @@ def saved_ide():
     return rows
 
 
-def fdc_and_keyboard():
-    hardware=SIO();row,fixture=compose(hardware);hardware.finish(fixture)
+def fdc_and_keyboard(image=None,policy=3,initial_c2=0x7E):
+    if image:hardware,fixture=peripheral_fixture(image,initial_c2)
+    else:
+        hardware=SIO();row,fixture=compose(hardware);hardware.finish(fixture)
     u,d,listing,state,cmos,step=fixture;base=0x9E000
+    assert hardware.sio[0xC2]==(initial_c2&0xDF)|0x81,'Startup omitted reference FDC initialization'
     assert all(on for action,port,on in hardware.fdc_accesses if port==0x3F5),'FIFO accessed while asleep or disabled'
-    hardware.sio[0xC2]=0x7E
+    d.write(base+state['C_CHIP']+22,1,policy)
+    d.write(base+state['C_PORTS']+4,1,2)
+    hardware.sio[0xC3]=0x1A
+    invoke(fixture,'ports_apply')
+    assert not hardware.sio[0xC0]&0x20
+    assert bool(hardware.sio[0xC3]&0x40)==bool(policy&2) and hardware.sio[0xC4]==0xA5
+    hardware.sio[0xC2]=initial_c2
     u.reg_write(x.UC_X86_REG_CS,0xF000);u.reg_write(x.UC_X86_REG_FS,base>>4)
     invoke(fixture,'init_floppy',count=300000)
     assert hardware.sio[0xC2]==0xDF and hardware.fdc_on()
+    assert d.read(base+0x9B,1)==b'\x01' and d.read(base+0x85,1)==b'\x01'
+    assert d.read(base+0x88,1)==b'\x00' and int.from_bytes(d.read(base+0x9C,2),'little')>0
     results=[]
     for name,operation in (('read',2),('write',3)):
         hardware.dma_events=[];hardware.fdc_accesses=[]
@@ -231,13 +265,26 @@ mov [0x8502],ax
     invoke(fixture,'board_keyboard_handoff',count=100000)
     assert not hardware.queue and hardware.read(0x400+head,2)==b'a\x1E'
     assert not set(hardware.kbc_commands[commands:])&{0xA7,0xA8,0xA9,0xD4}
-    return {'dma':results,'disabled_no_fdc_or_dma':True,'queued_make':'1E61','late_no_aux':True}
+    return {'policy':policy,'initial_C2':initial_c2,'startup_and_late_initialization':True,
+            'reset_IRQ_received':True,'dma':results,'disabled_no_fdc_or_DMA2_transfer':True,'queued_make':'1E61','late_no_aux':True}
 
 
-def run():
-    payload={'collection':collection(),'routing':routing(),'saved_ide':saved_ide(),'fdc_keyboard':fdc_and_keyboard()}
-    image=PORT/'build/hardware-tests/geometry/baios-m919.bin';payload['rom_sha256']=hashlib.sha256(image.read_bytes()).hexdigest()
-    path=PORT/'build/research/hardware/sio-proof.json';path.parent.mkdir(parents=True,exist_ok=True)
+def run(image=None,output=None):
+    image=image.resolve() if image else None
+    payload=({'routing':routing(image),'fdc_keyboard':[fdc_and_keyboard(image,policy,initial) for policy in (0,3) for initial in (0x7E,0x7F)],'fixture':'bounded actual peripheral/public owners'}
+             if image else {'collection':collection(),'routing':routing(),'saved_ide':saved_ide(),'fdc_keyboard':fdc_and_keyboard()})
+    image=image or PORT/'build/hardware-tests/geometry/baios-m919.bin';payload['rom_sha256']=hashlib.sha256(image.read_bytes()).hexdigest()
+    path=output.resolve() if output else (image.parent.parent if image.parent.name=='image' else PORT/'build/research/hardware')/'sio-proof.json'
+    path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps(payload,indent=2)+'\n')
-    print('SIO collection, routing and INT14/17 transactions: PASS',flush=True)
+    print('SIO routing, INT14/17, FDC DMA and keyboard: PASS',flush=True)
     return path
+
+
+if __name__=='__main__':
+    import argparse
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--image',type=Path)
+    parser.add_argument('--output',type=Path)
+    args=parser.parse_args()
+    run(args.image,args.output)

@@ -28,7 +28,7 @@ init_superio:
     inc dx
     in al,dx
     and al,0xDF
-    or al,0x80
+    or al,0x81               ; Retain the reference FDC initialization value.
     out dx,al
     dec dx
     mov al,0x55
@@ -175,7 +175,7 @@ ports_ui_candidate:
     je .bad
     jmp .good
 .lpt:
-    cmp bx,3
+    cmp bx,2
     jne .good
     cmp al,1
     je .bad
@@ -186,18 +186,18 @@ ports_ui_candidate:
     stc
     ret
 ports_ui_available:
-%if !BOARD_AUX_POLICY_ENABLED
-    cmp cl,P_MOUSE
-    je .bad
-%endif
-    cmp cl,2
-    je .bad
-    cmp cl,7
+    cmp cl,BOARD_PORTS_SETUP_COUNT
+    jae .bad
+    cmp cl,3
+    jb .good
+    cmp cl,4
+    ja .good
+    cmp byte [fs:U_PORTS+3],0
     je .bad
     cmp cl,4
     jne .good
-    cmp byte [fs:U_PORTS+3],0
-    je .bad
+    cmp byte [fs:U_PORTS+4],2
+    jne .bad
 .good:
     clc
     ret
@@ -205,18 +205,8 @@ ports_ui_available:
     stc
     ret
 ports_ui_visible:
-%if !BOARD_AUX_POLICY_ENABLED
-    cmp cl,P_MOUSE
-    je .bad
-%endif
-    cmp cl,2
-    je .bad
-    cmp cl,7
-    je .bad
-    clc
-    ret
-.bad:
-    stc
+    cmp cl,BOARD_PORTS_SETUP_COUNT
+    cmc
     ret
 
 ports_apply:
@@ -230,7 +220,7 @@ ports_apply:
     out dx,al
     inc dx
     in al,dx
-    and al,0xF0               ; PCI IDE is independent: retain the SIO IDE bit.
+    and al,0xD0               ; Own game decode; retain SIO IDE and unrelated bits.
     mov bl,al
     cmp byte [fs:C_PORTS+P_FLOPPY],0
     je .a
@@ -276,6 +266,22 @@ ports_apply:
     mov al,bl
     out dx,al
     dec dx
+    cmp byte [fs:C_PORTS+3],0
+    je .lock
+    cmp si,2
+    jne .lock
+    mov al,0xC3
+    out dx,al
+    inc dx
+    in al,dx
+    and al,0xBF
+    test byte [fs:C_CHIP+22],2
+    jz .dma
+    or al,0x40
+.dma:
+    out dx,al
+    dec dx
+.lock:
     mov al,0x55
     out dx,al
     popad
@@ -324,7 +330,7 @@ floppy_controller_mode:
     inc dx
     in al,dx
     and al,0xDF
-    or al,0x80
+    or al,0x81
     out dx,al
     dec dx
     mov al,0x55
