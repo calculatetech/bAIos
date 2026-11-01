@@ -46,6 +46,12 @@ def verify(port, image=None):
         raise ValueError('Incorrect ROM size')
     if sum(raw) & 255:
         raise ValueError('Incorrect ROM checksum')
+    for region in data['rom'].get('checksum_regions', []):
+        start, length, offset = region['start'], region['length'], region['offset']
+        if not (0 <= start <= offset < start+length <= len(raw)):
+            raise ValueError('Incorrect checksum region bounds')
+        if sum(raw[start:start+length]) & 255:
+            raise ValueError('Incorrect ROM region checksum')
     reset = geometry['reset_vector_offset']
     if geometry.get('reset_near', False):
         vector_ip = geometry['base'] + reset - (geometry['reset_segment'] << 4)
@@ -86,6 +92,12 @@ def build(port, output='build', defines=()):
     if len(raw) != data['rom']['size']:
         raise ValueError('Assembler produced an incorrect ROM size')
     checksum = data['rom']['checksum_offset']
+    for region in data['rom'].get('checksum_regions', []):
+        start, length, offset = region['start'], region['length'], region['offset']
+        if not (0 <= start <= offset < start+length <= len(raw)) or start <= checksum < start+length:
+            raise ValueError('Incorrect checksum region bounds')
+        raw[offset] = 0
+        raw[offset] = (-sum(raw[start:start+length])) & 255
     raw[checksum] = 0
     raw[checksum] = (-sum(raw)) & 255
     image.write_bytes(raw)

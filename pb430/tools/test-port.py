@@ -24,7 +24,7 @@ from shared.tools.ram_proof import Listing
 EMULATOR = PORT.parent/'tools/deps/86box-b10408/86Box.exe'
 CASES = ('image','native','display','chipset-settings','diagnostics-input','reset','memory',
          'settings-load','clock','setup','shadow','cache','serial','parallel','floppy',
-         'disk-services','cd','option-roms','boot-order','ram','build-hygiene','setup-policy','boot-defaults','vga60','slow-refresh','fast-writes')
+         'disk-services','cd','option-roms','boot-order','ram','build-hygiene','setup-policy','boot-defaults','vga60','slow-refresh','fast-writes','cpu')
 
 
 def assemble(source, output, includes=()):
@@ -337,6 +337,11 @@ def ram_checks(image):
 
 def run_case(case,image):
     import scenarios
+    if case=='cpu':
+        from shared.tools.cpu_proof import check
+        from shared.tools.ram_proof import constants
+        return check(Path(image),json.loads((PORT/'port.json').read_text())['rom'],
+                     constants(REPOSITORY/'shared/src/pc/state.inc'))
     if case=='setup-policy':return scenarios.setup_policy(image,nvram)
     if case=='boot-defaults':return scenarios.boot_defaults(image,nvram)
     if case=='image':return image_checks(image)

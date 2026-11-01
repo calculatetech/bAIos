@@ -1,7 +1,7 @@
 bits 16
 org 0
 
-%define BIOS_VERSION '0.2.2'
+%define BIOS_VERSION '0.4.0'
 %define BIOS_RELEASE_DATE '10/31/2026'
 %substr BIOS_DATE_PREFIX BIOS_RELEASE_DATE 1,6
 %substr BIOS_DATE_YEAR BIOS_RELEASE_DATE 9,2
@@ -3264,6 +3264,19 @@ int42_compat:
 
 ; The guarded name catalogue uses free ROM after the retained INT42 shim.
 presario_shared "pc/cpu.inc"
+presario_shared "pc/smm.inc"
+board_cpu_detect_name:
+    jmp cpu_detect_sl_name
+
+board_cpu_sl_query:
+    call cpu_detect_sl
+    mov dx,0                 ; CPU evidence does not qualify board SL functions.
+    ret
+
+board_smm_prepare:
+    call board_cpu_sl_query
+    jmp smm_install
+
 presario_shared "pc/ata-identify.inc"
 presario_cpu_end:
 

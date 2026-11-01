@@ -1443,7 +1443,7 @@ post_debug_summary:
     call post_header
     ui_text 2, 3, u_summary_processor, 0x0B
     call post_processor_name
-    mov di, 2*160+20*2
+    mov di, 2*160+(20+BOARD_POST_SUMMARY_SHIFT)*2
     mov bh, 7
     call setup_text
     ui_text 3, 3, u_summary_fpu, 0x0B
@@ -1456,7 +1456,7 @@ post_debug_summary:
     jz .fpu
     mov si, u_detected
 .fpu:
-    mov di, 3*160+20*2
+    mov di, 3*160+(20+BOARD_POST_SUMMARY_SHIFT)*2
     mov bh, 7
     call setup_text
     ui_text 4, 3, u_l2, 0x0B
@@ -1468,24 +1468,24 @@ post_debug_summary:
     mov ds, ax
     movzx eax, word [0x0413]
     pop ds
-    mov di, 2*160+58*2
+    mov di, 2*160+(58+BOARD_POST_SUMMARY_SHIFT)*2
     call setup_number
-    ui_text 2, 64, u_kb, 0x07
+    ui_text 2, 64+BOARD_POST_SUMMARY_SHIFT, u_kb, 0x07
     ui_text 3, 40, u_extended, 0x0B
     memory_extended_kib eax
-    mov di, 3*160+58*2
+    mov di, 3*160+(58+BOARD_POST_SUMMARY_SHIFT)*2
     call setup_number
-    ui_text 3, 64, u_kb, 0x07
+    ui_text 3, 64+BOARD_POST_SUMMARY_SHIFT, u_kb, 0x07
     ui_text 4, 40, u_summary_banks, 0x0B
-    mov di, 4*160+58*2
+    mov di, 4*160+(58+BOARD_POST_SUMMARY_SHIFT)*2
     call post_memory_banks
     ui_text 6, 3, u_drive_a, 0x0B
     mov al, [fs:F_TYPES]
-    mov di, 6*160+20*2
+    mov di, 6*160+(20+BOARD_POST_SUMMARY_SHIFT)*2
     call .floppy
     ui_text 7, 3, u_drive_b, 0x0B
     mov al, [fs:F_TYPES+1]
-    mov di, 7*160+20*2
+    mov di, 7*160+(20+BOARD_POST_SUMMARY_SHIFT)*2
     call .floppy
     call ports_summary
     push fs
@@ -1586,7 +1586,7 @@ post_debug_summary:
     jmp setup_text
 .device:
     mov di, bp
-    add di, 23*2
+    add di, (23+BOARD_POST_SUMMARY_SHIFT)*2
     mov si, u_absent
     cmp byte [fs:S_PRESENT], 1
     je .model
@@ -1594,7 +1594,7 @@ post_debug_summary:
     jne .device_done
 .model:
     mov si, S_MODEL
-    mov cx, 40                     ; Full ATA model, columns23..62.
+    mov cx, 40                     ; Full ATA model, columns23..62 before the port layout shift.
 .model_char:
     mov al, [fs:si]
     inc si
@@ -1608,7 +1608,7 @@ post_debug_summary:
     loop .model_char
 .kind:
     mov di, bp
-    add di, 64*2
+    add di, (64+BOARD_POST_SUMMARY_SHIFT)*2
     mov ax, 0x0B5B                 ; Teal brackets around compact device details.
     call setup_color
     stosw
@@ -1694,7 +1694,7 @@ post_header:
 ; Intel AP-485 reset signature, retained across software warm POST.
 ; Report the model, without deriving a core clock from a timing profile.
 post_processor_name:
-    call cpu_detect_name
+    call board_cpu_detect_name
     test si,si
     jnz .done
     mov ax, [fs:S_CPU_SIGNATURE]
@@ -4620,7 +4620,7 @@ ports_summary:
     pushad
     push ds
     ui_text 6, 40, u_summary_com, 0x0B
-    mov di, 6*160+58*2
+    mov di, 6*160+(58+BOARD_POST_SUMMARY_SHIFT)*2
     xor ax, ax
     mov ds, ax
     mov si, 0x400
@@ -4629,7 +4629,7 @@ ports_summary:
     push cs
     pop ds
     ui_text 7, 40, u_summary_lpt, 0x0B
-    mov di, 7*160+58*2
+    mov di, 7*160+(58+BOARD_POST_SUMMARY_SHIFT)*2
     xor ax, ax
     mov ds, ax
     mov si, 0x408

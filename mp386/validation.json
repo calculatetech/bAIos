@@ -18,6 +18,10 @@
   ],
   "checks": [
     {
+      "id": "port-cpu",
+      "argv": ["python", "-B", "mp386/tools/test-port.py", "--image", "mp386/build/baios-mp386.bin", "--case", "cpu"]
+    },
+    {
       "id": "shared-ata-pio",
       "argv": [
         "python",

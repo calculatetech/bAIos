@@ -4,7 +4,7 @@
 
 # Reference instructions for new ports
 
-Read this document before selecting source for a port. Apply it to the Presario, M919, PB430, and future donors.
+Read this document before selecting source for a port. Apply it to every donor and target.
 The modular base supplies reusable services. It does not establish that donor hardware setup works on another board.
 The [repository cache rule](../AGENTS.md#reference-cache-setup) owns the requirements for matching the reference cache sequence.
 
@@ -34,7 +34,7 @@ Use these defaults until that evidence exists:
 | Shared PC interrupt services, disk services, and boot policy | Reuse the service, then prove its target hardware assumptions. |
 | Donor reset, DRAM mapping, cache, shadow, clock, turbo, A20, interrupt routing, and Super I/O setup | Exclude the implementation. Derive the target owner from its references. |
 | Donor cache wrappers, CPU-cache policy, helper timing, and save/restore conventions | Exclude the sequence until comparison with the target reference establishes compatibility. |
-| M919 modular organization | Reuse its separation of owners. Its unfinished hardware policy is not a template. |
+| Donor modular organization | Reuse its separation of owners. Hardware policy is not a portable template. |
 | New abstractions or universal initialization | Defer until the target meets the physical boot requirement above. |
 
 If donor-derived code fails on the target, record its source and exclude that implementation from the next port's starting set.
@@ -154,7 +154,6 @@ Record the source, observed result, required exclusion, correction status, and r
 Preserve rejected hypotheses as rejected findings when they prevent repeating the same mistake.
 Do not copy board-specific register recipes into this project-wide guide.
 
-The current worked example is [the PB430 porting lessons](../pb430/docs/porting-lessons.md).
-Its physical results qualify only the tested PB430 configuration. They do not make its hardware owners portable to another chipset.
+Worked examples belong in port developer documents. A recorded physical result applies to its configuration. It does not make a hardware owner portable to another chipset.
 
 For shared ATA support, set `BOARD_ATA_PIO_MAX` to a documented ceiling from0 through4. The common driver handles capability limits, completion and reset. The generic host path requires working IORDY and retains current host strobes. A separate IDE controller or missing timing registers does not establish a lower ceiling. Use an adapter for qualified controller-specific timing. Keep that electrical qualification separate from software proof. See [the shared ATA contract](../shared/README.md).

@@ -542,8 +542,11 @@ def setup_full_policies(image):
             for drive, position in ((0x80, 0), (0x81, 2), (0x82, 3)):
                 assert not restored.public(drive)
                 assert bytes(restored.cpu.mem_read(0x21000, 512)) == restored.payload(position, 0)
-            assert not restored.public(0x82, 0x42, lba=17)
-            assert bytes(restored.cpu.mem_read(0x21000, 512)) == restored.payload(3, 17)
+            commands=len(restored.commands)
+            assert restored.public(0x82, 0x42, lba=17), 'Position3 explicitly disables EDD'
+            assert restored.cpu.reg_read(x.UC_X86_REG_AH)==1 and len(restored.commands)==commands
+            assert not restored.public(0x81, 0x42, lba=17)
+            assert bytes(restored.cpu.mem_read(0x21000, 512)) == restored.payload(2, 17)
         rows.append(dict(action=action, four_distinct_full_forms=True, saved_boot_disk_payloads=action == 'save'))
     return rows
 

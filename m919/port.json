@@ -3,7 +3,7 @@
     "vendor": "PC-Chips",
     "model": "M919",
     "revision": "1.5",
-    "version": "0.9.7",
+    "version": "0.14.8",
     "release_date": "10/31/2026"
   },
   "rom": {
@@ -14,6 +14,7 @@
     "reset_entry_offset": 0,
     "reset_vector_offset": 131056,
     "checksum_offset": 131055,
+    "checksum_regions": [{"start": 0, "length": 65536, "offset": 65535}],
     "model_byte": 252,
     "reset_near": true
   },

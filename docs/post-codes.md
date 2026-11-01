@@ -2,7 +2,7 @@
 
 All values are hexadecimal bytes written to I/O port `80h`. A code means that its marker was reached. It does not prove that the next operation finished. Codes are not in numeric execution order, and some values have different meanings in different phases.
 
-These tables describe normal bAIos builds. Diagnostic ROMs can use additional codes. The pending shared-update Presario build adds the final `FF` marker and primary-channel `84`/`85`/`86` markers; older Presario images can omit them. A card display of `--` is not a bAIos code.
+These tables describe shared startup stages. Ports can omit a stage or reuse a value. Their own code tables take precedence. Diagnostic ROMs can use additional codes. A display of `--` is not a bAIos code.
 
 Start with the board reference: [Presario 800](../presario-800/docs/post-codes.md), [PB430](../pb430/docs/post-codes.md), [MP386](../mp386/docs/post-codes.md), or [M919](../m919/docs/post-codes.md). Use the preceding codes and the screen to distinguish overlapping meanings.
 
@@ -10,7 +10,7 @@ Start with the board reference: [Presario 800](../presario-800/docs/post-codes.m
 
 | Code | Marker reached |
 | --- | --- |
-| `70` | IDE discovery starts. M919 scans both channels; other ports scan the primary channel. |
+| `70` | IDE discovery starts. Scan the channels enabled by the port. |
 | `71` | Select an ATA/ATAPI device. |
 | `72` | Wait for the device to stop being busy; this can take up to 30 seconds. |
 | `73` | Check the packet-device signature. |
@@ -39,7 +39,7 @@ Start with the board reference: [Presario 800](../presario-800/docs/post-codes.m
 | `E4` | No boot target succeeded. Wait for a fresh key to retry; this is not a hard halt. |
 | `FF` | Final POST summary returned. Clock synchronization and bootstrap follow. Later boot/device codes can replace it. |
 
-`71` through `83` can repeat for master and slave on each scanned channel. PB430 also uses several `76`–`7F` values during timing/cache work; its board table gives that context. M919 does not emit the separate primary-channel `84`/`85`/`86` markers.
+`71` through `83` can repeat for master and slave on each scanned channel. Use the port table to interpret values shared with another stage.
 
 ## Keyboard and mouse
 
@@ -61,7 +61,7 @@ Start with the board reference: [Presario 800](../presario-800/docs/post-codes.m
 | `D1` | Unexpected keyboard-reset reply while polling continues. |
 | `D3` | A silent keyboard can be accepted after controller checks pass. An unexpected-reply stream can also halt with this code. |
 
-`C9` can remain on the card while later settings or RAM work runs. It does not identify a RAM-test address. PB430 has additional markers after keyboard initialization.
+`C9` can remain on the card while later settings or RAM work runs. It does not identify a RAM-test address.
 
 ## Stops and overlapping error codes
 
@@ -72,16 +72,14 @@ Start with the board reference: [Presario 800](../presario-800/docs/post-codes.m
 | `D0`, during keyboard initialization | Keyboard requested resend; halted. |
 | `D2`, during keyboard initialization | Keyboard self-test result did not arrive after retries; halted. |
 | `D4`, during keyboard initialization | Keyboard self-test failed; halted. |
-| `E5`, during video initialization | Video provider missing, malformed or rejected; halted. Presario uses its own video owner. |
+| `E5`, during video initialization | Video provider missing, malformed or rejected; halted. |
 | `E7`, during keyboard initialization | Controller input timeout; halted. |
 | `E7`, after RAM retry | RAM still failed with recovery/default settings; halted. |
-| `E7`, during Presario cache recovery | Cache qualification failed again with recovery settings; halted. |
 | `E8`, during keyboard initialization | Controller self-test timed out; halted. |
 | `E8`, during RAM/runtime operation | RAM parity stop. |
 | `E9`, during keyboard initialization | Controller self-test returned a bad result; halted. |
 | `EA`, during keyboard initialization | Controller command transaction failed; halted. |
 | `EB`, during keyboard initialization | Keyboard reset command could not be written; halted. |
 
-PB430 reuses `D0`–`D4`, `E8`, `EA` and `EB` in other phases. Its detailed table takes precedence for those phases. A hardware stop can also leave an earlier progress code displayed without emitting an error code.
 
 Sources: [shared POST shell](../shared/src/firmware/bios.asm), [boot selector](../shared/src/firmware/boot.inc), [keyboard controller](../shared/src/pc/keyboard-controller.inc), and [mouse](../shared/src/firmware/mouse.inc). These are bAIos meanings, not OEM, AMI, Award or MR BIOS code tables.

@@ -75,7 +75,7 @@ function Assert-PostLegend([string]$readme) {
         $_.Groups[1].Value.ToUpperInvariant()
     })
     if ($actual.Count -ne $expected.Count -or (Compare-Object $expected $actual -SyncWindow 0)) {
-        throw "README POST code inventory or order changed."
+        throw "Documented POST code inventory or order changed."
     }
 }
 
@@ -379,7 +379,7 @@ if ($source -notmatch '(?m)^%define FAST_CPU_PORT\s+0x00F5\s+' -or
     $bios -notmatch '(?s)enable_cpu_full_speed:.*?out CHIPSET_CONFIG_ON, al\s+out FAST_CPU_PORT, al\s+mov al, NTBREF_REG.*?and al, 0x1F') {
     throw "OEM fast-CPU command or non-turbo wait removal changed."
 }
-$readme = Get-Content -Raw (Join-Path $root "README.md")
+$readme = Get-Content -Raw (Join-Path $root "docs/development/implementation.md")
 $keyboardGuest = Get-Content -Raw (Join-Path $root "tests/keyboard-test.asm")
 Assert-PostTrace $source $bios
 Assert-PostLegend $readme

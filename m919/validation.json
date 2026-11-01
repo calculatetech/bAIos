@@ -165,6 +165,46 @@
         "m919/build/baios-m919.bin",
         "--warm-mode"
       ]
+    },
+    {
+      "id": "smm-activation",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/smm_activation_proof.py"
+      ]
+    },
+    {
+      "id": "rtc-wake-diagnostic",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/test-wake-check.py"
+      ]
+    },
+    {
+      "id": "clock-request-diagnostic",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/test-clock-check.py"
+      ]
+    },
+    {
+      "id": "apm-idle-diagnostic",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/test-idle.py"
+      ]
+    },
+    {
+      "id": "floppy-idle-recovery-diagnostic",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/test-floppy-wake.py"
+      ]
     }
   ],
   "case_sets": [],

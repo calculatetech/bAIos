@@ -1,4 +1,93 @@
 %include "pc/cpu.inc"
+%include "pc/smm.inc"
+board_cpu_detect_name:
+    call cpu_detect_sl_name
+    pushfd
+    pushad
+    call cpu_detect_sl
+    cmp ax,2
+    jne .done
+    mov si,.am5x86_sl
+.done:
+    mov bp,sp
+    mov [ss:bp+4],si
+    popad
+    popfd
+    ret
+.am5x86_sl db 'AMD 5x86 SL Enhanced',0
+
+board_cpu_sl_query:
+    call cpu_detect_sl
+    pushf
+    push fs
+    call load_bios_state
+    xor dx,dx
+    test ax,ax
+    jz .done
+    cmp byte [fs:HW_SMM_STATUS],1
+    jne .done
+    inc dx
+.done:
+    pop fs
+    popf
+    ret
+
+board_smm_prepare:
+    call 0xE000:m919_smm_prepare_entry
+    ret
+
+board_smm_cpu_query:
+    call cpu_detect_sl
+    retf
+
+board_smm_state_loader:
+    call load_bios_state
+    retf
+
+board_smm_initialize:
+    push es
+    push word 0xE000
+    pop es
+    cmp dword [es:0],0x53494142
+    pop es
+    jne .done
+    call 0xE000:m919_smm_initialize
+.done:
+    ret
+
+board_smm_command:
+    pushfd
+    push dx
+    smsw dx
+    test dl,1
+    pop dx
+    jnz .unavailable
+    popfd
+    call 0xE000:m919_smm_command_entry
+    ret
+.unavailable:
+    mov ax,1
+    popfd
+    stc
+    ret
+
+board_clock_command:
+    call board_smm_command
+    retf
+
+board_smm_quiesce:
+    ; Reset-only entry: its callers never return or retain a PCI transaction.
+    mov eax,SMM_SB | 0xA0
+    mov dx,0xCF8
+    out dx,eax
+    mov dx,0xCFC
+    xor al,al
+    out dx,al
+    add dx,3
+    in al,dx
+    and al,0x3F
+    out dx,al
+    ret
 %include "hardware/chipset.inc"
 %include "hardware/memory.inc"
 %include "hardware/cache.inc"
@@ -96,6 +185,7 @@ board_a20_handoff:
     ret
 warm_reset:
     cli
+    call board_smm_quiesce
     board_video_blank 1
     xor ax,ax
     mov ds,ax
@@ -137,6 +227,7 @@ warm_reset:
     jmp keyboard_halt
 controlled_defaults_restart:
     cli
+    call board_smm_quiesce
     board_video_blank 1
     wbinvd
     mov al,0xFE

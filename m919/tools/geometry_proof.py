@@ -105,10 +105,11 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     code=layout['code_segment']<<4
     u=Uc(UC_ARCH_X86,UC_MODE_16)
     u.mem_map(0,0x10200000)
-    u.mem_write(layout['base'],rom.read_bytes())
+    rom_bytes=rom.read_bytes()
+    u.mem_write(layout['base'],rom_bytes)
     # The UMC manual documents the chipset's high reset-ROM alias.
     u.mem_map(0xFFFE0000,0x20000)
-    u.mem_write(0xFFFE0000,rom.read_bytes())
+    u.mem_write(0xFFFE0000,rom_bytes)
     d=memory if memory is not None else DRAM(modules,flat,alias,fault,revision,outside_wrap)
     original_data=dict(d.data)
     if memory is not None:memory.machine=u
@@ -119,14 +120,16 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     ready=code+listing.symbol('.ram_ready','startup')
     finish=code+listing.symbol('init_pic_pit')
     begin_state=cfg['platform']['state_seg']<<4
-    stack_ops=[];excluded_writes=[];instructions={}
+    stack_ops=[];excluded_writes=[];instructions={};far_return=[False];far_return_enabled=[False]
 
     def read(uc,access,address,size,value,user):
         if address<0x10200000 and not 0xA0000<=address<0x100000:
             uc.mem_write(address,d.read(address,size))
 
     def write(uc,access,address,size,value,user):
-        if 0xA0000<=address<0x100000:
+        if 0xE0000<=address and address+size<=0xF0000 and not d.registers.get(0x55,0)&0x40:
+            assert value.to_bytes(size,'little')==rom_bytes[address-0xE0000:address-0xE0000+size], 'E shadow copy differs from ROM'
+        elif 0xA0000<=address<0x100000:
             excluded_writes.append(address)
         elif address<0x10200000:
             d.write(address,size,value)
@@ -164,6 +167,17 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
         if memory is not None:memory.outgoing(uc,port,size,value)
 
     def step(uc,address,size,user):
+        if far_return_enabled[0] and bytes(uc.mem_read(address,1))==b'\xcb':
+            # Unicorn retains the old IP on this nested E/F real-mode return.
+            # Model only the CPU RETF; the query and both firmware callers run.
+            assert not uc.reg_read(x.UC_X86_REG_CR0)&1
+            sp=uc.reg_read(x.UC_X86_REG_SP)
+            frame=d.read((uc.reg_read(x.UC_X86_REG_SS)<<4)+sp,4)
+            ip,segment=struct.unpack('<HH',frame)
+            uc.reg_write(x.UC_X86_REG_SP,(sp+4)&65535)
+            uc.reg_write(x.UC_X86_REG_CS,segment)
+            uc.reg_write(x.UC_X86_REG_IP,ip)
+            far_return[0]=True;uc.emu_stop();return
         if memory is not None:memory.observe(uc,address,size)
         if address==ready:remapping[0]=False
         if remapping[0] and address>=init:
@@ -190,7 +204,18 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     for reg,val in ((x.UC_X86_REG_CS,layout['code_segment']),(x.UC_X86_REG_EDX,cpu_signature),(x.UC_X86_REG_CR0,0x10)):
         u.reg_write(reg,val)
     if memory is not None and getattr(memory,'composed',False):memory.prepare(u)
-    u.emu_start(code+listing.symbol('startup'),code+0xFFFF,count=5000000+(memory.capacity*24 if memory is not None else 0))
+    def execute(entry,end,count):
+        far_return_enabled[0]=True
+        try:
+            for _ in range(32):
+                far_return[0]=False
+                u.emu_start(entry,end,count=count)
+                if not far_return[0]:break
+                entry=(u.reg_read(x.UC_X86_REG_CS)<<4)+u.reg_read(x.UC_X86_REG_IP)
+            else:raise AssertionError('Unbounded far returns in fixture')
+        finally:far_return_enabled[0]=False
+    step.execute=execute
+    execute(code+listing.symbol('startup'),code+0xFFFF,5000000+(memory.capacity*24 if memory is not None else 0))
     assert terminal and not stack_ops and not excluded_writes,(terminal,stack_ops,excluded_writes)
     if revision!=4:
         assert not any(offset==0x61 and value&0x30 for offset,size,value in d.writes),d.writes
@@ -220,14 +245,14 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
 
 
 def invoke(fixture,name,iret=False,reset=False,count=100000):
-    u,d,listing,_,_,_=fixture
+    u,d,listing,_,_,step=fixture
     code=u.reg_read(x.UC_X86_REG_CS)<<4
     u.reg_write(x.UC_X86_REG_SS,0)
     u.reg_write(x.UC_X86_REG_SP,0x6F00)
     frame=struct.pack('<HHH',0xFF00,code>>4,0x247) if iret else struct.pack('<H',0xFF00)
     for i,b in enumerate(frame):d.write(0x6F00+i,1,b)
     u.reg_write(x.UC_X86_REG_EFLAGS,0x247)
-    u.emu_start(code+listing.symbol(name),code+0xFF00,count=count)
+    step.execute(code+listing.symbol(name),code+0xFF00,count)
     if reset:
         assert d.reset_requests==[0xFE],(name,d.reset_requests)
     else:
@@ -238,7 +263,7 @@ def render_banks(fixture,expected):
     u=fixture[0]
     u.reg_write(x.UC_X86_REG_DS,u.reg_read(x.UC_X86_REG_CS))
     u.reg_write(x.UC_X86_REG_ES,0xB800)
-    for name,row,column in (('post_ui_banks',6,24),('post_debug_summary',4,58)):
+    for name,row,column in (('post_ui_banks',6,24),('post_debug_summary',4,57)):
         u.mem_write(0xB8000+row*160+column*2,b' \x07'*7)
         invoke(fixture,name)
         cells=bytes(u.mem_read(0xB8000+row*160+column*2,14))
