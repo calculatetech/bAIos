@@ -10,6 +10,14 @@ Each port owns its `src/`, `tests/`, `tools/`, `diagnostics/`, `docs/`, `referen
 
 Put every Git worktree or full source clone in root `.agent/worktrees/<task>/`. Disposable pipeline snapshots belong in root `.agent/test-results/port-update/`. Neither belongs in a port or any `build/` folder. Preserve dirty or unique work before moving or removing a checkout. Keep the primary mixed index untouched. Remove a completed worktree after its work is integrated and its state is clean. A normal task must not create another public-repository clone.
 
+## Documentation
+
+Root documentation describes shared features, operating instructions, shared implementation contracts and restrictions. Board names can appear in navigation links. Board versions, register recipes, hardware observations, diagnostic codes and port-specific build inputs belong under that port's directory.
+
+Treat the root README, port READMEs and user guides as instruction manuals. Use plain language and explain what the user can do. Keep known user-visible limitations in the relevant port manual. Put test commands, fixture assumptions, measured results, hashes, disassembly and detailed validation in clearly labeled developer or research documents.
+
+Each port owns its `docs/development/`, `docs/research/` and implementation plans. Shared developer documents describe common interfaces without collecting board notes. Move useful material to its owner and update its links. Do not make a second copy in a root user guide.
+
 ## Port build directories
 
 Use the same categories in every port:
@@ -30,13 +38,13 @@ Create only the directories a task needs. Put an experiment under its category i
 
 Open `<port>/build/LATEST.txt`. It states whether the latest output is a bench iteration or a completed candidate and lists the exact files, sizes and additive byte checksums, SUM32. `LATEST.json` is the matching machine-readable record. Starting a new bench build also keeps the last completed group in this record and in the cleanup retention list.
 
-During bench work, reuse fixed filenames such as `baios-pb430.bin` or the MP386 combined/even/odd names. A new successful normal build updates the bench record. Test and research builds in subfolders do not replace the port's latest pointer.
+During bench work, reuse fixed filenames for the port and its required programmer lanes. A new successful normal build updates the bench record. Test and research builds in subfolders do not replace the port's latest pointer.
 
 After test iterations finish, run:
 
     python -B tools/finish-candidate.py <port>
 
-Use `--directory <port>/build/review/<case>` to finish a recorded build from another allowed output directory. The command validates the assembly hashes and complete artifact group, then writes names such as `baios-mp386-even-v0.1.1-20261027T203000Z.bin` directly in the port's build root. All members share one group identity. The UTC timestamp is the most recent recorded assembly in the group. VGA pairs must share their system BIOS; programmer lanes must reproduce the combined image.
+Use `--directory <port>/build/review/<case>` to finish a recorded build from another allowed output directory. The command validates the assembly hashes and complete artifact group, then writes names such as `baios-<port>-even-v0.1.1-20261027T203000Z.bin` directly in the port's build root. All members share one group identity. The UTC timestamp is the most recent recorded assembly in the group. VGA pairs must share their system BIOS; programmer lanes must reproduce the combined image.
 
 `build-info.json` binds the version and build times to the exact assembled bytes. Finishing reads this record, not the current source version. The port's existing validation declaration defines the required group members. Changed files, missing members or incompatible pairs are rejected before latest changes. A legacy image without a recorded assembly timestamp must be rebuilt before it receives a timestamped name. Do not invent an old build time from a file's modification date.
 
@@ -46,7 +54,7 @@ Finishing names and records a candidate. It does not assert that physical testin
 
 <!-- cpk-rule-owner: baios-port-versioning -->
 
-Each port has its own firmware version. Use its existing identity owner: `port.json`, or Presario's `src/bios.asm`. Before 1.0, a feature or breaking change increments the minor number and resets patch; a bug fix increments patch. Significant unreleased changes count. For example, feature 0.1.4 becomes 0.2.0 and fix 0.1.4 becomes 0.1.5. After 1.0, breaking changes increment major, features minor and fixes patch.
+Each port has its own firmware version. Use its existing identity owner: its port configuration or established assembly identity. Before 1.0, a feature or breaking change increments the minor number and resets patch; a bug fix increments patch. Significant unreleased changes count. For example, feature 0.1.4 becomes 0.2.0 and fix 0.1.4 becomes 0.1.5. After 1.0, breaking changes increment major, features minor and fixes patch.
 
 Select the next version for each coherent feature or fix before the candidate build. Repeated trials of that change keep the selected version. Do not increment per rebuild or rename old bytes to a newer version. Documentation, layout changes, comments, tests and review housekeeping alone do not change a port's firmware version. Released tags and filenames are immutable.
 
@@ -54,4 +62,4 @@ Select the next version for each coherent feature or fix before the candidate bu
 
 Preview `pwsh -NoProfile -File tools/clean-build.ps1 -WhatIf`, then apply it after emulators stop. The root command calls each port's retention policy. Preserve the current bench and completed images, latest metadata, active diagnostics, current comparisons, original inputs and installed tools. Remove consumed VMs, disk copies, old iterations, stale copied repositories and caches. Verify retained ROM hashes after cleanup. Old checkouts must first move their retained card VHD and installed tools out of build output. Cleanup refuses to remove these unmigrated inputs. The shared deletion guard refuses Git metadata, outside paths and reparse points; it never silently deletes unique source.
 
-An organization-only change uses path, metadata, preservation and small synthetic tooling checks. It does not run a firmware or emulator validation matrix. Do not repeat an unchanged passing check. M919 remains excluded from routine port updates; its own roadmap governs resumed bench work and wider qualification.
+An organization-only change uses path, metadata, preservation and small synthetic tooling checks. It does not run a firmware or emulator validation matrix. Do not repeat an unchanged passing check. Each port owns its update eligibility and independent hardware work.

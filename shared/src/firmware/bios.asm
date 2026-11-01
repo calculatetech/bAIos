@@ -2088,7 +2088,11 @@ emulator_exit:
 %include "firmware/setup.inc"
 %include "firmware/post.inc"
 %include "hardware/chipset-core.inc"
+%ifdef BOARD_APM_SOURCE
+%include BOARD_APM_SOURCE
+%else
 %include "firmware/apm.inc"
+%endif
 %ifndef BOARD_LATE_CDBOOT
 %include "firmware/cdboot.inc"
 %endif

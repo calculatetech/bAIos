@@ -4,40 +4,10 @@ cpu_detect_name:
     pushfd
     pushad
     mov si,cpu_name_unknown
-    pushfd
-    pop eax
-    mov ecx,eax
-    xor eax,0x00200000
-    push eax
-    popfd
-    pushfd
-    pop eax
-    push ecx
-    popfd
-    xor eax,ecx
-    test eax,0x00200000
-    jz .legacy
-    xor eax,eax
-    cpuid
-    cmp eax,1
-    jb .done
-    mov di,cpu_vendors
-.vendor:
-    cmp ebx,[cs:di]
-    jne .next_vendor
-    cmp edx,[cs:di+4]
-    jne .next_vendor
-    cmp ecx,[cs:di+8]
-    je .signature
-.next_vendor:
-    add di,14
-    cmp di,cpu_vendors_end
-    jb .vendor
-    jmp .done
-.signature:
-    mov di,[cs:di+12]
-    mov eax,1
-    cpuid
+    call cpu_query_identity
+    jc .legacy
+    test di,di
+    jz .done
     mov dx,ax
     and dx,0x0FF0
     cmp di,cpu_intel
@@ -126,6 +96,129 @@ cpu_detect_name:
     popfd
     ret
 
+; Private observation helper. CF set: no CPUID, ECX retains original EFLAGS.
+; Otherwise DI is the known vendor table (zero if unavailable), EAX signature.
+cpu_query_identity:
+    pushfd
+    pop eax
+    mov ecx,eax
+    xor eax,0x00200000
+    push eax
+    popfd
+    pushfd
+    pop eax
+    push ecx
+    popfd
+    xor eax,ecx
+    test eax,0x00200000
+    jz .unavailable
+    xor eax,eax
+    cpuid
+    cmp eax,1
+    jb .unknown
+    mov di,cpu_vendors
+.vendor:
+    cmp ebx,[cs:di]
+    jne .next_vendor
+    cmp edx,[cs:di+4]
+    jne .next_vendor
+    cmp ecx,[cs:di+8]
+    je .signature
+.next_vendor:
+    add di,14
+    cmp di,cpu_vendors_end
+    jb .vendor
+.unknown:
+    xor di,di
+    clc
+    ret
+.signature:
+    mov di,[cs:di+12]
+    mov eax,1
+    cpuid
+    clc
+    ret
+.unavailable:
+    stc
+    ret
+
+; Board-adapter-only query: AX=1 Intel desktop SL, AX=2 AMD two-pin Am5x86.
+; Preserve other registers, upper EAX, and EFLAGS. This does not qualify wiring.
+cpu_detect_sl:
+    pushfd
+    pushad
+    call cpu_query_identity
+    jc .unknown
+    cmp di,cpu_intel
+    jne .amd
+    mov dx,ax
+    and dx,0x3FF0            ; Original type, family, model; reserved bits ignored.
+    cmp dx,0x0420
+    je .candidate
+    cmp dx,0x0430
+    je .candidate
+    cmp dx,0x0450
+    je .candidate
+    cmp dx,0x0470
+    je .candidate
+    cmp dx,0x0480
+    jne .unknown
+.candidate:
+    mov ax,1
+    jmp .done
+.amd:
+    cmp di,cpu_amd
+    jne .unknown
+    and ax,0x3FF0
+    cmp ax,0x04E0           ; AMD19751C: Am5x86 two-pin SMM interface.
+    je .two_pin
+    cmp ax,0x04F0
+    jne .unknown
+.two_pin:
+    mov ax,2
+    jmp .done
+.unknown:
+    xor ax,ax
+.done:
+    mov bp,sp
+    mov [ss:bp+28],ax
+    popad
+    popfd
+    ret
+
+; Board-owned presentation uses the same name ABI as cpu_detect_name.
+cpu_detect_sl_name:
+    call cpu_detect_name
+    pushfd
+    pushad
+    call cpu_detect_sl
+    cmp ax,1
+    jne .done
+    cmp si,cpu_name_sx
+    je .sx
+    cmp si,cpu_name_dx2_487
+    je .dx2
+    cmp si,cpu_name_dx2
+    je .dx2
+    cmp si,cpu_name_sx2
+    je .sx2
+    mov si,cpu_name_dx4_sl
+    jmp .done
+.sx:
+    mov si,cpu_name_sx_sl
+    jmp .done
+.dx2:
+    mov si,cpu_name_dx2_sl
+    jmp .done
+.sx2:
+    mov si,cpu_name_sx2_sl
+.done:
+    mov bp,sp
+    mov [ss:bp+4],si
+    popad
+    popfd
+    ret
+
 cpu_vendors:
     dd 0x756E6547,0x49656E69,0x6C65746E
     dw cpu_intel
@@ -179,6 +272,10 @@ cpu_name_sl db '486SL',0
 cpu_name_sx2 db '486SX2',0
 cpu_name_dx2 db '486DX2',0
 cpu_name_dx4 db '486DX4',0
+cpu_name_sx_sl db '486SX-SL',0
+cpu_name_dx2_sl db '486DX2-SL',0
+cpu_name_sx2_sl db '486SX2-SL',0
+cpu_name_dx4_sl db '486DX4-SL',0
 cpu_name_486od db '486 OverDrive',0
 cpu_name_dx4od db '486DX4 OD',0
 cpu_name_pentium db 'Pentium',0

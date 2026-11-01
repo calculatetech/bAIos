@@ -1,6 +1,9 @@
+%ifndef M919_BOARD_DEFINITION
+%define M919_BOARD_DEFINITION
 %define BOARD_KBC_NO_AUX_COMMANDS 1
 %define BOARD_RESET_NEAR 1
 %define BOARD_LATE_POST_TRACE 1
+%define BOARD_POST_SUMMARY_SHIFT -1
 ; No RAM stack is available at the reset entry. Keep the old scanout blank
 ; until the VGA BIOS restores it, preserving clock bits and the selected index.
 %macro board_video_blank 1
@@ -114,6 +117,16 @@ int1a equ pci_int1a
 %define HW_VGA_END 0x103A
 %define BOARD_OPTION_ROM_FIRST_SEG [fs:HW_VGA_END]
 %define HW_CACHE_BYTES 0x103C
+%define HW_SMM_STATUS 0x1040 ; 1 active, 0 unsupported, 2 install, 3 relocate, 4 ping.
+%define HW_SMM_ERROR 0x1041 ; Last initialization error; 4 means no fresh reply.
+%define HW_SMM_BOOT_TRACE 0x1042
+%define HW_SMM_FINAL_TRACE 0x1043
+%define HW_SMM_TRACE_VALID 0x1044
+%define BOARD_APM_CODE_SEGMENT 0xE000
+%define BOARD_APM_STATE_LOADER CFG_ROM_CODE_SEGMENT:board_smm_state_loader
+%define BOARD_APM_SOURCE "hardware/apm-entry.inc"
+%define HW_SMM_IDLE_STATUS 0x1045
+%define BOARD_APM_DATA_LENGTH (HW_SMM_IDLE_STATUS+1)
 %define HW_CACHE_SAMPLES 0x1200
 %define HW_CACHE_FAILURE_ADDRESS (HW_CACHE_SAMPLES+8)
 %define HW_CACHE_FAILURE_EXPECTED (HW_CACHE_SAMPLES+16)
@@ -172,3 +185,7 @@ int1a equ pci_int1a
     mov dx,[fs:HW_CD_PORT_TABLE+2*((%1)-ATA_DATA)]
 %endif
 %endmacro
+%endif
+
+%include "hardware/smm-command.inc"
+%include "hardware/stop-grant.inc"

@@ -1,60 +1,50 @@
 # bAIos
 
-bAIos is an experimental replacement BIOS for selected 386- and 486-era PCs. It combines shared firmware services with board-specific chipset, cache, and controller initialization.
+bAIos is a replacement BIOS for selected 386- and 486-era computers. It starts the computer, checks memory, provides Setup, and loads an operating system.
 
-The project focuses on reliable startup, useful diagnostics, configurable memory timings, and compatibility with real DOS software. Hardware evidence and working reference behavior guide each port.
+Choose the manual for your motherboard before downloading or programming a ROM:
 
-## Ports
+| Port manual |
+| --- |
+| [Compaq Presario 800](presario-800/README.md) |
+| [Mitsubishi MP386/25](mp386/README.md) |
+| [Packard Bell PB430](pb430/README.md) |
+| [PC-Chips M919](m919/README.md) |
 
-| Port | Status |
-| --- | --- |
-| [Compaq Presario 800](presario-800/README.md) | Original implementation and behavior baseline. |
-| [Mitsubishi MP386/25](mp386/README.md) | Physically tested port with expansion RAM, 32 KiB cache, shared POST and decoded timing controls. |
-| [Packard Bell PB430](pb430/README.md) | Physically tested development port with extensive timing and cache controls. |
-| [PC-Chips M919](m919/README.md) | Active development. Revision3.4 reset and floppy limitations remain unresolved. |
+Each port manual describes its hardware, available settings, ROM files and known limitations. A ROM for a different motherboard can prevent the computer from starting.
 
-Read the selected port's documentation before building or flashing. A passing source check or emulator test does not establish hardware stability. Keep a known-good ROM and an external programmer available.
+## Find the right ROM
 
-## Build
+Open the selected port's `build/LATEST.txt`. It lists the current image files, version and programmer checksums. A checksum is a number used to compare file contents.
 
-The development tools target Windows with PowerShell, Python 3.11 or later, and NASM on `PATH`. Run PowerShell with `-NoProfile` and Python with `-B`. Model tests also use Unicorn. Some tests need 86Box and separately supplied operating-system media.
+A completed candidate includes its version and build time in the filename. A fixed filename is a development image that can change between tests. Follow the port manual when an image uses separate ROM chips or includes video firmware.
 
-Vendor ROMs and manuals are not included. Obtain the exact inputs listed in [Public source and private inputs](docs/public-source.md) when the selected build requires retained vendor firmware. The MP386 build uses original bAIos source without a retained vendor image. Its reference checks require the separately supplied OEM even/odd ROMs.
+Keep a backup of the original ROM and a way to restore it before programming. Use the image size and chip arrangement specified by the port manual.
 
-From the repository root:
+## Setup and startup
 
-```powershell
-python -B tools/build-rom.py m919
-python -B mp386/tools/build.py
-python -B pb430/tools/build.py
-pwsh -NoProfile -File presario-800/tools/build.ps1
-```
+Press Delete during startup to open Setup. The help panel explains the selected setting. Save changes when you want to use them after restart. Discard changes to keep the previous settings.
 
-Output stays in each port's `build/` directory. The PB430 build checks the physical image size, system checksum, reset vector, retained VGA bytes, and input identities. Its output includes the additive programmer checksum, `SUM32`.
+F9 loads the default settings. F10 saves settings and restarts. Saved settings take precedence over defaults during ordinary startup.
 
-For source-only checks without vendor inputs:
+The default boot order is CD-ROM, floppy disk, then hard disk. A boot device must contain a usable operating system or boot program.
 
-```powershell
-python -B tools/check-public-source.py
-New-Item -ItemType Directory -Force build | Out-Null
-python -B shared/tests/test-emulator.py build
-```
+Fast Boot shortens memory testing. It does not reduce the amount of detected memory. Leave timings at their defaults until the computer runs reliably.
 
-## Current candidates and port updates
+## Features and help
 
-Open `<port>/build/LATEST.txt` to find the current bench or completed candidate, including its version, sizes and programmer checksums. Completed candidates use version and UTC build time in their filenames. See the [repository layout and build policy](docs/repository-layout.md).
+Cache keeps frequently used data near the processor. Write-through also writes data to RAM immediately. Write-back can postpone those writes for better performance. Setup offers only the modes available through the port.
 
-After a shared change, run `python -B tools/update-ports.py` to build and validate the active ports in disposable source copies. M919 is developed and validated separately while wider pipeline coverage remains deferred. The [port update pipeline](docs/port-updates.md) describes validation, retained media and candidate promotion.
+IDE Auto mode selects a transfer mode supported by the drive and its controller. A higher PIO number means a shorter transfer cycle. The BIOS supports PIO0 through PIO4, subject to the controller and drive limits. Transfer width and block mode are separate settings.
 
-## Repository layout
+The [SL-enhanced CPU guide](docs/sl486-support.md) explains processor power-saving support and DOS POWER.EXE. The [POST-code guide](docs/post-codes.md) explains startup codes shown by a diagnostic card.
 
-- `shared/`: common firmware services and test tools.
-- Port directories: board adapters, Setup choices, tests, and hardware evidence.
-- `docs/`: shared porting guidance, publication rules, and the global roadmap.
-- `tools/`: common build, validation, and cleanup commands.
+## Build and development
 
-See [porting instructions](docs/porting.md) before starting a port. Keep proven display and service behavior, adapt controller-specific operations, and record physical results separately from model results. The [global roadmap](docs/roadmap.md) tracks shared work; each port owns its own roadmap.
+Build commands and required inputs belong to each port manual. Developers can read the [shared source guide](shared/README.md), [porting instructions](docs/porting.md), [update guide](docs/port-updates.md), and [repository layout](docs/repository-layout.md).
+
+Board research, register descriptions and validation records live under each port's `docs/` directory. The [roadmap](docs/roadmap.md) tracks shared work.
 
 ## License
 
-Original bAIos source and documentation are available under the [MIT license](LICENSE). Vendor firmware, manuals, and external test software retain their own terms. They are not tracked in Git. PB430 flash images include retained VGA firmware, which is outside the bAIos MIT license.
+Original bAIos source and documentation use the [MIT license](LICENSE). Vendor firmware, manuals, operating systems and external tools keep their own terms. They are not included in the public source repository. See [public source and private inputs](docs/public-source.md).

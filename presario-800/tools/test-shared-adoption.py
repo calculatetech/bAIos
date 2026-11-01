@@ -1,4 +1,5 @@
 """Prove active shared owners and complete retained Presario hardware transactions."""
+import argparse
 import hashlib
 import importlib
 import json
@@ -372,17 +373,23 @@ def diagnostics(nasm, rom):
 
 
 def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--case',choices=('all','cpu'),default='all')
+    args=parser.parse_args()
     nasm = shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA'])/'bin/NASM/nasm.exe')
     build = PORT/os.environ.get('BAIOS_BUILD_DIRECTORY','build')
     build.mkdir(parents=True,exist_ok=True)
     rom = build/'baios-presario800-system.rom'
     if not rom.exists():
         subprocess.run([nasm,'-f','bin','-DVGA_BIOS_141','-I',(PORT/'src').as_posix()+'/', '-o',str(rom),'-l',str(rom.with_suffix('.lst')),(PORT/'src/bios.asm').as_posix()],cwd=ROOT,check=True)
-    result = {'hardware':preservation(rom),'dependencies':dependencies(nasm),'compile_rejections':guards(nasm),'adapters':fdc_and_video()}
-    result['diagnostic_builds'] = diagnostics(nasm, rom)
-    result['cpu_cases'] = len(cpu_check(rom,{'base':0xF0000,'code_segment':0xF000},{'S_CPU_SIGNATURE':0xD4}))
+    result = {}
+    if args.case=='all':
+        result = {'hardware':preservation(rom),'dependencies':dependencies(nasm),'compile_rejections':guards(nasm),'adapters':fdc_and_video()}
+        result['diagnostic_builds'] = diagnostics(nasm, rom)
+    result['cpu_proof'] = cpu_check(rom,{'base':0xF0000,'code_segment':0xF000},{'S_CPU_SIGNATURE':0xD4})
+    result['cpu_cases'] = len(result['cpu_proof'])
     (build/'shared-adoption.json').write_text(json.dumps(result,indent=2)+'\n')
-    print('PASS active snapshot dependencies, complete hardware windows/tables, guards, FDC/video boundaries and guarded CPU catalogue')
+    print('PASS guarded CPU catalogue and board SL query' if args.case=='cpu' else 'PASS active snapshot dependencies, complete hardware windows/tables, guards, FDC/video boundaries and guarded CPU catalogue')
 
 
 if __name__=='__main__':

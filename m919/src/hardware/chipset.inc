@@ -24,6 +24,17 @@
     out dx,al
 %endmacro
 chipset_initialize:
+    ; A previous warm boot can leave a PM source armed before RAM is rebuilt.
+    mov eax,0x800000A0 | (CFG_PLATFORM_ISA_PCI_DEVICE << 11)
+    mov dx,0xCF8
+    out dx,eax
+    mov dx,0xCFC
+    xor al,al
+    out dx,al
+    add dx,3
+    in al,dx
+    and al,0x3F
+    out dx,al
     ; HB50: L2 off. HB51: 3 read/write waits, 8-bit WT tags, no merging.
     early_chipset_update CFG_PLATFORM_HOST_PCI_DEVICE,0x50,0xFF,0
     early_chipset_update CFG_PLATFORM_HOST_PCI_DEVICE,0x51,0xF5,1
@@ -47,9 +58,9 @@ chipset_initialize:
     early_chipset_update CFG_PLATFORM_ISA_PCI_DEVICE,0x45,1,0
     early_chipset_update CFG_PLATFORM_ISA_PCI_DEVICE,0x46,0x0F,0
     early_chipset_update CFG_PLATFORM_ISA_PCI_DEVICE,0x47,0x40,0x40
-    ; PCI/4 ISA clock and 12 BCLK recovery. F is always decoded; E is padding.
+    ; PCI/4 ISA clock, 12 BCLK recovery, and the firmware's E extension.
     early_chipset_update CFG_PLATFORM_ISA_PCI_DEVICE,0x56,3,1
-    early_chipset_update CFG_PLATFORM_ISA_PCI_DEVICE,0x57,0xEF,7
+    early_chipset_update CFG_PLATFORM_ISA_PCI_DEVICE,0x57,0xEF,0x27
     ; Disable the documented green timer.
     early_chipset_update CFG_PLATFORM_ISA_PCI_DEVICE,0x70,0x0F,0x0E
     mov al,0x54

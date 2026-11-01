@@ -649,16 +649,23 @@ def timing_recovery_checks(image, seed):
     return rows
 
 
+def cpu_checks(image):
+    from shared.tools.cpu_proof import check
+    from shared.tools.ram_proof import constants
+    return check(image,json.loads((PORT/'port.json').read_text())['rom'],
+                 constants(PORT.parent/'shared/src/pc/state.inc'))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--image', type=Path, default=PORT/'build/baios-mp386.bin')
-    parser.add_argument('--case', choices=('image', 'reference', 'boot', 'disk', 'setup', 'ram', 'recovery', 'retained'), required=True)
+    parser.add_argument('--case', choices=('image', 'reference', 'boot', 'disk', 'setup', 'ram', 'recovery', 'retained', 'cpu'), required=True)
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     image = args.image.resolve()
     checks = {'image': image_checks, 'reference': lambda p: boot_checks(p, True),
               'boot': a20_boot_checks, 'disk': disk_controls_checks, 'setup': setup_checks, 'ram': ram_checks,
-              'recovery': recovery_checks, 'retained': retained_checks}
+              'recovery': recovery_checks, 'retained': retained_checks,'cpu':cpu_checks}
     result = checks[args.case](image)
     (OUT/(args.case+'.json')).write_text(json.dumps(dict(case=args.case, image_sha256=hashlib.sha256(image.read_bytes()).hexdigest(), result=result), indent=2)+'\n')
     print('PASS', args.case, json.dumps(result, default=str)[:1500])

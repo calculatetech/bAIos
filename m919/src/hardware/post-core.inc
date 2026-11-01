@@ -1,6 +1,6 @@
 post_summary_cache:
     call post_cache_name
-    mov di,4*160+20*2
+    mov di,4*160+(20+BOARD_POST_SUMMARY_SHIFT)*2
     mov bh,7
     jmp setup_text
 post_cache_name:

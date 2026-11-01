@@ -11,12 +11,12 @@ from shared.tools.cpu_proof import check
 
 
 def run():
-    result=build(PORT,'build/hardware-tests/cpu')
+    result=build(PORT,'build/tests/cpu')
     _,cfg=configuration(PORT)
     state=constants(REPOSITORY/'shared/src/pc/state.inc')
     state.update(constants(REPOSITORY/'shared/src/setup/layout.inc'))
-    rows=check(Path(result['path']),cfg['rom'],state)
-    path=PORT/'build/research/hardware/cpu-proof.json';path.parent.mkdir(parents=True,exist_ok=True)
+    rows=check(Path(result['path']),cfg['rom'],state,prepare_unavailable=False,amd_sl_name=True,summary_shift=-1)
+    path=PORT/'build/tests/cpu/cpu-proof.json';path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps({'image':result,'cases':rows},indent=2)+'\n')
     print(f'CPU primary identities, guards, full state and actual render: {len(rows)} PASS',flush=True)
     return path

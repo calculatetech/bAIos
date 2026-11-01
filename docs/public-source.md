@@ -1,27 +1,25 @@
 # Public source and private inputs
 
-This repository starts with a source snapshot. It excludes private development history, personal files, local agent configuration, and build output.
+The public repository contains original bAIos source and documentation. It excludes vendor ROMs, manuals, operating-system media, personal configuration, private history and generated build output.
 
-The MIT license covers original bAIos source and documentation. It does not grant rights to vendor firmware, manuals, operating systems, or third-party tools. Those inputs are not tracked in Git. Downloadable flash images include retained VGA firmware under its original terms. Supply copies that you have permission to use.
+The MIT license covers original bAIos work. It does not grant rights to external firmware, documents or software. An image that contains retained vendor firmware remains subject to that firmware's terms.
 
-Port documentation records hardware observations and reverse-engineering results. References to local ROMs, disassemblies, PDFs, and historical build results describe private research inputs. Those paths will not exist in a fresh clone. The input manifest records file names, sizes, and hashes without distributing their contents.
+## Supply build inputs
 
-## Required ROM inputs
+Read the selected port manual before building. Its developer documentation describes required reference files and media. The [input catalogue](private-inputs.json) records file identities without distributing their contents.
 
-See [private-inputs.json](private-inputs.json) for exact identities. Build scripts retain their input checks.
+Place inputs at their documented locations. Build scripts compare their identities before using them. A matching checksum identifies a file. It does not grant permission to distribute it.
 
-- PB430: `pb430/reference/pb430-m27c1001.bin`, `pb430/reference/acc386.BIN`, and `pb430/reference/gd542x-141-vga60.rom` for the default build. The `--stock-vga` build does not require the separate VGA60 file.
-- Presario 800: `presario-800/reference/COMPAQ_PROLINEA_MT_05-02-94.BIN`, `presario-800/reference/gd5428_1-41.bin`, and `presario-800/reference/baios-presario800-vga141-bus07.bin` for the default build.
-- Other hardware and comparison tests require the ROMs and media named in their port documentation. A checksum match identifies an input; it does not grant distribution rights.
+Keep original inputs unchanged. Local paths in development records describe private files and are not instructions to download an arbitrary replacement.
 
-Native APM and RTC DOS tests use `BAIOS_DOS_VHD` for the source VHD. The CD boot test accepts `--iso`. Test media must contain the software expected by each test. Tests make disposable copies before changing disk contents.
+## Prepare public source
 
-## Public checks
+Run this command from the repository root:
 
-Run `python -B tools/check-public-source.py` in the public checkout. It checks tracked paths, common credential formats, host-specific paths, Python syntax, and JSON syntax. It also checks that excluded input classes have not entered the index. This publication guard cannot detect every possible secret.
+```powershell
+python -B tools/check-public-source.py
+```
 
-CI also exercises the existing emulator-launch isolation test. CI does not flash hardware or distribute vendor ROMs. Local ROM verification and physical testing remain separate requirements.
+The guard checks tracked paths, common credential formats, personal paths and source syntax. It cannot detect every possible secret. Review the exact files selected for publication.
 
-Keep original ROMs, extracted firmware, manuals, media, photographs, personal configuration, and logs outside Git. Do not force-add ignored inputs. Never publish the private development history as another branch or tag.
-
-Historical RAM/cache comparison code is retained as original-source fixtures in `m919/tests/baselines/`. PB430 shared-source comparisons use a checked-in hash table. These checks do not require private Git objects. The completed private document-relocation audit is retired from this distribution.
+Do not force-add ignored ROMs, extracted firmware, photographs, media or logs. Never publish private development history as another branch or tag. Build and hardware results stay separate from the source-publication check.

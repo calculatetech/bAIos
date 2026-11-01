@@ -1,4 +1,7 @@
 ; Native text setup. Retained VGA, keyboard and RTC services own hardware.
+%ifndef BOARD_POST_SUMMARY_SHIFT
+%define BOARD_POST_SUMMARY_SHIFT 0
+%endif
 %define U_PAGE       0x00F5
 %define U_FOCUS      0x00F6 ; 0 sidebar, 1 page fields
 %define U_FIELD      0x00F7 ; Standard:date=0,time=1,format=2.

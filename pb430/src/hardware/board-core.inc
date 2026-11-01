@@ -1,4 +1,6 @@
-%include "pc/cpu.inc"
+%ifdef BOARD_LATE_CDBOOT
+%include "hardware/cpu.inc"
+%endif
 %include "hardware/io.inc"
 %include "hardware/memory.inc"
 %include "hardware/shadow.inc"

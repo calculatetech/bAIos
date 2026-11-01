@@ -19,6 +19,10 @@
   ],
   "checks": [
     {
+      "id": "firmware-cpu",
+      "argv": ["python", "-B", "pb430/tools/test-port.py", "--case", "cpu"]
+    },
+    {
       "id": "shared-ata-pio",
       "argv": [
         "python",

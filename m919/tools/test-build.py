@@ -16,24 +16,29 @@ from shared.tools.rom import build, configuration, verify
 
 
 def main():
-    result = build(PORT,'build/build-tests/current')
+    result = build(PORT,'build/tests/build/current')
     _, config = configuration(PORT)
     raw = Path(result['path']).read_bytes()
     assert len(raw) == 128*1024 and sum(raw) % 256 == 0
-    assert raw[:65536] == b'\xFF'*65536 and sum(raw[65536:]) % 256 == 0
+    assert raw[:8] == b'BAISMM1\0' and sum(raw[:65536]) % 256 == 0
+    assert sum(raw[65536:]) % 256 == 0
     for source in (PORT/'src', REPOSITORY/'shared/src'):
         for path in source.rglob('*.inc'):
             assert 'POST_STAGE_DIAGNOSTIC' not in path.read_text(), path
     assert not (PORT/'src/hardware/post-diagnostic.inc').exists()
-    offset, segment = struct.unpack_from('<HH',raw,0x1FFF1)
+    segment=config['rom']['reset_segment']
+    offset=(0xFFF3+struct.unpack_from('<h',raw,0x1FFF1)[0])&0xFFFF
     entry=segment*16+offset-config['rom']['base']
     assert (segment,offset)==(config['rom']['reset_segment'],config['rom']['reset_entry_offset'])
     assert raw[entry] == 0xFA
     month,day,year = config['identity']['release_date'].split('/')
     assert raw[0x1FFF5:0x1FFFD] == f'{month}/{day}/{year[-2:]}'.encode('ascii')
-    folder = PORT/'build/build-tests'
+    folder = PORT/'build/tests/build'
     folder.mkdir(parents=True,exist_ok=True)
-    for name,mutation in [('size',raw[:-1]),('checksum',raw[:100]+bytes([raw[100]^1])+raw[101:]),
+    region_bad=bytearray(raw)
+    region_bad[100]^=1
+    region_bad[config['rom']['checksum_offset']]=(region_bad[config['rom']['checksum_offset']]-1)&255
+    for name,mutation in [('size',raw[:-1]),('checksum',raw[:100]+bytes([raw[100]^1])+raw[101:]),('region',region_bad),
                           ('reset',raw[:0x1FFF1]+bytes([raw[0x1FFF1]^1])+raw[0x1FFF2:])]:
         altered = bytearray(mutation)
         if name == 'reset':
@@ -59,17 +64,17 @@ def main():
     shutil.copyfile(PORT/'src/bios.asm',alternate/'src/bios.asm')
     for source in (PORT/'src/hardware').glob('*.inc'):
         shutil.copyfile(source,alternate/'src/hardware'/source.name)
-    config['identity'].update(vendor='Configured vendor',model='Configured model',version='9.8.7',release_date='12/31/2027')
+    config['identity'].update(vendor='Other',model='Board',version='9.8.7',release_date='12/31/2027')
     config['rom'].update(model_byte=0xF8)
     (alternate/'port.json').write_text(json.dumps(config),encoding='utf-8')
     varied = build(alternate)
     candidate = Path(varied['path']).read_bytes()
-    assert b'9.8.7\0' in candidate and b'Configured vendor Configured model\0' in candidate
+    assert b'9.8.7\0' in candidate and b'Other Board\0' in candidate
     assert candidate[0x1FFF5:0x1FFFD] == b'12/31/27'
-    assert struct.unpack_from('<HH',candidate,0x1FFF1) == (config['rom']['reset_entry_offset'],config['rom']['reset_segment'])
+    assert (0xFFF3+struct.unpack_from('<h',candidate,0x1FFF1)[0])&0xFFFF == config['rom']['reset_entry_offset']
     assert candidate[entry] == 0xFA and candidate[-2] == 0xF8
     entrypoints = []
-    output_directory = 'build/build-tests/output with spaces'
+    output_directory = 'build/tests/build/output with spaces'
     output_image = PORT/output_directory/('baios-'+PORT.name+'.bin')
     commands = [
         ([sys.executable,'-B',str(REPOSITORY/'tools/build-rom.py'),str(PORT),'--output',output_directory],True),
@@ -96,6 +101,8 @@ def main():
         assert hashlib.sha256((PORT/'reference/9190914S.ROM').read_bytes()).hexdigest() == protected[removed]
         del protected[removed]  # User removed this exact duplicate; retain historical evidence.
     for name,expected in protected.items():
+        if '/build/' in name:
+            continue  # Generated fixtures are not retained reference inputs.
         assert hashlib.sha256((REPOSITORY/name).read_bytes()).hexdigest() == expected, name
     services_path = REPOSITORY/'.agent/test-results/m919-services.json'
     services = json.loads(services_path.read_text(encoding='utf-8')) if services_path.exists() else evidence.get('shared_extraction',{})

@@ -1,5 +1,8 @@
 ; Intel/Microsoft APM 1.2, sections4.1/4.6 and AppendixC.
-; CPU HLT only: no chipset clocks, CMOS, devices or global power states.
+; Board-qualified Stop Grant or CPU HLT; no devices or global power states.
+%ifndef PC_PROCESSOR_PRIMITIVES
+%include "pc/processor.inc"
+%endif
 ; POST clears these spare EBDA bytes. Zero means enabled/engaged/disconnected.
 APM_CONNECTION equ 0x27A         ; 0 none,1 real,2 PM16,3 PM32.
 APM_VERSION equ 0x27B            ; Negotiated minor:0,1,2; BIOS version is1.2.
@@ -12,13 +15,28 @@ APM_DATA_LENGTH equ APM_TEST_WAKE+4
 APM_DATA_LENGTH equ APM_FLAGS+1
 %endif
 
+%ifdef BOARD_APM_DATA_LENGTH
+%if BOARD_APM_DATA_LENGTH > APM_DATA_LENGTH
+APM_DATA_LENGTH_BOARD equ BOARD_APM_DATA_LENGTH
+%define APM_DATA_LENGTH APM_DATA_LENGTH_BOARD
+%endif
+%endif
+
+%ifndef BOARD_APM_CODE_SEGMENT
+%define BOARD_APM_CODE_SEGMENT 0xF000
+%endif
+
 ; Common INT15 BP frame. Real/v86 callers follow the current BDA pointer.
 apm_int15:
     cli
     push ds
     push fs
     push ax
+%ifdef BOARD_APM_STATE_LOADER
+    call BOARD_APM_STATE_LOADER
+%else
     call load_bios_state
+%endif
     mov ax, fs
     mov ds, ax
     pop ax
@@ -51,7 +69,11 @@ apm_pm16:
     jne .unsupported
     cmp al, 4
     jb .unsupported              ; Installation/connect are real-mode only.
+%ifmacro board_stop_grant_query 0
+    call apm_dispatch_pm16
+%else
     call apm_dispatch16
+%endif
     jmp .return
 .disconnected:
     mov ah, 3
@@ -72,7 +94,7 @@ apm_pm16:
     retf
 
 ; Author the contract once; NASM supplies each mode's operand/address sizes.
-%macro apm_dispatch 1
+%macro apm_dispatch 1-2 0
 %1:
     cmp al, 0
     je %%installation
@@ -123,7 +145,11 @@ apm_pm16:
     jnz %%bad_device
     mov ax, 0x0102
     mov bx, 0x504D
-    mov cx, 3                    ; Both PM interfaces; Idle does not slow clocks.
+    mov cx, 3                    ; Both PM interfaces.
+    cpu_idle_query
+    jc %%install_policy
+    or cl, 4                     ; This board's qualified Idle path slows clocks.
+%%install_policy:
     test byte [ds:APM_FLAGS], 1
     jz %%install_engaged
     or cl, 8
@@ -143,7 +169,7 @@ apm_pm16:
     je %%ok
     cmp al, 2
     je %%connect16
-    mov ax, 0xF000
+    mov ax, BOARD_APM_CODE_SEGMENT
     mov ebx, apm_pm32
     mov cx, ax
     mov dx, ds
@@ -151,7 +177,7 @@ apm_pm16:
     mov di, APM_DATA_LENGTH
     jmp %%ok
 %%connect16:
-    mov ax, 0xF000
+    mov ax, BOARD_APM_CODE_SEGMENT
     mov bx, apm_pm16
     mov cx, ds
     mov si, apm16_end
@@ -177,10 +203,7 @@ apm_pm16:
 %ifdef EMULATOR_APM_TEST
     inc dword [ds:APM_TEST_IDLE]
 %endif
-    pushf
-    sti
-    hlt                          ; Exactly one wake; caller decides whether idle continues.
-    popf
+    cpu_idle %2                  ; Board V86 support or monitor-owned HLT; exactly one wake.
 %ifdef EMULATOR_APM_TEST
     inc dword [ds:APM_TEST_WAKE]
 %endif
@@ -324,6 +347,9 @@ apm_pm16:
 %endmacro
 
 apm_dispatch apm_dispatch16
+%ifmacro board_stop_grant_query 0
+apm_dispatch apm_dispatch_pm16,1
+%endif
 apm16_end:
 
 bits 32
@@ -362,6 +388,6 @@ apm_pm32:
     stc
     retf
 
-apm_dispatch apm_dispatch32
+apm_dispatch apm_dispatch32,1
 apm32_end:
 bits 16
