@@ -24,13 +24,14 @@ class CacheTiger(Tiger):
         super().__init__(*args, **kwargs)
 
     def port_in(self, cpu, port, size, unused):
-        value = super().port_in(cpu, port, size, unused)
+        value = 0xFF if port == 0x23 else super().port_in(cpu, port, size, unused)
         value = self.read_fault(port, size, value)
         self.io.append(('in', port, size, value))
         return value
 
     def port_out(self, cpu, port, size, value, unused):
-        super().port_out(cpu, port, size, value, unused)
+        if port not in (0x22, 0x23):  # This fixture's 386 has no Cyrix CCRs.
+            super().port_out(cpu, port, size, value, unused)
         self.io.append(('out', port, size, value))
 
 

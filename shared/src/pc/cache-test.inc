@@ -1,3 +1,83 @@
+; Flat DS, exclusive end in %3. Preserve all but EAX/EDX/EDI and flags.
+; Failure: EDI=bad dword, EAX=expected; caller reads the observed dword.
+; Optional fourth argument invalidates only where the adapter requires it.
+%macro cache_address_patterns 3-4
+    mov edx,0x55AA55AA
+%%pattern:
+    mov edi,%2
+%%write:
+    mov eax,edi
+    xor eax,edx
+    mov [edi],eax
+    add edi,4
+    cmp edi,%3
+    jb %%write
+%if %0 == 4
+    %4
+%endif
+    mov edi,%2
+%%check:
+    mov eax,edi
+    xor eax,edx
+    cmp [edi],eax
+    jne %1
+    add edi,4
+    cmp edi,%3
+    jb %%check
+    not edx
+    cmp edx,0x55AA55AA
+    jne %%pattern
+%endmacro
+
+; Flat ES, ESI=cache bytes, EBP=RAM end in upper 16 bits, %2=cacheable end.
+; At most two competing tag pairs; scratch addresses share cache index zero.
+; Failure: EDI=bad dword, EAX=expected. No calls, stack, I/O or live state.
+%macro cache_tag_witnesses 2
+    and ebp,0xFFFF0000
+    cmp ebp,%2
+    jbe %%begin
+    mov ebp,%2
+%%begin:
+    lea edx,[esi+0x100000]
+    xor ecx,ecx
+%%pair:
+    cmp edx,0x100000
+    jbe %%done
+    cmp edx,ebp
+    jae %%done
+    mov edi,0x100000
+    mov eax,edi
+    xor eax,0xA55A3CC3
+    mov [es:edi],eax
+    mov edi,edx
+    mov eax,edi
+    xor eax,0xA55A3CC3
+    mov [es:edi],eax
+    mov edi,0x100000
+    mov eax,edi
+    xor eax,0xA55A3CC3
+    cmp [es:edi],eax
+    jne %1
+    mov edi,edx
+    mov eax,edi
+    xor eax,0xA55A3CC3
+    cmp [es:edi],eax
+    jne %1
+    inc ecx
+    cmp ecx,2
+    je %%done
+    mov edx,ebp
+    dec edx
+    mov eax,esi
+    neg eax
+    and edx,eax
+    lea eax,[esi+0x100000]
+    cmp edx,eax
+    je %%done
+    jmp %%pair
+%%done:
+%endmacro
+
 ; Distinct word-address markers across DL 64-KiB segments. Same failure ABI.
 %macro cache_sram_addresses 1-2
     cld
@@ -65,89 +145,6 @@
     mov es,ax
 %endif
     loop %%address_read_segment
-%endmacro
-
-; Flat ES, ESI=cache bytes, EBP=installed RAM end (64-KiB aligned).
-; Exercise every cache entry with RAM tags differing by one address bit.
-; Only free extended POST RAM is written. Preserve ESI and EBX's upper half.
-; Failure: EDI=address, EAX=expected; no stack, calls, I/O or live state.
-; shortcut: live conventional RAM is excluded; add a saved low-RAM probe for tag-zero coverage.
-%macro cache_tag_patterns 1
-    cld
-    and ebp,0xFFFF0000
-    mov eax,esi
-    shr eax,16
-    mov bp,ax
-%%bit:
-    movzx edx,bp
-    shl edx,16
-    mov edi,0x100000
-    cmp edx,0x100000
-    jne %%pair
-    mov edi,0x200000 ; Exercise A20 without writing conventional firmware RAM.
-%%pair:
-    xor edx,edi
-%%bounds:
-    mov eax,ebp
-    and eax,0xFFFF0000
-    mov ecx,edi
-    add ecx,esi
-    cmp ecx,eax
-    ja %%next
-    mov ecx,edx
-    add ecx,esi
-    cmp ecx,eax
-    ja %%next
-    mov eax,edi
-    shr eax,16
-    mov bx,ax
-    mov eax,edi
-    xor eax,0xA55A3CC3
-    mov ecx,esi
-    shr ecx,2
-    a32 rep stosd
-    mov edi,edx
-    mov eax,edi
-    xor eax,0xA55A3CC3
-    mov ecx,esi
-    shr ecx,2
-    a32 rep stosd
-    movzx edi,bx
-    shl edi,16
-    mov eax,edi
-    xor eax,0xA55A3CC3
-    mov ecx,esi
-    shr ecx,2
-    a32 repe scasd
-    jne %1
-    mov edi,edx
-    mov eax,edi
-    xor eax,0xA55A3CC3
-    mov ecx,esi
-    shr ecx,2
-    a32 repe scasd
-    jne %1
-%%next:
-    test bp,bp
-    jz %%done
-    shl bp,1
-    jz %%done
-    movzx ecx,bp
-    shl ecx,16
-    mov eax,ebp
-    and eax,0xFFFF0000
-    cmp ecx,eax
-    jb %%bit
-    ; Also compare against the last cache-sized region: all upper tag bits.
-    mov edx,eax
-    sub edx,esi
-    lea ecx,[esi+0x100000]
-    cmp edx,ecx
-    jb %%done
-    mov edi,0x100000
-    xor bp,bp
-    jmp %%bounds
-%%done:
 %endmacro
 
 ; DL=64-KiB SRAM segments. ES:DI is uncached SRAM, never live RAM.

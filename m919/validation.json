@@ -21,6 +21,7 @@
     }
   ],
   "checks": [
+    {"id": "cache-lifecycle", "argv": ["python", "-B", "shared/tests/test-cache-transitions.py", "--port", "m919"]},
     {
       "id": "attainable-tuning",
       "argv": [
@@ -234,5 +235,7 @@
     "The held-port checkpoint runs the explicit shared-defaults, ATA-completion, replacement-adapter and ROM-integrity checks above.",
     "Legacy POST/profile/certificate dispatchers remain historical tools, not evidence for the replacement adapter. Wider feature validation must be reconciled before this port joins routine updates."
   ],
-  "wrapped_tests": {}
+  "wrapped_tests": {
+    "m919/tools/test-cache-lifecycle.py": ["cache-lifecycle"]
+  }
 }

@@ -10,9 +10,10 @@ PORT = Path(__file__).resolve().parents[1]
 IMAGE = PORT / 'build/baios-pb430.bin'
 
 
-def machine(l1=0, cache_kib=512, cls=timing.ACC):
+def machine(l1=0, cache_kib=512, cls=timing.ACC, l2=1):
     chip = bytearray(timing.DEFAULT)
     chip[1] = l1
+    chip[2] = l2
     chip[6] = 1
     m = timing.model(IMAGE, chip, cls)
     sram = bytearray(cache_kib * 1024)
@@ -95,6 +96,12 @@ def transition(m, script=None, cold=False, l1=1, l2=1, qualified=True):
 
 def run():
     rows = []
+    for l1, l2 in ((0, 0), (0, 1), (1, 0), (1, 1)):
+        m = machine(l1=l1, l2=l2)
+        assert m.posts[-1] == 0xE4
+        assert bool(m.cpu.reg_read(x.UC_X86_REG_CR0)&0x40000000) == (not l1)
+        assert bool(m.registers[4]&1) == bool(l1 and l2)
+        rows.append(dict(operation='cold', l1=l1, l2=l2, terminal='boot_retry'))
     # The loader may reject a saved record and clear C_VALID; the helper is read-only.
     for valid in (True, False):
         m = timing.model(IMAGE)
@@ -153,8 +160,15 @@ def run():
     m.open(edit(1)+[0x44, 28])
     assert errors and m.reset_count == resets
     m.reject = False
-    rows.append(transition(m, None, True, 1, 1))
+    rows.append(dict(transition(m, None, True, 1, 1), operation='rejected-save-followed-CAD'))
     print('PASS rejected late Save defers reset but later CAD reinitializes cache', flush=True)
+    m = machine(l1=0, l2=0)
+    prepare_ui(m)
+    resets = m.reset_count
+    m.open([0x43, 28, 1, 28])
+    assert m.reset_count == resets
+    rows.append(dict(transition(m, None, False, 0, 0), operation='defaults-discard'))
+    rows.append(dict(transition(m, [0x43, 28, 0x44, 28], True, 1, 1), operation='defaults-save'))
     for size in (0, 64):
         m = machine(cache_kib=size)
         rows.append(transition(m, edit(1)+[0x44, 28], True, 1, 1, False))

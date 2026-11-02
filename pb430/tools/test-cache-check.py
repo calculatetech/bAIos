@@ -157,15 +157,23 @@ def component(image, kib, fault=None):
     return {'kib': kib, 'fault': fault, 'passed': passed, 'reads': sram.reads, 'writes': sram.writes, 'controller_and_context_restored': True}
 
 
-def post(image, fault=None, kib=512):
+def post(image, fault=None, kib=512, ram_mib=None, transitions=True):
     chip = bytearray(timing.DEFAULT)
     chip[6] = 1
     m = timing.model(image, chip, ACCReadback)
+    if ram_mib is not None:
+        def floating(cpu, access, address, size, value, unused):
+            cpu.mem_write(address, b'\xFF'*size)
+        m.cpu.hook_add(UC_HOOK_MEM_READ, floating, begin=ram_mib*1024*1024, end=0x3FFFFFF)
     m.cache_kib = kib
     m.registers[1] &= 0xD3
     sram = SRAM(m, kib, fault)
     m.stop_address = 0xF0000+m.listing.symbol('.wait', 'boot_retry')
     m.cold_boot()
+    cold_count = sram.reads, sram.writes
+    installed = int.from_bytes(m.cpu.mem_read(m.base+0x78, 2), 'little')
+    if ram_mib is not None:
+        assert installed == ram_mib*1024-1024, (ram_mib, installed)
     assert m.stopped and m.posts[-1] == 0xE4
     assert m.cpu.mem_read(m.base+0x1004,1) == bytes(({128:1,256:3,512:2}[kib],))
     assert m.cpu.mem_read(m.base+0x100D, 1) == bytes((1 if fault is None else 2,))
@@ -177,7 +185,7 @@ def post(image, fault=None, kib=512):
         values = ((0x10000, 0x1357, 0x1357+(kib//128)*16) if fault == 'alias'
                   else (0x10000+kib*1024-2, 0x55AA, 0x55AB))
         assert bytes(m.cpu.mem_read(m.base+0x101C,12)) == b''.join(value.to_bytes(4,'little') for value in values)
-    else:
+    elif transitions:
         assert m.text(4,20,20).strip() == f'{kib} KB'
         saved = bytes(m.cmos[0x33:0x36]+m.cmos[0x38:0x40]+m.cmos[0x69:0x80])
         count = sram.reads, sram.writes
@@ -209,7 +217,14 @@ def post(image, fault=None, kib=512):
         assert m.cpu.mem_read(m.base+0x100D,1) == b'\x01'
         assert (sram.reads,sram.writes) == tuple(n*2 for n in count), 'Changed cache choice must run a fresh cold check'
     print(f'PASS actual POST {kib} KiB, fault={fault}, warm={fault is None}', flush=True)
-    return {'kib': kib, 'cold_post': True, 'warm_post': fault is None, 'unchanged_save_exit': fault is None, 'save_exit_changed_cache_choice': fault is None, 'settings_valid': True, 'register01_readback_mask': True, 'pre_policy_rom_check': True, 'fault': fault, 'failure_details': values if fault else None, 'effective_l2_after_save': bool(m.registers[4] & 1), 'terminal': 'boot_retry after E4'}
+    return {'kib': kib, 'installed_kib': installed, 'cold_sram_accesses': cold_count,
+            'cold_post': True, 'warm_post': fault is None and transitions,
+            'unchanged_save_exit': fault is None and transitions,
+            'save_exit_changed_cache_choice': fault is None and transitions,
+            'settings_valid': True, 'register01_readback_mask': True,
+            'pre_policy_rom_check': True, 'fault': fault,
+            'failure_details': values if fault else None,
+            'effective_l2_after_save': bool(m.registers[4] & 1), 'terminal': 'boot_retry after E4'}
 
 
 if __name__ == '__main__':

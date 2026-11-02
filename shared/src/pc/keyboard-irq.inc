@@ -1,3 +1,6 @@
+%ifndef BOARD_CACHE_RESET
+%define BOARD_CACHE_RESET warm_reset
+%endif
 int09:
     push ax
     push bx
@@ -120,7 +123,7 @@ int09:
     mov al, [KB_FLAGS]
     and al, 0x0C
     cmp al, 0x0C
-    je warm_reset
+    je BOARD_CACHE_RESET
 .queue_extended:
     xor al, al
     mov ah, bl
@@ -176,7 +179,7 @@ int09:
     mov al, [KB_FLAGS]
     and al, 0x0C
     cmp al, 0x0C
-    je warm_reset
+    je BOARD_CACHE_RESET
 .not_keypad_delete:
     cmp bl, 0x47
     jb .not_keypad

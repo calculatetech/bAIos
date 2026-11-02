@@ -128,7 +128,7 @@ startup:
     mov byte [0x400+KB_EXT_FLAGS],0x10
 board_smm_startup:
     call board_smm_initialize
-    call cache_initialize
+    cache_phase early
     ; IBC51 describes installed RAM in 4 MiB units, independently of CMOS.
     mov eax,[fs:S_INSTALLED_KIB32]
     add eax,1024

@@ -29,3 +29,20 @@ Disabled APM Idle performs no hardware query or sleep. Installation reports poli
 A successful hardware path restores the required run state before interrupt delivery and preserves the pending wake. A decline must leave no clock request asserted or wake consumed. A PCI divider is preserved rather than used as a test-coverage gate.
 
 Whole-system standby, device power management and literal external-clock removal need separate implementations. Hardware observations and detailed validation remain in the relevant port's developer documentation.
+
+## CPU performance candidates
+
+CPU recognition does not enable performance controls. Add these through board adapters, with shared code for the exact CPU profile and register access. Preserve unrelated bits, restore temporary register mappings, and coordinate changes with cache, DMA, SMM and reset owners.
+
+For Cyrix/IBM indexed registers, select the index at port22h before each individual port23h read or write. A read-modify-write operation needs two index selections. The guides state that later port23h transfers without a new selection go to the external bus.
+
+| CPU family | Useful controls to investigate | Required distinction |
+| --- | --- | --- |
+| Cyrix 5x86 and IBM 5x86C | Memory bypass (`MEM_BYP`), directory-entry cache (`DTE_EN`), I/O recovery (`IORT`), branch prediction (`BTB_EN`), return stack (`RSTK_EN`) and loop handling (`LOOP_EN`). | Read device, stepping and revision information. The manufacturers' compatibility tables restrict speculative features. A register definition is not approval to enable it on every revision. |
+| Cyrix 5x86 and IBM 5x86C bus interface | Linear bursts (`LINBRST`), burst write-back (`BWRT`), load/store reordering (`LSSER`) and the L1 write-back interface. | Match the chipset's burst order, memory-mapped device ordering and snoop protocol. Program the CPU and controller as one transaction. |
+| AMD Am5x86 and write-back Intel 486 parts | Correct L1 write-back operation, memory cacheability and coherent external-master access. | CPU pins, reset selection and chipset protocol determine availability. Do not reuse the Cyrix interpretation of CR0.NW or force WB from a family-four identity alone. |
+| Intel Pentium OverDrive for 486 systems | Correct cache/burst protocol and the supported write-back interface. | Socket write-back support is optional. Its Pentium execution features do not imply a universal firmware performance switch. |
+
+Start with the documented Cyrix/IBM memory-bypass and directory-entry-cache controls, then coordinate I/O recovery with the board. Treat branch, return-stack, loop and fast-FPU options separately for each documented revision. The IBM guide defines `FP_FAST`, while the cited Cyrix guide marks that CCR4 bit reserved; do not copy a shared register mask between them without a matching reference.
+
+Primary references are the [Cyrix 5x86 BIOS Writer's Guide, revision1.12](https://bitsavers.org/components/cyrix/94246-00_5x86_CPU_BIOS_Writers_Guide_199510.pdf), the [IBM 5x86C BIOS Writer's Guide, September1995](https://datasheets.chipdb.org/IBM/x86/5x86/40038.PDF), [AMD19751C, sections2 and4](https://datasheets.chipdb.org/AMD/486_5x86/19751C.pdf), and the [Intel Pentium OverDrive datasheet290544-001](https://www.ardent-tool.com/CPU/docs/Intel/Pentium/290544-001.pdf). These are manufacturer documents held by archives. Obtain the matching revision errata before selecting defaults for the restricted features.

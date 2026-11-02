@@ -1,5 +1,11 @@
 # Shared integration reference
 
+## Cache lifecycle
+
+The shared assembly-time phase owner preserves the Presario shell. Early stackless cache holdoff remains inline. There is no separate after-RAM cache operation. The final expansion calls the existing `chipset_late_cache`; the reset binding names the complete `warm_reset` owner. The shared address-derived primitive emits the original two dword passes and INVD at the same positions. Normal controller fill, timing restoration and late selected policy remain port-owned. This extraction changes no production image bytes.
+
+`tools/test-cache-lifecycle.py` combines the existing production POST/Setup/keyboard fixture with the independent direct-SRAM device from `tools/test-external-cache.py`. It follows saved and discarded cache choices through real warm startup and final activation. The common runner is `python -B shared/tests/test-cache-transitions.py --port presario-800`. Retain the external-cache and reference checks as distinct supporting evidence.
+
 ## Shared emulator resources
 
 Two local collection modifications remain in `presario-800/reference/86box` under their original relative paths. The Cirrus5428 input is selected by the port build/capture code. The modified D824 input has unresolved provenance. The shared collection retains its upstream versions. This is developer input information, not an operating requirement.

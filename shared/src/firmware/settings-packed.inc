@@ -13,13 +13,27 @@ settings_format:
     cmp bx,0x0234
     jne .legacy
     cmp al,0xCA
+%ifdef BOARD_SETTINGS_LEGACY_CHIP_TAG
+    jne .legacy
+%else
     jne .invalid
+%endif
     mov al,1
     jmp .done
 .legacy:
     or al,bl
     or al,bh
+%ifdef BOARD_SETTINGS_LEGACY_CHIP_TAG
+    jz .legacy_valid
+    ; An older adapter record can own these bytes before packed settings.
+    mov al,0x69
+    call rtc_read
+    cmp al,BOARD_SETTINGS_LEGACY_CHIP_TAG
+    jne .invalid
+%else
     jnz .invalid
+%endif
+.legacy_valid:
     xor al,al
     jmp .done
 .invalid:

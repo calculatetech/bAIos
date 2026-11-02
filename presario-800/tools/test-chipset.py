@@ -155,7 +155,7 @@ class Chipset(setup.Setup):
                     alert_hook[0] = None
             if name in traced:
                 hops.append(name)
-                if name not in ('controlled_defaults_restart', '.controlled_restart', 'post_clock_alert', 'hard_halt', 'boot_sector', 'int19', 'int18', 'halt_forever', 'post_debug_summary', 'option_rom_discovery', 'boot_retry') and 'init_memory' in hops:
+                if name not in ('controlled_defaults_restart', '.controlled_restart', 'post_clock_alert', 'hard_halt', 'boot_sector', 'int19', 'int18', 'halt_forever', 'post_debug_summary', 'option_rom_discovery', 'boot_retry') and 'init_memory' in hops and 'chipset_late_cache' not in hops[:-1]:
                     assert self.chipset[0x19] == 0, (name, 'L2 enabled before Setup')
                 if name == 'chipset_memory_prepare':
                     assert self.dma_masks[-2:] == [0x0D, 0xDA]
@@ -213,7 +213,7 @@ class Chipset(setup.Setup):
                     tail.append(terminal)
             # Early Setup or an acknowledged keyboard notice may interpose
             # before chipset application. Their real hops remain in the trace.
-            post_tail = [name for name in hops if name not in ('setup_main', 'post_notice_wait')]
+            post_tail = [name for name in hops if name not in ('setup_main', 'settings_save', 'post_notice_wait')]
             assert any(post_tail[i:i+len(tail)] == tail for i in range(len(post_tail)-len(tail)+1)), hops
             if through_gate:
                 assert hops[-2:] == ['setup_post_gate', 'chipset_late_cache']

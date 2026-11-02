@@ -395,10 +395,22 @@ cache_run:
     mov eax,[es:edi]
     add edi,16
     loop .fill
-    mov edx,esi
-    cache_sram_patterns .failed,0x100000
+    mov ecx,esi
+    shl ecx,16
+    add ecx,0x100000
+.patterns:
+    cache_address_patterns .address_failed,0x100000,ecx
     shl esi,16
-    cache_tag_patterns .tag_failed
+.witnesses:
+    ; Bound witnesses by the actual HB51 tag format, including L1 protocol.
+    mov ecx,esi
+    shl ecx,7
+    test ebx,0x00010000
+    jz .tag_limit
+    shl ecx,1
+.tag_limit:
+    cache_tag_witnesses .tag_failed,ecx
+.copyback:
     shr esi,16
     test ebx,0x40000000
     jz .passed
@@ -436,13 +448,12 @@ cache_run:
     mov esi,eax
     mov ebp,1
     jmp .finish
-.failed:
-    movzx esi,ax
-    movzx ecx,bx
+.address_failed:
+    mov ecx,eax
+    mov esi,[es:edi]
     mov ebp,1
     jmp .finish
 .tag_failed:
-    sub edi,4
     mov ecx,eax
     mov esi,[es:edi]
     mov ebp,4

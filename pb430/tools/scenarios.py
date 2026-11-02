@@ -1284,11 +1284,12 @@ def warm_boot_device(image,seed):
             self.boot_sector[:4]=b'BOOT'
             self.boot_sector[510:]=b'\x55\xAA'
             super().__init__(image,seed())
-            self.disk_device=importlib.import_module('test-legacy-disk').Pair(('ata','absent'))
+            self.disk_device=importlib.import_module('test-ide-options').Disk(('ata','absent'))
             self.disk_device.cpu=self.cpu
         def port_in(self,cpu,port,size,unused):
             if self.disk_device is not None and (0x1F0<=port<=0x1F7 or port==0x3F6):
                 if port==0x1F0 and self.disk_device.ata.get(0x1F7)==0x20:
+                    self.disk_device.port_in(cpu,port,size,unused)
                     value=struct.unpack_from('<H',self.boot_sector,self.disk_word*2)[0]
                     self.disk_word+=1
                     return value

@@ -267,7 +267,7 @@ startup:
     jb .save_inventory
     mov ax,[MP_MEMORY_SCRATCH+12]
     mov [fs:HW_MCU_COUNT],ax
-    call cache_initialize
+    cache_phase early
     sub dx,1024
     mov [fs:S_EXTENDED_KIB],dx
     mov [fs:S_INSTALLED_KIB],dx

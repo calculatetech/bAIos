@@ -141,7 +141,9 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
             offset=(config_address&0xFC)+(port-0xCFC)
             registers=d.registers if (config_address>>11)&31==cfg['platform']['host_pci_device'] else other_pci.setdefault(config_address&0xFFFFFF00,{})
             return sum(registers.get(offset+i,0)<<(8*i) for i in range(size))
-        if port==0x71:return cmos[index&127]
+        if port==0x71:
+            value=cmos[index&127]
+            return memory.rtc_read(index&127,value) if memory is not None and hasattr(memory,'rtc_read') else value
         if port in d.gates:return d.gates[port]
         if memory is not None:return memory.incoming(uc,port,size)
         return 0

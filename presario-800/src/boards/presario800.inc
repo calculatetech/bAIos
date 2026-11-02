@@ -9,6 +9,11 @@
 %define BOARD_CHIPSET_SETUP_POLICY "chipsets/vl82c481/setup-policy.inc"
 %define BOARD_CHIPSET_CAS_SETUP "chipsets/vl82c481/setup-cas.inc"
 %define BOARD_CHIPSET_SETUP "chipsets/vl82c481/setup-data.inc"
+; Early cache holdoff remains inline in the stackless reset transaction.
+%define BOARD_CACHE_EARLY
+%define BOARD_CACHE_AFTER_RAM
+%define BOARD_CACHE_FINISH call chipset_late_cache
+%define BOARD_CACHE_RESET warm_reset
 
 %define CHIPSET_INDEX       0x00EC
 %define CHIPSET_DATA        0x00ED

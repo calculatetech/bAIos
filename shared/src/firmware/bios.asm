@@ -9,6 +9,7 @@ bits 16
 %error "Select a board definition before composing the firmware core"
 %endif
 %include BOARD_DEFINITION
+%include "firmware/cache-lifecycle.inc"
 %include "pc/processor.inc"
 %ifdef EMULATOR_WARM_RESET_TEST
 %define EMULATOR_PAUSE_ONLY
@@ -86,9 +87,7 @@ bits 16
     call setup_test_begin     ; Notice Delete enters Setup at the next early gate.
 %endif
     call post_early_setup
-%ifdef BOARD_POST_RAM_CACHE
-    call BOARD_POST_RAM_CACHE
-%endif
+    cache_phase after_ram
     call load_bios_state
     call init_peripherals
 %ifdef EMULATOR_SETUP_TEST
@@ -204,15 +203,7 @@ bits 16
     call post_clock_alert
 .clock_checked:
     call setup_post_gate
-%ifdef BOARD_RAM_POLICY_BEFORE_TEST
-    post_code 0x7F
-    call BOARD_RAM_CACHE_FINISH
-%else
-    call chipset_late_cache
-%ifdef BOARD_LATE_MEMORY_POLICY
-    call BOARD_LATE_MEMORY_POLICY
-%endif
-%endif
+    cache_phase finish
 %ifdef BOARD_LATE_POST_TRACE
     post_code 0x56
 %endif

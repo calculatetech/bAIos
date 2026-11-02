@@ -17,11 +17,15 @@ No task is active.
 
 ## Planned next
 
-- **BAIOS-003: Share cache initialization and transition tests across controllers.** Use common short-test and startup-state services while preserving complete controller setup and reset sequences in adapters. Complete the common phase driver and remaining port integrations. See the [cache lifecycle design](plans/BAIOS-003-cache-lifecycle.md) and [port update instructions](port-updates.md).
+- **BAIOS-005: Add CPU-specific performance initialization.** After BAIOS-003, investigate the performance features that supported processors can provide. Detect exact CPU vendor, model and revision before applying documented controls. Cover Cyrix/IBM 5x86 performance registers, Intel P24T Pentium OverDrive enhancements, AMD Am5x86 cache controls, and other supported CPU-specific optimizations. Use the datasheets in `reference/processors/` and record missing references. Respect board wiring, chipset coherency and reset requirements. Preserve conservative defaults and compare cold boot, warm reset, DMA and real workloads. Coordinate cache operations with BAIOS-003 and SMM behavior with BAIOS-004.
 
 ## Planned later
 
-- **BAIOS-005: Add CPU-specific performance initialization.** Detect exact CPU vendor, model and revision before applying documented controls. Cover Cyrix/IBM 5x86 performance registers, Intel P24T Pentium OverDrive enhancements, AMD Am5x86 cache controls, and other supported CPU-specific optimizations. Use the datasheets in `reference/processors/` and record missing references. Respect board wiring, chipset coherency and reset requirements. Preserve conservative defaults and compare cold boot, warm reset, DMA and real workloads. Coordinate cache operations with BAIOS-003 and SMM behavior with BAIOS-004.
+- **BAIOS-012: Add Plug and Play support.** Identify supported expansion devices, assign resources without conflicts, and provide the standard BIOS interface to operating systems. Share the common logic and keep controller-specific operations in board adapters. Include ISA Plug and Play and its interaction with PCI resource allocation.
+
+- **BAIOS-013: Add ACPI support.** Provide Advanced Configuration and Power Interface tables and operating-system services through shared code and board adapters. Describe the actual hardware and implement each advertised power operation. Coordinate with existing APM support and preserve legacy operating-system startup.
+
+- **BAIOS-014: Add custom saved Setup profiles.** Save and restore named groups of Setup settings. Define available storage, validation and compatibility when firmware or hardware changes. Keep saved profiles separate from factory defaults and the current active settings.
 
 - **BAIOS-006: Add optional power management. Very low priority.** Prioritize monitor power saving. Disk spin-down is secondary and remains disabled by default, including for solid-state replacements. Reuse shared services with board-specific hardware support and coordinate with BAIOS-004 where SMM is needed.
 
@@ -36,6 +40,8 @@ No residual risk is accepted.
 No task is declined.
 
 ## Completed
+
+- **BAIOS-003: Share cache initialization and transition tests across controllers.** Added common phase bindings, short startup checks and transition validation while preserving complete controller setup and reset sequences in board adapters. See the [cache lifecycle design](plans/BAIOS-003-cache-lifecycle.md), [shared contracts](development/firmware.md) and [port update instructions](port-updates.md).
 
 - **BAIOS-004: Add SMI and System Management Mode support where hardware permits.** Added shared installation, handler, CPU identification and APM idle services through board adapters. Supported adapters handle real, virtual8086 and protected callers while preserving caller and cache state. Hardware activation, clock recipes, diagnostic results and remaining port work stay in port-local plans. See the [shared SMM design](plans/BAIOS-004-smm.md) and [user guide](sl486-support.md).
 
