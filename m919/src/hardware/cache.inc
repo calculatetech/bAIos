@@ -221,7 +221,7 @@ cache_reference_span_supported:
     clc
     ret
 
-; EDI=0 direct SRAM, 1 activate, 2 ordinary check. Code stays at FFFF0000+IP.
+; EDI=0 direct SRAM, 1 activate, 2 ordinary check. Transitions use FFFF0000+IP.
 cache_run:
     pushf
     cli
@@ -386,7 +386,12 @@ cache_run:
     xor ebp,ebp
     jmp .finish
 .ordinary:
-    ; Check the selected policy using free extended POST RAM.
+    ; VGA initialization already copied F. Fetch the common test from uncached
+    ; shadow DRAM, not the slow ROM alias; forced-hit probes stay in high ROM.
+    cache_write 0x55,0xC0
+    jmp 0x08:.shadow
+.shadow:
+    ; Check the selected policy using free extended POST RAM, with L1 off.
     mov ebp,edi             ; Upper half carries the detected RAM end.
     mov ecx,esi
     shl ecx,12
@@ -464,6 +469,8 @@ cache_run:
     mov ebp,3
     jmp .finish
 .finish:
+    jmp 0x18:.finish_high
+.finish_high:
     ; End forced hits before touching the stack or private state again.
     cache_read 0x5A
     and al,0xBF

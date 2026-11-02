@@ -29,6 +29,7 @@ class Hardware(POSTHardware):
         self.test_phase = None
         self.traffic = dict(data_read=0, data_write=0, witness_read=0, witness_write=0)
         self.patterns = set()
+        self.data_fetch_locations = set()
         self.witness_addresses = set()
         self.reject_save = False
         self.reject_armed = False
@@ -67,6 +68,10 @@ class Hardware(POSTHardware):
             self.reject_armed = True
         if address in self.phase_points:
             self.test_phase = self.phase_points[address]
+        if self.test_phase == 'data':
+            assert 0xF0000 <= address < 0x100000, hex(address)
+            assert self.registers[0x55] == 0xC0
+            self.data_fetch_locations.add('uncached-shadow')
         if address == self.reset_entry:
             self.keyboard_reset_seen = True
         super().observe(u, address, size)
@@ -145,6 +150,27 @@ def run(stage="all"):
     def record(ids, detail):
         for identity in ids:
             evidence[identity].append(detail)
+
+    if stage == 'shadow':
+        for kib, wb in ((64, False), (512, False), (512, True)):
+            row, f = boot(kib=kib, ram=16, chip=policy(wb=wb))
+            d = f[1]
+            assert row['terminal'] == 'boot_retry' and row['enabled'], row
+            assert d.l2_wb() == wb
+            assert d.patterns == {0x55AA55AA, 0xAA55AA55}
+            assert d.traffic['data_read'] == d.traffic['data_write'] == 2*d.capacity
+            assert d.traffic['witness_read'] == d.traffic['witness_write'] == 16
+            assert d.data_fetch_locations == {'uncached-shadow'}
+            record(('S7',), dict(kib=kib, wb=wb, traffic=d.traffic,
+                                code_fetch=sorted(d.data_fetch_locations), terminal=row['terminal']))
+        for pattern_seed in (0x55AA55AA, 0xAA55AA55):
+            d = seed(Hardware(kib=64, ram=8, pattern_fault=pattern_seed), policy(wb=True))
+            row, _ = boot(memory=d)
+            assert row['terminal'] == 'reset' and not row['enabled'], row
+            actual = row['cache_failure']
+            assert (actual['address'], actual['expected'], actual['observed']) == d.pattern_error, actual
+            record(('S9',), dict(seed=f'{pattern_seed:08X}', mismatch=actual,
+                                terminal=row['terminal']))
 
     if stage in ('all', 'retired'):
         _, f = boot(chip=policy(l1=0))
@@ -299,7 +325,7 @@ def run(stage="all"):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument("--stage", choices=sorted(("all", "cold", "transitions", "ui", "rejection", "discovery", "failure", "skip", "modes", "retired", "witnesses")), default="all")
+    parser.add_argument("--stage", choices=sorted(("all", "cold", "transitions", "ui", "rejection", "discovery", "failure", "skip", "modes", "retired", "witnesses", "shadow")), default="all")
     args = parser.parse_args()
     rows = run(args.stage)
     args.output.parent.mkdir(parents=True, exist_ok=True)

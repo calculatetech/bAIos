@@ -212,7 +212,10 @@ class SRAM(DRAM):
                 self.lines.clear();self.l2_dirty.clear()
         active=self.registers.get(0x5A,0)&0xC0 or (self.qualifying and self.registers.get(0x50,0)&0x80)
         if active:
-            assert not self.registers.get(0x55,0)&0x80,'Unqualified cache code fetched from shadow RAM'
+            if self.registers.get(0x5A,0)&0xC0:
+                assert not self.registers.get(0x55,0)&0x80,'Direct SRAM probe fetched from shadow RAM'
+            elif 0xF0000<=address<0x100000 and self.registers.get(0x55,0)&0x80:
+                assert self.registers.get(0x55,0)==0xC0,'Qualification code must use protected, uncached shadow DRAM'
             if address not in self.decoded:self.decoded[address]=next(self.decoder.disasm(bytes(uc.mem_read(address,size)),address)).mnemonic
             mnemonic=self.decoded[address]
             assert not mnemonic.startswith(('push','pop')) and mnemonic not in ('call','ret','enter','leave'),(hex(address),mnemonic)
