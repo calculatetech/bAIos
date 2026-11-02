@@ -221,7 +221,7 @@ cache_reference_span_supported:
     clc
     ret
 
-; EDI=0 direct SRAM, 1 activate, 2 ordinary check. Code stays at FFFF0000+IP.
+; EDI=0 direct SRAM, 1 activate, 2 ordinary check. Transitions use FFFF0000+IP.
 cache_run:
     pushf
     cli
@@ -386,7 +386,12 @@ cache_run:
     xor ebp,ebp
     jmp .finish
 .ordinary:
-    ; Check the selected policy using free extended POST RAM.
+    ; VGA initialization already copied F. Fetch the common test from uncached
+    ; shadow DRAM, not the slow ROM alias; forced-hit probes stay in high ROM.
+    cache_write 0x55,0xC0
+    jmp 0x08:.shadow
+.shadow:
+    ; Check the selected policy using free extended POST RAM, with L1 off.
     mov ebp,edi             ; Upper half carries the detected RAM end.
     mov ecx,esi
     shl ecx,12
@@ -395,10 +400,22 @@ cache_run:
     mov eax,[es:edi]
     add edi,16
     loop .fill
-    mov edx,esi
-    cache_sram_patterns .failed,0x100000
+    mov ecx,esi
+    shl ecx,16
+    add ecx,0x100000
+.patterns:
+    cache_address_patterns .address_failed,0x100000,ecx
     shl esi,16
-    cache_tag_patterns .tag_failed
+.witnesses:
+    ; Bound witnesses by the actual HB51 tag format, including L1 protocol.
+    mov ecx,esi
+    shl ecx,7
+    test ebx,0x00010000
+    jz .tag_limit
+    shl ecx,1
+.tag_limit:
+    cache_tag_witnesses .tag_failed,ecx
+.copyback:
     shr esi,16
     test ebx,0x40000000
     jz .passed
@@ -436,13 +453,12 @@ cache_run:
     mov esi,eax
     mov ebp,1
     jmp .finish
-.failed:
-    movzx esi,ax
-    movzx ecx,bx
+.address_failed:
+    mov ecx,eax
+    mov esi,[es:edi]
     mov ebp,1
     jmp .finish
 .tag_failed:
-    sub edi,4
     mov ecx,eax
     mov esi,[es:edi]
     mov ebp,4
@@ -453,6 +469,8 @@ cache_run:
     mov ebp,3
     jmp .finish
 .finish:
+    jmp 0x18:.finish_high
+.finish_high:
     ; End forced hits before touching the stack or private state again.
     cache_read 0x5A
     and al,0xBF

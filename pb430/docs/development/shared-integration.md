@@ -22,7 +22,9 @@ Original bAIos source and documentation are available under the [MIT license](..
 
 ## shared/README.md
 
-`src/pc/cache-test.inc` owns the short direct-SRAM workload: two complementary word-pattern write/read passes and retained unique address witnesses across the detected span. The board adapter supplies safe SRAM access, capacity, scratch ownership, reference controller transitions and result publication. PB430 is the first consumer; this does not establish a shared phase or reset driver for all ports.
+`src/pc/cache-test.inc` owns PB430's accepted short direct-SRAM workload: two complementary word-pattern write/read passes and retained unique address witnesses across the detected span. The PB430 exception retains qualified warm reuse; it does not introduce a persistent CMOS certificate. The board adapter supplies safe SRAM access, capacity, scratch ownership, reference controller transitions and result publication.
+
+`src/firmware/cache-lifecycle.inc` expands early discovery/test/initial policy at its existing startup site. Its final phase retains `chipset_ram_cache_finish`, including stock prerequisites, the complete 0030:0100 stack transaction and subsequent selected memory policy. The reset binding still names `warm_reset`; saved-versus-active classification and complete old active teardown stay in the PB430 adapter. These source-sharing changes preserve the emitted image. `tools/test-cache-lifecycle.py` composes the existing independent stock, SRAM, actual Setup/reset, RAM-order and recovery checks under the common runner.
 
 `src/pc/ram-test-state.inc` owns normal-startup marker classification. An unfinished test does not create a detected-memory-error notice. Explicit pending notices remain pending. Adapters retain their reset gates and RTC access; PB430 only clears its unfinished marker at that entry, while Presario retains its existing broader startup placement.
 

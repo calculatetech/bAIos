@@ -17,17 +17,10 @@ sys.path.insert(0,str(REPOSITORY))
 from geometry_proof import DRAM, mapped
 
 
-class Registers(dict):
-    def get(self,key,default=None):
-        value=super().get(key,default)
-        return (value&0xF8)|3 if key==0x50 else value
-
-
 class SRAM(DRAM):
     """Independent SRAM/tag capacity, dirty L2 and separate CPU cache policy."""
     def __init__(self,kib=512,banks=1,kind='real',fault=None,alias=None,tag_alias=False,ordinary_fault=None,ram=16,cpu_policy='wt',snoop=True,lost_writeback=False):
         super().__init__([(ram,False,False),None,None,None])
-        self.registers=Registers(self.registers)
         self.capacity=kib*1024
         self.banks=banks
         self.kind=kind
@@ -146,20 +139,21 @@ class SRAM(DRAM):
                 self.external_write(line,16,int.from_bytes(self.l1[line],'little'))
                 self.l1_dirty.remove(line)
                 self.copybacks+=1
-            capacity=self.ordinary_capacity()
-            for line in lines:
-                index=self.index(line%capacity)
-                cached=self.lines.get(index)
-                if cached is not None and cached[0]==self.tag(line,capacity):
-                    self.l2_writeback(index)
-            if command==0x46:
+            capacity=self.ordinary_capacity() if self.registers.get(0x50,0)&0x80 else None
+            if capacity is not None:
                 for line in lines:
-                    self.l1.pop(line,None)
-                    capacity=self.ordinary_capacity()
                     index=self.index(line%capacity)
                     cached=self.lines.get(index)
                     if cached is not None and cached[0]==self.tag(line,capacity):
-                        del self.lines[index]
+                        self.l2_writeback(index)
+            if command==0x46:
+                for line in lines:
+                    self.l1.pop(line,None)
+                    if capacity is not None:
+                        index=self.index(line%capacity)
+                        cached=self.lines.get(index)
+                        if cached is not None and cached[0]==self.tag(line,capacity):
+                            del self.lines[index]
         if command==0x46:
             payload=bytes(self.disc[offset:offset+count])
             for i,value in enumerate(payload):super().write(address+i,1,value)
@@ -218,7 +212,10 @@ class SRAM(DRAM):
                 self.lines.clear();self.l2_dirty.clear()
         active=self.registers.get(0x5A,0)&0xC0 or (self.qualifying and self.registers.get(0x50,0)&0x80)
         if active:
-            assert not self.registers.get(0x55,0)&0x80,'Unqualified cache code fetched from shadow RAM'
+            if self.registers.get(0x5A,0)&0xC0:
+                assert not self.registers.get(0x55,0)&0x80,'Direct SRAM probe fetched from shadow RAM'
+            elif 0xF0000<=address<0x100000 and self.registers.get(0x55,0)&0x80:
+                assert self.registers.get(0x55,0)==0xC0,'Qualification code must use protected, uncached shadow DRAM'
             if address not in self.decoded:self.decoded[address]=next(self.decoder.disasm(bytes(uc.mem_read(address,size)),address)).mnemonic
             mnemonic=self.decoded[address]
             assert not mnemonic.startswith(('push','pop')) and mnemonic not in ('call','ret','enter','leave'),(hex(address),mnemonic)
@@ -397,7 +394,7 @@ class POSTHardware(SRAM):
         self.cache_entry=0xF0000+listing.symbol('cache_initialize')
         self.qualify_entry=0xF0000+listing.symbol('cache_qualify')
         self.qualify_exit=0xF0000+listing.symbol('.done','cache_qualify')
-        self.prime_points={0xF0000+listing.symbol('.prime_'+phase,'cache_enable'):phase for phase in ('before','after')}
+        self.prime_points={}
         self.policy_point=0xF0000+listing.symbol('.policy','chipset_late_cache')
         self.ram_protected=0xF0000+listing.symbol('.protected','chipset_visible_ram_test')
         self.ram_done=0xF0000+listing.symbol('.done','chipset_visible_ram_test')
@@ -450,7 +447,6 @@ class POSTHardware(SRAM):
             self.prime_reads[phase]+=1
         if address==self.policy_point:
             selected=self.read((u.reg_read(x.UC_X86_REG_FS)<<4)+self.state['C_CHIP']+1,1)[0]
-            assert u.reg_read(x.UC_X86_REG_CR0)&0x60000000==0x60000000
             assert u.reg_read(x.UC_X86_REG_EAX)&0x60000000==(0 if selected else 0x60000000)
         if self.continuing:
             if address==0xC0019:
@@ -525,8 +521,8 @@ def composed(kib=64,l2=0,l1=0,record='valid',keys=(),memory=None,missing_late=Fa
         cmos[0x6A]=(-0x55-0x40-l1-l2)&255
         if chip is not None:
             assert len(chip)==24
-            cmos[0x69]=0x56;cmos[0x6B:0x80]=chip[:21];cmos[0x33:0x36]=chip[21:]
-            cmos[0x6A]=(-0x56-sum(chip))&255
+            cmos[0x69]=0x57;cmos[0x6B:0x80]=chip[:21];cmos[0x33:0x36]=chip[21:]
+            cmos[0x6A]=(-0x57-sum(chip))&255
         if record=='missing':cmos[0x69]=0
         if record=='invalid':cmos[0x6D]=2;cmos[0x6A]=(-0x55-0x40-l1-2)&255
         if record=='recovery':cmos[0x69]=0xD2
@@ -542,7 +538,7 @@ def composed(kib=64,l2=0,l1=0,record='valid',keys=(),memory=None,missing_late=Fa
         image[0xFFEF]=(image[0xFFEF]-sum(image))&255
         u.mem_write(code,bytes(image));row['mutated_system_sha256']=hashlib.sha256(image).hexdigest()
     names=('init_pic_pit','init_rtc','init_at_prerequisites','init_superio','pci_initialize','initialize_video','init_keyboard','arm_keyboard_runtime','board_a20_handoff','settings_load','chipset_apply','chipset_visible_ram_test','init_peripherals','setup_post_gate','chipset_late_cache',
-           'chipset_post_ram_cache','cache_validation_reuse','cache_validation_save','cache_validation_identity','cache_qualify','cache_enable','cache_recovery','post_ui_cache','post_debug_summary','post_success_tone','setup_main','settings_save','post_keyboard_wait','post_notice_wait','post_early_setup')
+           'chipset_post_ram_cache','cache_qualify','cache_enable','cache_recovery','post_ui_cache','post_debug_summary','post_success_tone','setup_main','settings_save','post_keyboard_wait','post_notice_wait','post_early_setup')
     d.points={code+listing.symbol(name):name for name in names};d.points[code+listing.symbol('startup')]='startup'
     d.ui_returns=set()
     for i,line in enumerate(listing.lines):
@@ -571,7 +567,7 @@ def composed(kib=64,l2=0,l1=0,record='valid',keys=(),memory=None,missing_late=Fa
                enable_attempts=d.enable_attempts,reset_requests=list(d.reset_requests),terminal=d.stop or ('reset' if d.reset_requests else 'E7'),
                ram_escaped=d.escaped)
     if row['flags']==2:
-        row['cache_failure']={'stage':d.read(state_seg+0x120C,1)[0],
+        row['cache_failure']={'stage':d.read(state_seg+0x1218,1)[0],
                               'address':int.from_bytes(d.read(state_seg+0x1208,4),'little'),
                               'screen':bytes(u.mem_read(0xB8000+22*160,160))[::2].decode('ascii'),
                               'expected':int.from_bytes(d.read(state_seg+0x1210,4),'little'),
@@ -580,20 +576,15 @@ def composed(kib=64,l2=0,l1=0,record='valid',keys=(),memory=None,missing_late=Fa
         assert d.post_visits.index('chipset_visible_ram_test')<d.post_visits.index('setup_post_gate')<d.post_visits.index('chipset_late_cache')<d.post_visits.index('post_debug_summary')
         mode='WB' if d.registers[0x50]&0x40 else 'WT'
         value=(f'{kib} KB {mode}' if row['enabled'] else f'{kib} KB Off') if row['measured_code'] else 'Disabled'
-        cells=bytes(u.mem_read(0xB8000+4*160+40,24))
+        cells=bytes(u.mem_read(0xB8000+4*160+38,24))
         assert cells[::2]==value.ljust(12).encode() and cells[1::2]==b'\x07'*12,(cells,value)
         for snap in d.ui_snapshots:
-            assert bytes.fromhex(snap['l2_row'])==b' \x07'*80,snap
-            l1_text=('Enabled' if snap['l1'] else 'Disabled').ljust(8)
-            cells=bytes.fromhex(snap['l1_cells'])
-            assert cells[::2]==l1_text.encode() and cells[1::2]==b'\x07'*8,(snap,l1_text)
+            assert snap['phase']==5 or not snap['enabled'],snap
         row['summary']=value
         assert d.read(state_seg+state['C_TYPES'],1)==b'\x40'
         assert d.read(state_seg+state['C_NUMLOCK'],3)==bytes((1,0,2))
         assert d.read(state_seg+state['C_SEEK'],1)==b'\x01'
         assert d.read(state_seg+state['C_HDD'],1)==b'\x01' and d.read(state_seg+state['C_SLAVE'],1)==b'\x01'
-        ports=cmos[0x60:0x68]
-        assert d.read(state_seg+state['C_PORTS'],8)==ports
         waits=d.read(state_seg+state['C_CHIP'],1)[0]
         assert d.registers[0x51]&0xF0==waits
         row['unrelated_fields']={'floppy':64,'ports':d.read(state_seg+state['C_PORTS'],8).hex(),
@@ -721,7 +712,7 @@ def dma(l2_wb=False):
             memory=POSTHardware(kib=128 if l2_wb else 64,cpu_policy=cpu,snoop=snoop)
             memory.saved_cmos=certified
             row,fixture=composed(kib=128 if l2_wb else 64,memory=memory)
-            assert 'cache_qualify' not in row['post_visits']
+            assert 'cache_qualify' in row['post_visits']
         elif l2_wb:
             from timing_proof import options
             row,fixture=composed(kib=128,chip=options(l2=0,wb=True),cpu_policy=cpu,snoop=snoop)
@@ -1271,7 +1262,13 @@ def standard(cases=None):
     return rows
 
 
-CASES={'cache-standard':standard,'cache-recovery-boundaries-live':recovery_boundaries_live,'cache-location-report-live':location_report_live,'cache-pattern-report-live':pattern_report_live,'cache-ami-diagnostic-live':ami_diagnostic_live,'cache-a20-live':a20_live,'cache-failure-report-live':failure_report_live,'cache-recovery-live':recovery_live,'cache-early-live':early_discovery,'cache-enable-live':enable_live,'cache-live':live,'cache-discovery':discovery,'cache-policy':policy,'cache-settings':settings,'cache-dma':dma}
+def lifecycle(*stages):
+    import importlib
+    proof=importlib.import_module('test-cache-lifecycle')
+    return [row for stage in stages for row in proof.run(stage)]
+
+
+CASES={'cache-standard':standard,'cache-recovery-boundaries-live':lambda:lifecycle('failure'),'cache-location-report-live':location_report_live,'cache-pattern-report-live':pattern_report_live,'cache-ami-diagnostic-live':ami_diagnostic_live,'cache-a20-live':a20_live,'cache-failure-report-live':failure_report_live,'cache-recovery-live':recovery_live,'cache-early-live':early_discovery,'cache-enable-live':enable_live,'cache-live':lambda:lifecycle('cold','transitions','rejection','ui','failure','skip','modes'),'cache-discovery':lambda:lifecycle('discovery'),'cache-policy':policy,'cache-settings':settings,'cache-dma':dma}
 
 
 def check(case):

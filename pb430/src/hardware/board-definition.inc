@@ -29,6 +29,17 @@
 %define BOARD_SETTINGS_SAVED chipset_timing_saved
 %define BOARD_RAM_FAILURE_RESTORE pb430_timing_restore
 %define BOARD_RAM_CACHE_FINISH chipset_ram_cache_finish
+%macro BOARD_CACHE_EARLY 0
+    call cache_initialize
+    call cache_test
+    call cache_initial_policy
+%endmacro
+%define BOARD_CACHE_AFTER_RAM
+%macro BOARD_CACHE_FINISH 0
+    post_code 0x7F
+    call BOARD_RAM_CACHE_FINISH
+%endmacro
+%define BOARD_CACHE_RESET warm_reset
 %macro BOARD_RAM_TEST_PREPARE 0
     mov al,4
     call acc_read

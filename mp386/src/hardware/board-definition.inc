@@ -31,6 +31,13 @@
 %define BOARD_FPU_PROBE_ALLOWED mp_fpu_probe_allowed
 %define BOARD_FPU_CONFIGURE mp_fpu_configure
 %define BOARD_LATE_MEMORY_POLICY mp_memory_finish
+%define BOARD_CACHE_EARLY call cache_initialize
+%define BOARD_CACHE_AFTER_RAM
+%macro BOARD_CACHE_FINISH 0
+    call chipset_late_cache
+    call BOARD_LATE_MEMORY_POLICY
+%endmacro
+%define BOARD_CACHE_RESET warm_reset
 %define POST_PORT 0x80
 %define KBC_DATA 0x60
 %define KBC_STATUS 0x64

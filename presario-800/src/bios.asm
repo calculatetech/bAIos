@@ -22,6 +22,8 @@ org 0
 %endif
 
 %include "shared-owner.inc"
+presario_shared "firmware/cache-lifecycle.inc"
+presario_shared "pc/cache-test.inc"
 
 presario_shared "pc/processor.inc"
 presario_shared "pc/state.inc"
@@ -422,6 +424,7 @@ startup:
 .post_cache_verified:
 %endif
 
+    cache_phase early
     call init_memory
     mov ax, STATE_SEG
     mov es, ax
@@ -664,6 +667,7 @@ startup:
 %endif
     call post_early_setup
     call load_bios_state
+    cache_phase after_ram
     call init_peripherals
 %ifdef EMULATOR_SETUP_TEST
 %ifndef EMULATOR_SETUP_POWERLOSS
@@ -771,7 +775,7 @@ startup:
     call post_clock_alert
 .clock_checked:
     call setup_post_gate
-    call chipset_late_cache
+    cache_phase finish
     call post_success_tone
     mov byte [fs:P_PHASE], 5
     call post_ui_cache
@@ -993,29 +997,8 @@ init_external_cache:
     jb .capacity
     jmp .bad_sram              ; No alias within1MiB: do not invent a size.
 .data_test:
-    mov edx, 0x55AA55AA
-.pattern:
-    mov edi, 0x100000
-.write:
-    mov eax, edi
-    xor eax, edx
-    mov [edi], eax
-    add edi, 4
-    cmp edi, ebx
-    jb .write
-    invd                       ; Check SRAM rather than retained primary-cache lines.
-    mov edi, 0x100000
-.check:
-    mov eax, edi
-    xor eax, edx
-    cmp [edi], eax
-    jne .bad_sram
-    add edi, 4
-    cmp edi, ebx
-    jb .check
-    not edx
-    cmp edx, 0x55AA55AA
-    jne .pattern
+    cache_address_patterns .bad_sram,0x100000,ebx,invd
+.data_done:
     mov al, EXTERNAL_CACHE_REG
     out CHIPSET_INDEX, al
     mov eax, esi

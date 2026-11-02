@@ -2369,6 +2369,8 @@ def production_post_model(kinds=None, peripherals=False):
             if port == 0x60:
                 return self.pending.pop(0) if self.pending else 0xFF
             if port == 0x1F0 and self.ata.get(0x1F7) == 0x20 and not getattr(self,'use_disk_media',False):
+                if self.disk_device is not None:
+                    self.disk_device.port_in(cpu, port, size, unused)
                 value = int.from_bytes(self.boot_sector[self.disk_word * 2:self.disk_word * 2 + 2], 'little')
                 self.disk_word += 1
                 return value
@@ -2376,7 +2378,10 @@ def production_post_model(kinds=None, peripherals=False):
                 return self.disk_device.port_in(cpu, port, size, unused)
             if self.peripheral_device is not None and (port in (0x3F0, 0x3F1) or any(base <= port < base+8 for base in (0x3F8, 0x2F8, 0x3E8, 0x2E8)) or any(base <= port < base+3 for base in (0x3BC, 0x378, 0x278))):
                 return self.peripheral_device.port_in(cpu, port, size, unused)
-            return super().port_in(cpu, port, size, unused)
+            value = super().port_in(cpu, port, size, unused)
+            if port == 0x71 and getattr(self, 'rtc_read_filter', None):
+                return self.rtc_read_filter(self.index, value)
+            return value
         def port_out(self, cpu, port, size, value, unused):
             if port == 0x3F5 and not self.fdc_command and value == 0x4A:
                 if not self.boot_reads or self.boot_reads[-1] != 'Floppy': self.boot_reads.append('Floppy')

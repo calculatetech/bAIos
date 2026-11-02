@@ -17,6 +17,7 @@
     }
   ],
   "checks": [
+    {"id": "cache-lifecycle", "argv": ["python", "-B", "shared/tests/test-cache-transitions.py", "--port", "mp386"]},
     {
       "id": "port-cpu",
       "argv": ["python", "-B", "mp386/tools/test-port.py", "--image", "mp386/build/baios-mp386.bin", "--case", "cpu"]
@@ -67,72 +68,6 @@
         "mp386/tools/test-boot-source.py",
         "--image",
         "mp386/build/baios-mp386.bin"
-      ]
-    },
-    {
-      "id": "cache-boot",
-      "argv": [
-        "python",
-        "mp386/tools/test-cache.py",
-        "--image",
-        "mp386/build/baios-mp386.bin",
-        "--case",
-        "boot"
-      ]
-    },
-    {
-      "id": "cache-checksum",
-      "argv": [
-        "python",
-        "mp386/tools/test-cache.py",
-        "--image",
-        "mp386/build/baios-mp386.bin",
-        "--case",
-        "checksum"
-      ]
-    },
-    {
-      "id": "cache-guards",
-      "argv": [
-        "python",
-        "mp386/tools/test-cache.py",
-        "--image",
-        "mp386/build/baios-mp386.bin",
-        "--case",
-        "guards"
-      ]
-    },
-    {
-      "id": "cache-instructions",
-      "argv": [
-        "python",
-        "mp386/tools/test-cache.py",
-        "--image",
-        "mp386/build/baios-mp386.bin",
-        "--case",
-        "instructions"
-      ]
-    },
-    {
-      "id": "cache-policy",
-      "argv": [
-        "python",
-        "mp386/tools/test-cache.py",
-        "--image",
-        "mp386/build/baios-mp386.bin",
-        "--case",
-        "policy"
-      ]
-    },
-    {
-      "id": "cache-qualification",
-      "argv": [
-        "python",
-        "mp386/tools/test-cache.py",
-        "--image",
-        "mp386/build/baios-mp386.bin",
-        "--case",
-        "qualification"
       ]
     },
     {
@@ -416,7 +351,15 @@
     },
     {
       "script": "mp386/tools/test-cache.py",
-      "argument": "--case"
+      "argument": "--case",
+      "covered_by": {
+        "boot": "cache-lifecycle",
+        "qualification": "cache-lifecycle",
+        "instructions": "cache-lifecycle",
+        "policy": "cache-lifecycle",
+        "guards": "cache-lifecycle",
+        "checksum": "cache-lifecycle"
+      }
     },
     {
       "script": "mp386/tools/test-shadow.py",
@@ -497,5 +440,13 @@
   ],
   "coverage_notes": [
     "Every current firmware case and reproducible read-only ROM-window utility check is active. The two retired bench probes and the frozen a8d0542 whole-ROM equivalence case remain explicit historical checks. --historical attempts their original conditions without repinning."
-  ]
+  ],
+  "wrapped_tests": {
+    "mp386/tools/test-cache-lifecycle.py": [
+      "cache-lifecycle"
+    ],
+    "mp386/tools/test-cache.py": [
+      "cache-lifecycle"
+    ]
+  }
 }

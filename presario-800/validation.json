@@ -71,6 +71,7 @@
     }
   ],
   "checks": [
+    {"id": "cache-lifecycle", "argv": ["python", "-B", "shared/tests/test-cache-transitions.py", "--port", "presario-800"]},
     {
       "id": "shared-ata-pio",
       "argv": [
@@ -282,13 +283,6 @@
         "-ImagePath",
         "reference/media/dos/test-card.vhd",
         "-ProductionRom"
-      ]
-    },
-    {
-      "id": "external-cache",
-      "argv": [
-        "python",
-        "presario-800/tools/test-external-cache.py"
       ]
     },
     {
@@ -675,5 +669,13 @@
     "The default Python suites enumerate their own named cases. The optional native Setup invocation explicitly includes every advertised native case.",
     "memory-fixture.py, run-card-vhd.ps1 and shared FAT helpers execute through DOS, mouse, floppy and EMM reset checks. Helpers are not substitute firmware checks.",
     "The native floppy Swap On limitation remains the documented port/emulator boundary; --swap only describes availability and is not a success oracle."
-  ]
+  ],
+  "wrapped_tests": {
+    "presario-800/tools/test-cache-lifecycle.py": [
+      "cache-lifecycle"
+    ],
+    "presario-800/tools/test-external-cache.py": [
+      "cache-lifecycle"
+    ]
+  }
 }

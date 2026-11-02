@@ -27,6 +27,8 @@ chipset_settings_load:
     call rtc_read
     cmp al, 0xD2
     je .recovery
+    cmp al,0x56
+    je .record
     cmp al,CHIP_RECORD_TAG
     jne .done
 .record:
@@ -45,6 +47,16 @@ chipset_settings_load:
     call rtc_read
     add bl, al
     jnz .bad
+    cmp dl,0x56
+    jne .validate
+    ; The old record's tail is a certificate, not current tuning choices.
+    mov bx,10
+.retired_certificate:
+    mov al,[cs:chipset_default+bx]
+    mov [fs:C_CHIP+bx],al
+    inc bx
+    cmp bx,CHIP_SIZE
+    jb .retired_certificate
 .validate:
     mov si, C_CHIP
     call chipset_valid

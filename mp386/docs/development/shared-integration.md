@@ -1,5 +1,9 @@
 # Shared integration reference
 
+## Cache lifecycle preservation
+
+The shared phase expansion retains the existing early cache inventory and final `chipset_late_cache` followed by `mp_memory_finish`. Shadow activation still precedes native cache enable. The reset binding names `warm_reset`. This source extraction adds no 486 instruction, L1 setting, cache geometry assumption or WB mode, and preserves the emitted MP386 image. `tools/test-cache-lifecycle.py` runs the native reference, cold/warm boot, switch policy, guard and instruction checks through the common runner.
+
 Developer notes moved from repository-wide documents. These are source and validation records, not operating instructions. Each section names its original document. A paragraph can describe a shared change across several ports. Port manuals own current user instructions.
 
 ## README.md

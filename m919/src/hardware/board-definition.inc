@@ -36,7 +36,11 @@
 %define BOARD_ATA_PIO_ADAPTER
 %define BOARD_ATA_PIO_POLICY C_CHIP+20
 %define BOARD_ATA_PIO_POLICY_HIGH C_CHIP+23
-%define BOARD_POST_RAM_CACHE chipset_post_ram_cache
+%define BOARD_CACHE_EARLY call cache_initialize
+%define BOARD_CACHE_AFTER_RAM call chipset_post_ram_cache
+%define BOARD_CACHE_FINISH call chipset_late_cache
+%define BOARD_CACHE_RESET warm_reset
+%define BOARD_SETTINGS_LEGACY_CHIP_TAG 0x56
 %define BOARD_DISPLAY_NAME CFG_IDENTITY_VENDOR,' ',CFG_IDENTITY_MODEL
 %define BOARD_VENDOR CFG_IDENTITY_VENDOR
 %define BOARD_PRODUCT CFG_IDENTITY_MODEL

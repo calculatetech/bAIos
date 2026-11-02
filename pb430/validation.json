@@ -18,6 +18,7 @@
     }
   ],
   "checks": [
+    {"id": "cache-lifecycle", "argv": ["python", "-B", "shared/tests/test-cache-transitions.py", "--port", "pb430"]},
     {
       "id": "firmware-cpu",
       "argv": ["python", "-B", "pb430/tools/test-port.py", "--case", "cpu"]
@@ -107,21 +108,6 @@
       ]
     },
     {
-      "id": "cache-check",
-      "argv": [
-        "python",
-        "pb430/tools/test-cache-check.py",
-        "pb430/build/baios-pb430.bin"
-      ]
-    },
-    {
-      "id": "cache-transitions",
-      "argv": [
-        "python",
-        "pb430/tools/test-cache-transitions.py"
-      ]
-    },
-    {
       "id": "experimental-cache-burst-build",
       "argv": [
         "python",
@@ -166,15 +152,6 @@
         "pb430/tools/test-port.py",
         "--case",
         "build-hygiene"
-      ]
-    },
-    {
-      "id": "firmware-cache",
-      "argv": [
-        "python",
-        "pb430/tools/test-port.py",
-        "--case",
-        "cache"
       ]
     },
     {
@@ -384,13 +361,6 @@
       ]
     },
     {
-      "id": "ram-order",
-      "argv": [
-        "python",
-        "pb430/tools/test-ram-order.py"
-      ]
-    },
-    {
       "id": "reference-map",
       "argv": [
         "python",
@@ -419,14 +389,6 @@
       "argv": [
         "python",
         "pb430/tools/test-stock-options.py",
-        "pb430/build/baios-pb430.bin"
-      ]
-    },
-    {
-      "id": "timing-recovery",
-      "argv": [
-        "python",
-        "pb430/tools/test-timing-recovery.py",
         "pb430/build/baios-pb430.bin"
       ]
     },
@@ -467,7 +429,10 @@
   "case_sets": [
     {
       "script": "pb430/tools/test-port.py",
-      "variable": "CASES"
+      "variable": "CASES",
+      "covered_by": {
+        "cache": "cache-lifecycle"
+      }
     }
   ],
   "historical_checks": [],
@@ -518,8 +483,23 @@
     "Builders execute their assembled diagnostic checks directly. The profile-build test also proves a fresh standalone diagnostic build."
   ],
   "wrapped_tests": {
+    "pb430/tools/test-cache-lifecycle.py": [
+      "cache-lifecycle"
+    ],
     "pb430/tools/stock_cache_proof.py": [
-      "firmware-cache"
+      "cache-lifecycle"
+    ],
+    "pb430/tools/test-cache-transitions.py": [
+      "cache-lifecycle"
+    ],
+    "pb430/tools/test-cache-check.py": [
+      "cache-lifecycle"
+    ],
+    "pb430/tools/test-ram-order.py": [
+      "cache-lifecycle"
+    ],
+    "pb430/tools/test-timing-recovery.py": [
+      "cache-lifecycle"
     ]
   }
 }

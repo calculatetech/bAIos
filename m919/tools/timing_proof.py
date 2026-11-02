@@ -632,14 +632,17 @@ def speed():
     return results
 
 
-CASES={'timing-settings':profiles,'timing-review':ui_review,'timing-controls':control_categories,'timing-order':order,'cache-wt-regression':wt_regression,'cache-wb-transition':wb_transition,'cache-persistence':persistence,'cache-writeback':writeback,'timing-crc':crc,'timing-parity':parity,'cache-speed':speed,'fast-restoration':fast_restoration}
+from cache_proof import lifecycle
+
+
+CASES={'timing-settings':profiles,'timing-review':ui_review,'timing-controls':control_categories,'timing-order':order,'cache-wt-regression':wt_regression,'cache-wb-transition':wb_transition,'cache-persistence':lambda:lifecycle('transitions','rejection','retired'),'cache-writeback':lambda:lifecycle('modes'),'timing-crc':crc,'timing-parity':parity,'cache-speed':speed,'fast-restoration':fast_restoration}
 
 
 def check(case):
     result={'cases':CASES[case]()}
     sources=('m919/port.json','m919/tools/timing_proof.py','m919/tools/cache_proof.py','m919/tools/geometry_proof.py',
              'm919/src/hardware/cache.inc','m919/src/hardware/chipset-core.inc','m919/src/hardware/timing.inc',
-             'm919/src/hardware/cache-validation.inc','m919/src/hardware/chipset-data.inc','m919/src/hardware/chipset-ui.inc',
+             'm919/tools/test-cache-lifecycle.py','m919/src/hardware/chipset-data.inc','m919/src/hardware/chipset-ui.inc',
              'shared/src/setup/enum-ui.inc','shared/src/pc/crc32.inc','shared/src/firmware/bios.asm')
     result['source_sha256']={p:hashlib.sha256((REPOSITORY/p).read_bytes()).hexdigest() for p in sources}
     target=PORT/'build/research/hardware'/f'{case}.json'
