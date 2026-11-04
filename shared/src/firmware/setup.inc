@@ -1873,8 +1873,9 @@ setup_change:
 .ide:
     cmp cl, BOARD_ATA_DEVICE_COUNT+2
     jne .device_policy
-    mov bx, U_IDE
-    mov ch, 1
+    call setup_ide_controller_parameters
+    mov ch,cl
+    dec ch
     jmp .enum
 .device_policy:
     mov al,cl
@@ -1915,10 +1916,18 @@ setup_enum_store:
     cmp byte [fs:U_PAGE],1
     jne .boot
     cmp byte [fs:U_IDE_DEVICE],BOARD_ATA_DEVICE_COUNT-1
-    ja .boot
+    ja .controller
     popad
     popf
     jmp ide_ui_store
+.controller:
+%ifdef BOARD_IDE_SECONDARY_DISABLE_POLICY
+    cmp byte [fs:U_FIELD],BOARD_ATA_DEVICE_COUNT+2
+    jne .boot
+    popad
+    popf
+    jmp setup_ide_controller_store
+%endif
 .boot:
 %ifdef BOARD_PORTS_SETUP_COMMIT
     cmp byte [fs:U_PAGE],3
@@ -1993,6 +2002,48 @@ setup_boot_choice_valid:
     clc
     ret
 
+; Shared presentation; the board declares storage and owns channel hardware.
+setup_ide_controller_parameters:
+    mov bx,U_IDE
+    mov si,u_seek_values
+    mov cx,2
+%ifdef BOARD_IDE_SECONDARY_DISABLE_POLICY
+    xor al,al
+    cmp byte [fs:bx],0
+    jne .enabled
+    inc al
+    jmp .selected
+.enabled:
+    test byte [fs:U_CHIP+(BOARD_IDE_SECONDARY_DISABLE_POLICY-C_CHIP)],BOARD_IDE_SECONDARY_DISABLE_MASK
+    jz .selected
+    mov al,2
+.selected:
+    mov bx,U_CHIP_VALUE
+    mov [fs:bx],al
+    mov si,u_ide_controller_choices
+    mov cx,3
+%endif
+    ret
+%ifdef BOARD_IDE_SECONDARY_DISABLE_POLICY
+setup_ide_controller_store:
+    pushf
+    pushad
+    cmp al,2
+    ja .done
+    and byte [fs:U_CHIP+(BOARD_IDE_SECONDARY_DISABLE_POLICY-C_CHIP)],~BOARD_IDE_SECONDARY_DISABLE_MASK
+    mov byte [fs:U_IDE],0
+    cmp al,1
+    je .done
+    mov byte [fs:U_IDE],1
+    cmp al,2
+    jne .done
+    or byte [fs:U_CHIP+(BOARD_IDE_SECONDARY_DISABLE_POLICY-C_CHIP)],BOARD_IDE_SECONDARY_DISABLE_MASK
+.done:
+    popad
+    popf
+    ret
+%endif
+
 ; Enter opens the complete enum. Arrows still offer the normal quick change.
 setup_choices:
     cmp byte [fs:U_PAGE], 5
@@ -2031,9 +2082,7 @@ setup_choices:
 .ide:
     cmp dl, BOARD_ATA_DEVICE_COUNT+2
     jne .device_policy
-    mov bx, U_IDE
-    mov si, u_seek_values
-    mov cx, 2
+    call setup_ide_controller_parameters
     jmp .enum
 .device_policy:
     mov al,dl
@@ -2616,9 +2665,10 @@ setup_draw:
     jb .ide_policy
 .controller:
     ui_text BOARD_ATA_DEVICE_COUNT+9, UI_LABEL_COL, u_ide_controller, 0x07
-    movzx bx, byte [fs:U_IDE]
+    call setup_ide_controller_parameters
+    movzx bx, byte [fs:bx]
     shl bx, 1
-    mov si, [u_seek_values + bx]
+    mov si, [cs:si + bx]
     mov di, (BOARD_ATA_DEVICE_COUNT+9) * 160 + UI_VALUE_COL * 2
     mov cl, BOARD_ATA_DEVICE_COUNT+2
     call setup_field_color
@@ -3570,7 +3620,7 @@ u_help_ide_dword2 db 'Disabled uses the compatible 16-bit default.',0
 %endif
 %ifdef BOARD_ATA_PIO_POLICY
 u_ide_pio db 'PIO Mode Limit',0
-u_help_ide_pio1 db 'Limits IDE speed. Auto selects the fastest safe mode.',0
+u_help_ide_pio1 db 'Limits IDE speed. Auto selects a supported mode.',0
 u_help_ide_pio2 db 'Faster modes need the actual 33 MHz timing clock.',0
 u_ide_pio_values dw u_auto,u_ide_pio0,u_ide_pio1,u_ide_pio2,u_ide_pio3,u_ide_pio4
 u_ide_pio_choices dw u_ide_pio0,u_ide_pio1,u_ide_pio2,u_ide_pio3,u_ide_pio4,u_auto
@@ -4387,6 +4437,11 @@ u_ide_block_values dw u_auto,u_off,u_ide_block2,u_ide_block4,u_ide_block8
 u_ide_block_choices dw u_ide_block2,u_ide_block4,u_ide_block8,u_ide_block16
     dw u_ide_block32,u_ide_block64,u_ide_block128,u_auto,u_off
 u_ide_edd_values dw u_on,u_off
+%ifdef BOARD_IDE_SECONDARY_DISABLE_POLICY
+u_ide_controller_choices dw u_ide_both_channels,u_off,u_ide_primary_only
+u_ide_both_channels db 'Both Channels',0
+u_ide_primary_only db 'Primary Only',0
+%endif
 %if BOARD_ATA_DEVICE_COUNT = 4
 u_ide_controller db 'Onboard IDE Controller',0
 %else
@@ -4443,8 +4498,13 @@ u_help_ide_landing1 db 'An older head parking setting: 0-65535.',0
 u_help_ide_landing2 db 'IDE drives park their heads themselves.',0
 u_help_ide_edd1 db 'Enable extended BIOS support for larger disks.',0
 u_help_ide_edd2 db 'Disable only for software that needs older access.',0
+%ifdef BOARD_IDE_SECONDARY_DISABLE_POLICY
+u_help_ide_controller1 db 'Both Channels enables both motherboard IDE ports.',0
+u_help_ide_controller2 db 'Primary Only disables the secondary IDE port.',0
+%else
 u_help_ide_controller1 db 'Enable the motherboard hard disk controller.',0
 u_help_ide_controller2 db 'Disabled turns off its hard disk and CD drives.',0
+%endif
 
 ports_ui_parameters:
     movzx bx, byte [fs:U_FIELD]
@@ -4463,6 +4523,9 @@ ports_ui_parameters:
 
 ; AL=candidate. The same sibling rule governs arrows and popup navigation.
 ports_ui_choice_valid:
+%ifdef BOARD_PORTS_SETUP_CHOICE_VALID
+    jmp BOARD_PORTS_SETUP_CHOICE_VALID
+%else
     push bx
     movzx bx, byte [fs:U_FIELD]
     call ports_ui_candidate
@@ -4482,6 +4545,7 @@ ports_ui_choice_valid:
     pop bx
     stc
     ret
+%endif
 
 ports_ui_choices:
     pushad
@@ -4567,7 +4631,7 @@ ports_ui_draw:
 
 u_devices db 'Devices',0
 u_devices_title db 'bAIos Setup > Devices',0
-u_uart_a db 'Serial Port',0
+u_uart_a db 'Serial Port A',0
 u_uart_b db 'Serial Port B',0
 u_uart_pair db 'COM3 / COM4 Addresses',0
 u_parallel db 'Parallel Port',0
@@ -4586,17 +4650,17 @@ u_uart_values dw u_disabled,u_com1,u_com2,u_com3,u_com4
 u_pair_values dw u_pair0,u_pair1,u_pair2,u_pair3
 u_parallel_values dw u_disabled,u_lpt0,u_lpt1,u_lpt2
 u_mode_values dw BOARD_PORTS_MODES
-u_com1 db '3F8h / IRQ4',0
-u_com2 db '2F8h / IRQ3',0
-u_com3 db '3E8h / IRQ4',0
-u_com4 db '2E8h / IRQ3',0
-u_pair0 db '338h / 238h',0
-u_pair1 db '3E8h / 2E8h',0
-u_pair2 db '2E8h / 2E0h',0
-u_pair3 db '220h / 228h',0
-u_lpt0 db '3BCh',0
-u_lpt1 db '378h',0
-u_lpt2 db '278h',0
+u_com1 db '3F8h / COM1 / IRQ4',0
+u_com2 db '2F8h / COM2 / IRQ3',0
+u_com3 db '3E8h / COM3 / IRQ4',0
+u_com4 db '2E8h / COM4 / IRQ3',0
+u_pair0 db '338h COM3 / 238h COM4',0
+u_pair1 db '3E8h COM3 / 2E8h COM4',0
+u_pair2 db '2E8h COM3 / 2E0h COM4',0
+u_pair3 db '220h COM3 / 228h COM4',0
+u_lpt0 db '3BCh / LPT3',0
+u_lpt1 db '378h / LPT1',0
+u_lpt2 db '278h / LPT2',0
 u_printer db 'Printer',0
 u_bidirectional db 'PS/2 Bidirectional',0
 u_help_devices1 db 'Configure onboard ports and devices.',0

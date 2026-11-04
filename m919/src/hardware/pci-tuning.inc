@@ -54,7 +54,10 @@ board_pci_runtime_policy:
     je .allocate
     cmp byte [fs:C_IDE],0
     je .allocate
-    and bp,~((1 << 14) | (1 << 15))
+    and bp,~(1 << 14)
+    test byte [fs:BOARD_IDE_SECONDARY_DISABLE_POLICY],BOARD_IDE_SECONDARY_DISABLE_MASK
+    jnz .allocate
+    and bp,~(1 << 15)
 .allocate:
     mov ax,bp
     xor ax,0xDEB8             ; Active onboard ISA sources must return to edge.

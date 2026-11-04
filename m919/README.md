@@ -4,11 +4,11 @@ This port provides bAIos for motherboard revisions 1.5 and 3.4. Read the known l
 
 ## Startup and Setup
 
-Press Delete during startup to open Setup. F9 loads defaults. F10 saves and restarts. Use default timings until the machine runs reliably.
+Press Delete during startup to open Setup. F9 loads defaults. F10 saves and restarts. Use default timings until the machine runs reliably. Settings remain saved after power-off. The normal boot order is CD, floppy, then hard disk.
 
 The BIOS detects RAM and cache capacity. Setup provides CPU/cache, PCI, local-bus, ISA, memory and ROM settings. Keep clock dividers consistent with the installed processor and cards. Fast Boot shortens the RAM test without reducing detected memory.
 
-Primary Master, Primary Slave, Secondary Master and Secondary Slave are fixed IDE positions. Their settings stay with those positions when drives are removed. Auto selects a drive-supported PIO mode up to PIO4. Block mode and 32-bit transfers are separate choices.
+Primary Master, Primary Slave, Secondary Master and Secondary Slave are fixed IDE positions. Their settings stay with those positions when drives are removed. Auto selects a drive-supported PIO mode up to PIO4. Block mode and 32-bit transfers are separate choices. Onboard IDE Controller can enable both channels, only the primary channel, or neither channel.
 
 Normal defaults request enabled caches and write-back where supported. A failed or unknown cache configuration remains off. `SL Enhanced` in the CPU name describes processor capability. Read the [power-saving guide](../docs/sl486-support.md) for DOS POWER.EXE.
 
@@ -18,7 +18,7 @@ This board uses serial mice and has no PS/2 mouse connector. PS/2 mouse initiali
 
 Revision3.4 can fail to warm reset with Microsoft EMM386 loaded. Its recurring floppy-controller problem is also unresolved. A successful boot with different memory managers does not remove those limitations.
 
-VLB graphics can show incorrect colors during sampled digital sound. This also occurs with the original BIOS. Music-only and PC-speaker sound do not show that interaction. Further bus tuning is separate work.
+VLB graphics can show incorrect colors during sampled digital sound. This also occurs with the original BIOS. Music-only and PC-speaker sound do not show that interaction. The sound-crackle improvement does not fix these colors.
 
 ## Build and ROM files
 

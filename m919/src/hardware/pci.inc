@@ -109,11 +109,15 @@ board_pci_device:
     jnz .rejected
     test byte [fs:M_PCI_REJECTED],1
     jnz .rejected
-    ; Plain PIO0: FIFO and bus mastering off; both legacy channels enabled.
+    ; Plain PIO0; honor secondary decode policy before the VGA BIOS runs.
     mov eax,ebx
     shl eax,8
     or eax,0x80000040
     mov ecx,0xFF30C900
+    test byte [fs:BOARD_IDE_SECONDARY_DISABLE_POLICY],BOARD_IDE_SECONDARY_DISABLE_MASK
+    jz .channels
+    and ch,0xBF
+.channels:
     call pci_write
     add eax,4
     mov ecx,0xBBBB6666

@@ -390,7 +390,7 @@ class POSTHardware(SRAM):
 
     def prepare(self,u):
         from geometry_proof import Listing
-        listing=Listing(PORT/'build/hardware-tests/geometry/baios-m919.lst')
+        listing=Listing(getattr(self, 'rom_image', PORT/'build/hardware-tests/geometry/baios-m919.bin').with_suffix('.lst'))
         self.cache_entry=0xF0000+listing.symbol('cache_initialize')
         self.qualify_entry=0xF0000+listing.symbol('cache_qualify')
         self.qualify_exit=0xF0000+listing.symbol('.done','cache_qualify')

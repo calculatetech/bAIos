@@ -3,8 +3,8 @@
     "vendor": "PC-Chips",
     "model": "M919",
     "revision": "1.5",
-    "version": "0.15.1",
-    "release_date": "11/01/2026"
+    "version": "0.18.2",
+    "release_date": "11/04/2026"
   },
   "rom": {
     "size": 131072,
@@ -54,7 +54,7 @@
     "sio_cr0": 15,
     "sio_cr1": 143,
     "pci_memory_base": 3489660928,
-    "pci_memory_end": 3758096384,
+    "pci_memory_end": 4288675840,
     "pci_io_base": 49152,
     "pci_irq_a": 9,
     "pci_irq_b": 10,

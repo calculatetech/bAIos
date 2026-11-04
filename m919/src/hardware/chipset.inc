@@ -24,6 +24,8 @@
     out dx,al
 %endmacro
 chipset_initialize:
+    ; IBC83.40 caused a reproducible POST hang; clear any retained warm state.
+    early_chipset_update CFG_PLATFORM_ISA_PCI_DEVICE,0x83,0x40,0
     ; A previous warm boot can leave a PM source armed before RAM is rebuilt.
     mov eax,0x800000A0 | (CFG_PLATFORM_ISA_PCI_DEVICE << 11)
     mov dx,0xCF8
@@ -53,8 +55,8 @@ chipset_initialize:
     early_chipset_update CFG_PLATFORM_HOST_PCI_DEVICE,0x60,1,0
     early_chipset_update CFG_PLATFORM_HOST_PCI_DEVICE,0x61,0xCA,0
     early_chipset_update CFG_PLATFORM_HOST_PCI_DEVICE,0x62,2,0
-    ; IBC: disable posting and AUX pin functions; protect flash, no PCI IRQs yet.
-    early_chipset_update CFG_PLATFORM_ISA_PCI_DEVICE,0x40,0x14,0
+    ; CPU-only reset retains DEVSEL: restore the working Slow timing before VGA.
+    early_chipset_update CFG_PLATFORM_ISA_PCI_DEVICE,0x40,0x17,1
     early_chipset_update CFG_PLATFORM_ISA_PCI_DEVICE,0x45,1,0
     early_chipset_update CFG_PLATFORM_ISA_PCI_DEVICE,0x46,0x0F,0
     early_chipset_update CFG_PLATFORM_ISA_PCI_DEVICE,0x47,0x40,0x40
