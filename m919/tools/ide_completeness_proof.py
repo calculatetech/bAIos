@@ -580,7 +580,7 @@ def persistence(image):
     extra = bytes((0, 1))
     ports = bytes((1, 2, 1, 3, 2, 1, 0, 1))
     chip = bytes.fromhex('A0010070900000A255070F6E010F01FCA9870F0100000000')
-    masks = bytes.fromhex('F0010170900301FFFF070F7F010F01FCFFFF0F01FF01030F')
+    masks = bytes.fromhex('F0010170900301FFFF070F7F010F01FCFFFF0F01FF01031F')
 
     def packed_ide(policies):
         flags = sum((r[2] | r[3] << 4 | ((0, 0)+tuple(extra))[i] << 5) << (i*6)
@@ -593,7 +593,7 @@ def persistence(image):
     port_bits = sum(v << sum(widths[:i]) for i, v in enumerate(ports))
     packed_ports = checked(b'P\x02\0'+port_bits.to_bytes(2, 'little'), 2)
     chip_bits = [(v >> bit) & 1 for v, mask in zip(chip, masks) for bit in range(8) if mask >> bit & 1]
-    assert len(chip_bits) == 92
+    assert len(chip_bits) == 93
     packed_chip = checked(b'W\0'+sum(v << i for i, v in enumerate(chip_bits)).to_bytes(13, 'little'), 1)
     m.call('ide_defaults', DI=s['U_IDE'])
     for i, record in enumerate(records):
@@ -623,7 +623,7 @@ def persistence(image):
     auto = bytes(4)+struct.pack('<HBBHH', 1024, 16, 63, 0xFFFF, 1024)
     defaults = {'C_IDE': b'\x01'+auto*4+b'\x01\x01',
                 'C_PORTS': bytes((1, 2, 1, 2, 0, 1, 0, 1)),
-                'C_CHIP': b'\0\x01\0\x40'+bytes(20)}
+                'C_CHIP': bytes.fromhex('000100400000000800000060000000000000000000000000')}
     load()
     assert read('C_IDE', 51) == active and read('C_PORTS', 8) == ports
     assert read('C_CHIP', 24) == chip and m.get('C_VALID') == 1

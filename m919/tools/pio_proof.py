@@ -218,6 +218,7 @@ def timing_cases(image):
     for revision,mode in ((revision,mode) for revision in (0x0E,0x0C) for mode in range(5)):
         m = PIO(image, requests=(mode+1,)*4,observe_pending=True,revision=revision)
         original = {offset: m.byte(offset) for offset in (0x40, 0x41, 0x42)}
+        original[0x41] |= 0xC0  # Both selected channels are enabled before detection.
         m.call('ata_detect_primary')
         assert modes(m) == [mode]*4
         assert m.device_modes == [mode]*4
@@ -432,7 +433,7 @@ def policy_cases(image):
             assert m.reset and m.cmos[0x33:0x36] == bytes.fromhex('3402ca')
             assert m.save_boundary==b'\x05\xa6'
             assert bytes(m.cpu.mem_read(m.base+m.state['U_CHIP_SCREEN'],2))==m.save_boundary
-            masks = bytes.fromhex('F0010170900301FFFF070F7F010F01FCFFFF0F01FF01030F')
+            masks = bytes.fromhex('F0010170900301FFFF070F7F010F01FCFFFF0F01FF01031F')
             bits = [(v >> b) & 1 for v, mask in zip(draft, masks) for b in range(8) if mask >> b & 1]
             packed = bytearray(b'W\0'+sum(v << n for n, v in enumerate(bits)).to_bytes(13, 'little'))
             packed[1] = -sum(packed) & 255
@@ -452,7 +453,7 @@ def policy_cases(image):
                 assert not restored.public(0x80+pos, 0x42, lba=17)
                 assert bytes(restored.cpu.mem_read(0x21000, 512)) == restored.payload(pos, 17)
         if action=='save':
-            assert len(bits)==92
+            assert len(bits)==93
             old=draft[:23]+b'\0'
             def pack(chip):
                 bits=[(v>>b)&1 for v,mask in zip(chip,masks) for b in range(8) if mask>>b&1]
@@ -471,7 +472,7 @@ def policy_cases(image):
                     fresh.writes.clear();fresh.call('settings_load')
                     assert not fresh.writes
                     actual=bytes(fresh.cpu.mem_read(fresh.base+0x60,24))
-                    assert actual==(bytes(chip) if invalid is None else b'\0\1\0\x40'+bytes(20)),(invalid,pos,actual.hex())
+                    assert actual==(bytes(chip) if invalid is None else bytes.fromhex('000100400000000800000060000000000000000000000000')),(invalid,pos,actual.hex())
                     assert bytes(fresh.cpu.mem_read(fresh.base+0xA00,51))==devices
                     assert bytes(fresh.cpu.mem_read(fresh.base+fresh.state['C_PORTS'],8))==ports
                     if invalid is None:

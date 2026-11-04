@@ -36,6 +36,8 @@
 %define BOARD_ATA_PIO_ADAPTER
 %define BOARD_ATA_PIO_POLICY C_CHIP+20
 %define BOARD_ATA_PIO_POLICY_HIGH C_CHIP+23
+%define BOARD_IDE_SECONDARY_DISABLE_POLICY C_CHIP+23
+%define BOARD_IDE_SECONDARY_DISABLE_MASK 0x10
 %define BOARD_CACHE_EARLY call cache_initialize
 %define BOARD_CACHE_AFTER_RAM call chipset_post_ram_cache
 %define BOARD_CACHE_FINISH call chipset_late_cache
@@ -51,9 +53,10 @@
 %define BOARD_PORTS_SETUP_LABELS u_uart_a,u_uart_b,u_parallel,u_parallel_mode,u_ecp_dma
 %define BOARD_PORTS_SETUP_PARAMETERS board_ports_parameters
 %define BOARD_PORTS_SETUP_COMMIT board_ports_commit
+%define BOARD_PORTS_SETUP_CHOICE_VALID board_ports_choice_valid
 %define BOARD_PORTS_SETUP_HELP board_ports_help
 %define BOARD_BOOT_RETRY_TEST_SOURCE "../tests/core-retry.inc"
-%define BOARD_PORTS_VALUES u_uart_values,u_uart_values,u_parallel_values,u_mode_values,u_ecp_dma_values
+%define BOARD_PORTS_VALUES u_m919_uart_a_values,u_m919_uart_b_values,u_m919_parallel_values,u_mode_values,u_ecp_dma_values
 %define BOARD_PORTS_MODES u_ecp,u_epp,u_printer
 %define BOARD_PORTS_MODE_HELP 'SPP printer output, EPP, or ECP mode.'
 %define BOARD_PORTS_SETUP_STRINGS "hardware/ports-setup.inc"

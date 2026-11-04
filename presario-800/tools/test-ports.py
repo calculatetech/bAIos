@@ -848,15 +848,15 @@ def ports_ui():
         observed = []
         rows = (5, 0, 0, 6, 7, 0, 8, 0)
         available = [i for i in (0, 3, 4, 6) if i != 4 or parallel_enabled]
-        labels = ('Serial Port', 'Serial Port B', 'COM3 / COM4 Addresses', 'Parallel Port',
+        labels = ('Serial Port A', 'Serial Port B', 'COM3 / COM4 Addresses', 'Parallel Port',
                   'Parallel Port Mode', 'Floppy Controller', 'PS/2 Mouse', 'ISA Serial Discovery')
         details = ('Choose a COM port number for this serial port.', 'Choose a COM port number for this serial port.',
                    'Choose the address pair for COM3 and COM4.', 'Choose the printer port address or Disabled.',
                    'Printer output or PS/2 bidirectional data.', 'Enable or disable both motherboard floppy drives.',
                    'Enable or disable the PS/2 mouse port.', 'Find serial ports on ISA expansion cards.')
-        values = (('Disabled', '3F8h / IRQ4', '2F8h / IRQ3', '3E8h / IRQ4', '2E8h / IRQ3'),)*2 + (
-            ('338h / 238h', '3E8h / 2E8h', '2E8h / 2E0h', '220h / 228h'),
-            ('Disabled', '3BCh', '378h', '278h'), ('Printer', 'PS/2 Bidirectional'),
+        values = (('Disabled', '3F8h / COM1 / IRQ4', '2F8h / COM2 / IRQ3', '3E8h / COM3 / IRQ4', '2E8h / COM4 / IRQ3'),)*2 + (
+            ('338h COM3 / 238h COM4', '3E8h COM3 / 2E8h COM4', '2E8h COM3 / 2E0h COM4', '220h COM3 / 228h COM4'),
+            ('Disabled', '3BCh / LPT3', '378h / LPT1', '278h / LPT2'), ('Printer', 'PS/2 Bidirectional'),
             ('Disabled', 'Enabled'), ('Disabled', 'Enabled'), ('Disabled', 'Enabled'))
         step = [0, -2]
         popup_seen = []
@@ -1005,7 +1005,7 @@ def board_layout():
             if model.script != [0x44, 28] or model.pending:
                 return
             assert bytes(model.cpu.mem_read(model.base+0x1EE, 8)) == DEFAULT
-            assert model.text(5, 49, 28).strip() == '3F8h / IRQ4'
+            assert model.text(5, 49, 28).strip() == '3F8h / COM1 / IRQ4'
             assert bytes(model.cpu.mem_read(model.base+0x1E6, 8)) == initial
             assert bytes(model.cmos) == before and tuple(model.cr) == hardware
             seen_defaults.append(True)
@@ -1106,7 +1106,7 @@ def serial_addresses():
             if model.script != [0x44, 28] or model.pending:
                 return
             assert bytes(model.cpu.mem_read(model.base+0x1EE, 8)) == wanted
-            label = ('Disabled', '3F8h / IRQ4', '2F8h / IRQ3', '3E8h / IRQ4', '2E8h / IRQ3')[choice]
+            label = ('Disabled', '3F8h / COM1 / IRQ4', '2F8h / COM2 / IRQ3', '3E8h / COM3 / IRQ4', '2E8h / COM4 / IRQ3')[choice]
             assert model.text(5, 49, 28).strip() == label
             assert bytes(model.cpu.mem_read(model.base+0x1E6, 8)) == active
             assert bytes(model.cmos) == before and tuple(model.cr) == hardware
@@ -1140,7 +1140,7 @@ def serial_addresses():
             assert bytes(model.cpu.mem_read(model.base+0x1EE, 8)) == wanted
             assert bytes(model.cpu.mem_read(model.base+0x1E6, 8)) == DEFAULT
             assert bytes(model.cmos) == before and tuple(model.cr) == hardware
-            label = ('Disabled', '3F8h / IRQ4', '2F8h / IRQ3', '3E8h / IRQ4', '2E8h / IRQ3')[choice]
+            label = ('Disabled', '3F8h / COM1 / IRQ4', '2F8h / COM2 / IRQ3', '3E8h / COM3 / IRQ4', '2E8h / COM4 / IRQ3')[choice]
             assert model.text(5, 49, 28).strip() == label
             seen.append(choice)
             if len(seen) < len(sequence):

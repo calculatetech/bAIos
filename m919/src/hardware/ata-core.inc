@@ -28,6 +28,11 @@ hardware_ata_position:
     je .done
     cmp byte [es:HW_IDE_USABLE],1
     jne .done
+    test bl,2
+    jz .enabled
+    test byte [es:BOARD_IDE_SECONDARY_DISABLE_POLICY],BOARD_IDE_SECONDARY_DISABLE_MASK
+    jnz .done
+.enabled:
     mov byte [fs:S_CONTROLLER],1
 .done:
     popad
@@ -123,6 +128,11 @@ hardware_ata_pio_position:
     movzx di,bl
     call hardware_ata_pio_host
     jc .done
+    test di,2
+    jz .enabled
+    test byte [fs:BOARD_IDE_SECONDARY_DISABLE_POLICY],BOARD_IDE_SECONDARY_DISABLE_MASK
+    jnz .done
+.enabled:
     mov cx,di
     xor cl,3
     shl cl,1

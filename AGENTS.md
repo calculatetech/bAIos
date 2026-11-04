@@ -74,6 +74,8 @@ Update descriptor tables, group and view counts, row lists, navigation, help, an
 
 Name every IDE device position by channel and master/slave. Use the same position identity in Drives, device submenus, help, and POST. Bind its settings to that fixed physical position, even when absent or disabled. Setup must not probe devices or change setting ownership according to the detected inventory.
 
+Use shared COM and LPT choice labels that show the port number beside its resource address. Put the address first to preserve address sorting. Identify both ports in configurable COM3/COM4 address pairs. These are configuration names, not a promise about the operating system's port enumeration. Preserve saved encodings and hardware routing when changing labels.
+
 ## Sorted choice lists
 
 <!-- cpk-rule-owner: sorted-choice-lists -->

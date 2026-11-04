@@ -60,6 +60,12 @@ chipset_apply_timing:
     call chipset_apply_tuning
     call chipset_cyrix_apply
     ret
+; Establish saved bus clocks before PCI enumeration and the VGA BIOS run.
+chipset_early_bus_timing:
+    call chipset_settings_load
+    pushad
+    mov si,chipset_bus_timing_fields
+    jmp chipset_apply_tuning.field
 ; Each field owns only its documented bits. FF keeps the hardware setting.
 chipset_apply_tuning:
     pushad
@@ -118,6 +124,7 @@ chipset_tuning_fields:
     tuning_field CFG_PLATFORM_ISA_PCI_DEVICE,0x41,0x02,8,0,3,tuning_lock
     tuning_field CFG_PLATFORM_ISA_PCI_DEVICE,0x41,0x04,8,2,3,tuning_park
     tuning_field CFG_PLATFORM_ISA_PCI_DEVICE,0x46,0x10,8,4,3,tuning_preempt
+chipset_bus_timing_fields:
     tuning_field CFG_PLATFORM_ISA_PCI_DEVICE,0x56,0x03,11,0,3,tuning_isa
     tuning_field CFG_PLATFORM_ISA_PCI_DEVICE,0x56,0x0C,11,2,7,tuning_keyboard
     tuning_field CFG_PLATFORM_ISA_PCI_DEVICE,0x57,0x03,11,5,3,tuning_recovery

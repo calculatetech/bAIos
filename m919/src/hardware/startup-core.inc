@@ -129,6 +129,7 @@ startup:
 board_smm_startup:
     call board_smm_initialize
     cache_phase early
+    call chipset_early_bus_timing
     ; IBC51 describes installed RAM in 4 MiB units, independently of CMOS.
     mov eax,[fs:S_INSTALLED_KIB32]
     add eax,1024
@@ -144,6 +145,23 @@ board_smm_startup:
     call init_rtc
     call init_at_prerequisites
     call init_superio
+.pci_policy:
+    ; Bench-confirmed PCI throughput fix; the bit's hardware function is unknown.
+    mov eax,0x80000040 | (CFG_PLATFORM_ISA_PCI_DEVICE << 11)
+    mov dx,0xCF8
+    out dx,eax
+    mov dx,0xCFD
+    in al,dx
+    or al,0x01
+    out dx,al
+    ; Removes the reproduced sound startup/exit crackle; function undocumented.
+    mov eax,0x80000044 | (CFG_PLATFORM_ISA_PCI_DEVICE << 11)
+    mov dx,0xCF8
+    out dx,eax
+    mov dx,0xCFD
+    in al,dx
+    or al,0x08
+    out dx,al
     call pci_initialize
     call initialize_video
     jc video_failed

@@ -1,6 +1,11 @@
 ; UM8663-specific capabilities; generic Setup owns the rendering and editing.
 u_epp db 'EPP',0
 u_ecp db 'ECP',0
+u_m919_uart_a_values dw u_com3,u_com1,u_disabled
+u_m919_uart_b_values dw u_com4,u_com2,u_disabled
+u_m919_parallel_values dw u_lpt2,u_lpt1,u_disabled
+; Display order is independent of the saved COM/LPT encodings.
+board_ports_encoding db 3,1,0, 4,2,0, 3,2,0
 
 ; BX=displayed field. Return the existing owner or normalized enum scratch.
 board_ports_parameters:
@@ -11,6 +16,8 @@ board_ports_parameters:
     shl bx,1
     mov si,[cs:u_ports_values+bx]
     mov bx,[cs:board_ports_pointers+bx]
+    cmp dx,3
+    jb .address
     cmp bx,U_CHIP_VALUE
     jne .done
     cmp dx,3
@@ -19,6 +26,22 @@ board_ports_parameters:
     shr al,1
     and al,1
     xor al,1
+    jmp .scratch
+.address:
+    mov al,[fs:bx]
+    push si
+    imul si,dx,3
+    xor bx,bx
+.lookup:
+    cmp al,[cs:board_ports_encoding+si+bx]
+    je .found
+    inc bx
+    cmp bx,2
+    jb .lookup
+.found:
+    mov al,bl
+    pop si
+    mov bx,U_CHIP_VALUE
     jmp .scratch
 .mode:
     mov al,2
@@ -31,27 +54,47 @@ board_ports_parameters:
     ret
 board_ports_commit:
     pushf
+    pushad
     mov [fs:bx],al
+    movzx bx,byte [fs:U_FIELD]
+    cmp bx,3
+    jae .other
+    shl bx,1
+    mov dx,[cs:board_ports_pointers+bx]
+    shr bx,1
+    imul bx,3
+    movzx si,al
+    add bx,si
+    mov al,[cs:board_ports_encoding+bx]
+    mov bx,dx
+    mov [fs:bx],al
+    jmp .done
+.other:
     cmp byte [fs:U_FIELD],3
     je .mode
     cmp byte [fs:U_FIELD],4
     jne .done
-    push ax
     xor al,1
     shl al,1
     and byte [fs:U_CHIP+22],0xFD
     or [fs:U_CHIP+22],al
-    pop ax
 .done:
+    popad
     popf
     ret
 .mode:
-    push ax
     mov ah,2
     sub ah,al
     mov [fs:U_PORTS+4],ah
-    pop ax
     jmp .done
+board_ports_choice_valid:
+    ; The two UARTs have disjoint address sets, so no sibling can conflict.
+    push bx
+    movzx bx,byte [fs:U_FIELD]
+    cmp al,[cs:board_ports_counts+bx]
+    cmc
+    pop bx
+    ret
 board_ports_help:
     mov bx,5
     cmp byte [fs:U_FOCUS],0
@@ -70,7 +113,7 @@ board_ports_help:
     mov di,20*160+25*2
     call setup_text
     ret
-board_ports_counts db 5,5,4,3,2
+board_ports_counts db 3,3,3,3,2
 board_ports_pointers dw U_PORTS,U_PORTS+1,U_PORTS+3,U_CHIP_VALUE,U_CHIP_VALUE
 board_ports_help_topics:
     dw u_uart_a,u_help_uart1,u_help_uart2

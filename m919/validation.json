@@ -21,7 +21,16 @@
     }
   ],
   "checks": [
-    {"id": "cache-lifecycle", "argv": ["python", "-B", "shared/tests/test-cache-transitions.py", "--port", "m919"]},
+    {
+      "id": "cache-lifecycle",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-cache-transitions.py",
+        "--port",
+        "m919"
+      ]
+    },
     {
       "id": "attainable-tuning",
       "argv": [
@@ -206,6 +215,37 @@
         "-B",
         "m919/tools/test-floppy-wake.py"
       ]
+    },
+    {
+      "id": "production-startup-policy",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/test-production-policy.py"
+      ]
+    },
+    {
+      "id": "early-bus-policy",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/tuning_proof.py",
+        "--case",
+        "early-bus",
+        "--output",
+        "m919/build/tests/production-early-bus.json"
+      ]
+    },
+    {
+      "id": "ide-channel-policy",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/test-ide-channels.py",
+        "m919/build/baios-m919.bin",
+        "--output",
+        "m919/build/tests/production-ide-channels.json"
+      ]
     }
   ],
   "case_sets": [],
@@ -236,6 +276,8 @@
     "Legacy POST/profile/certificate dispatchers remain historical tools, not evidence for the replacement adapter. Wider feature validation must be reconciled before this port joins routine updates."
   ],
   "wrapped_tests": {
-    "m919/tools/test-cache-lifecycle.py": ["cache-lifecycle"]
+    "m919/tools/test-cache-lifecycle.py": [
+      "cache-lifecycle"
+    ]
   }
 }

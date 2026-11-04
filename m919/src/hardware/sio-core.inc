@@ -299,6 +299,25 @@ ide_apply_controller:
     mov byte [fs:HW_IDE_USABLE],0
     jmp .done
 .pci:
+    ; Independent channel gates; preserve FIFO policy, timings and peer bits.
+    movzx eax,word [fs:HW_IDE_BDF]
+    shl eax,8
+    or eax,0x80000040
+    mov dx,0xCF8
+    out dx,eax
+    mov dx,0xCFD
+    in al,dx
+    and al,0x3F
+    cmp byte [fs:C_IDE],0
+    je .channels
+    cmp byte [fs:HW_IDE_USABLE],1
+    jne .channels
+    or al,0x80
+    test byte [fs:BOARD_IDE_SECONDARY_DISABLE_POLICY],BOARD_IDE_SECONDARY_DISABLE_MASK
+    jnz .channels
+    or al,0x40
+.channels:
+    out dx,al
     movzx eax,word [fs:HW_IDE_BDF]
     shl eax,8
     or eax,0x80000004

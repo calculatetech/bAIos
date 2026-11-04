@@ -78,6 +78,64 @@ def fixture(image):
     return d,f,base,state
 
 
+def early_bus_cases(image):
+    rows=[]
+    d,f,base,state=fixture(image)
+    defaults=d.read(base+state['C_CHIP'],state['CHIP_SIZE'])
+    for packed in (False,True):
+        for selection in range(4):
+            from cache_proof import post_module
+            f[4][:]=post_module().nvram()[:128]
+            if packed:f[4][0x33:0x36]=bytes.fromhex('3402CA')
+            draft=bytearray(defaults)
+            draft[10]=selection<<2
+            draft[11]=2|(3<<2)|(1<<5)  # Explicit ISA, keyboard and recovery choices.
+            for i,b in enumerate(draft):d.write(base+state['U_CHIP']+i,1,b)
+            invoke(f,'chipset_settings_save')
+            assert not f[0].reg_read(x.UC_X86_REG_EFLAGS)&1
+            saved=bytes(f[4])
+            for damage in ('none','checksum','recovery') if selection==3 else ('none',):
+                initial=bytearray(saved)
+                tag=0x71 if packed else 0x69
+                if damage=='checksum':initial[tag+1]^=1
+                if damage=='recovery':initial[tag]=0xD2
+                boot=Bus();boot.initial_cmos=bytes(initial)
+                boot.composed=True
+                from cache_proof import POSTHardware
+                boot.rom_image=image
+                boot.prepare=lambda u:POSTHardware.prepare(boot,u)
+                # An inherited /2 with unrelated upper bits set must be preserved by Keep Current.
+                boot.devices[0x90].update({0xA4:0xAC,0x56:0xBC,0x57:0x10})
+                _,run=mapped(boot.modules,expected=16,memory=boot,rom_image=image)
+                isa=boot.devices[0x90]
+                expected_ratio=(None,2,0,1)[selection] if damage=='none' else None
+                expected_a4=0xAC if expected_ratio is None else 0xAC|expected_ratio
+                assert isa[0xA4]==expected_a4,(packed,selection,damage,isa[0xA4])
+                expected56=0xBA if damage=='none' else 0xBD
+                expected57=0x36 if damage=='none' else 0x34
+                assert (isa[0x56],isa[0x57])==(expected56,expected57),(packed,selection,damage,hex(isa[0x56]),hex(isa[0x57]),boot.config_writes)
+                writes=[w for w in boot.config_writes if w[1]==0xA4]
+                assert writes==([] if expected_ratio is None else [(0x90,0xA4,1,expected_a4)])
+                assert bytes(run[4])==bytes(initial),'Early load wrote CMOS'
+                assert not boot.commands,'Bus timing issued keyboard commands'
+                # Late application must retain the early choice and every peer bit.
+                boot.continuing=True
+                cpu=run[0];listing=run[2]
+                late=0xF0000+listing.symbol('chipset_apply_tuning')
+                run[5].execute((cpu.reg_read(x.UC_X86_REG_CS)<<4)+cpu.reg_read(x.UC_X86_REG_IP),late,3000000)
+                assert cpu.reg_read(x.UC_X86_REG_IP)==late-0xF0000
+                before_late=(isa[0x56],isa[0x57],isa[0xA4])
+                end=0xF0000+listing.symbol('chipset_cyrix_apply')
+                run[5].execute((cpu.reg_read(x.UC_X86_REG_CS)<<4)+cpu.reg_read(x.UC_X86_REG_IP),end,3000000)
+                assert cpu.reg_read(x.UC_X86_REG_IP)==end-0xF0000
+                assert (isa[0x56],isa[0x57],isa[0xA4])==((before_late[0]&~0x0F)|(expected56&0x0F),(before_late[1]&~3)|(expected57&3),expected_a4),(packed,selection,damage,before_late,isa)
+                assert run[4][0x10:]==initial[0x10:]
+                rows.append(dict(packed=packed,choice=selection,damage=damage,
+                                 pre_peripheral_startup=True,divider=f'{isa[0xA4]:02X}',
+                                 saved_bytes_unchanged=True,late_choice_identical=True,real_startup_reload_and_timing=True))
+    return rows
+
+
 def irq_cases(image):
     rows=[]
     for mode in ('auto','edge','level','disabled','conflict'):
@@ -624,31 +682,55 @@ def device_bounds_cases(image):
 def device_commit_cases(image):
     from ide_completeness_proof import Machine
     rows=[]
-    for field,slot,value in ((0,0,1),(1,1,2),(2,3,3),(3,4,0),(4,None,0)):
-        for flags in (0x202,0x247):
-            m=Machine(image);m.put('U_PAGE',3);m.put('U_FIELD',field)
-            m.cpu.mem_write(m.base+m.state['U_CHIP']+22,b'\xA1')
-            before_ports=bytes(m.cpu.mem_read(m.base+m.state['U_PORTS'],8))
-            before_chip=bytes(m.cpu.mem_read(m.base+m.state['U_CHIP'],24))
-            pointer=m.state['U_CHIP_VALUE'] if field in (3,4) else m.state['U_PORTS']+slot
-            m.call('ports_ui_parameters')
-            assert m.cpu.reg_read(x.UC_X86_REG_BX)==pointer,(field,'owner pointer')
-            if field in (3,4):
+    choices=((0,0,(3,1,0),(b'3E8h / COM3 / IRQ4',b'3F8h / COM1 / IRQ4',b'Disabled')),
+             (1,1,(4,2,0),(b'2E8h / COM4 / IRQ3',b'2F8h / COM2 / IRQ3',b'Disabled')),
+             (2,3,(3,2,0),(b'278h / LPT2',b'378h / LPT1',b'Disabled')),
+             (3,4,(2,1,0),(b'ECP',b'EPP',b'Printer')),
+             (4,None,(2,0),(b'1',b'3')))
+    for field,slot,encodings,wanted_labels in choices:
+        for value,encoded in enumerate(encodings):
+            for flags in (0x202,0x247):
+                m=Machine(image);m.put('U_PAGE',3);m.put('U_FIELD',field)
+                m.cpu.mem_write(m.base+m.state['U_CHIP']+22,b'\xA1')
+                if field==4:m.cpu.mem_write(m.base+m.state['U_CHIP']+22,bytes((0xA1|encoded,)))
+                else:m.cpu.mem_write(m.base+m.state['U_PORTS']+slot,bytes((encoded,)))
+                before_ports=bytes(m.cpu.mem_read(m.base+m.state['U_PORTS'],8))
+                before_chip=bytes(m.cpu.mem_read(m.base+m.state['U_CHIP'],24))
+                pointer=m.state['U_CHIP_VALUE']
+                m.call('ports_ui_parameters')
+                assert m.cpu.reg_read(x.UC_X86_REG_BX)==pointer,(field,'normalized owner pointer')
+                assert m.get('U_CHIP_VALUE')==value,(field,encoded,'saved-to-display mapping')
+                assert m.cpu.reg_read(x.UC_X86_REG_CX)==len(encodings)
                 values=m.cpu.reg_read(x.UC_X86_REG_SI);labels=[]
                 for index in range(m.cpu.reg_read(x.UC_X86_REG_CX)):
                     offset=int.from_bytes(m.cpu.mem_read(0xF0000+values+index*2,2),'little')
                     labels.append(bytes(m.cpu.mem_read(0xF0000+offset,32)).split(b'\0')[0])
-                assert labels==([b'ECP',b'EPP',b'Printer'] if field==3 else [b'1',b'3'])
-            registers=dict(AX=0xB700|value,BX=pointer,CX=0x1234,DX=0xABCD,SI=0x3388,DI=0x5566,BP=0x7F20,EFLAGS=flags)
-            m.call('setup_enum_store',**registers)
-            for register,expected in registers.items():
-                assert m.cpu.reg_read(getattr(x,'UC_X86_REG_'+register))==expected,(field,register)
-            expected_ports=bytearray(before_ports);expected_chip=bytearray(before_chip)
-            if field==4:expected_chip[22]|=2
-            else:expected_ports[slot]=2-value if field==3 else value
-            assert bytes(m.cpu.mem_read(m.base+m.state['U_PORTS'],8))==expected_ports
-            assert bytes(m.cpu.mem_read(m.base+m.state['U_CHIP'],24))==expected_chip
-            rows.append(dict(field=field,flags=flags,registers_preserved=True,only_existing_owner_changed=True))
+                assert labels==list(wanted_labels),(field,labels)
+                for candidate in (value,len(encodings)):
+                    m.call('ports_ui_choice_valid',AX=candidate)
+                    assert bool(m.cpu.reg_read(x.UC_X86_REG_EFLAGS)&1)==(candidate==len(encodings))
+                # Commit from a different live owner value, so an omitted store
+                # cannot pass merely because normalization found the old value.
+                previous=encodings[(value+1)%len(encodings)]
+                if field==4:
+                    before_chip=before_chip[:22]+bytes(((before_chip[22]&~2)|previous,))+before_chip[23:]
+                    m.cpu.mem_write(m.base+m.state['U_CHIP'],before_chip)
+                else:
+                    changed=bytearray(before_ports);changed[slot]=previous;before_ports=bytes(changed)
+                    m.cpu.mem_write(m.base+m.state['U_PORTS'],before_ports)
+                registers=dict(AX=0xB700|value,BX=pointer,CX=0x1234,DX=0xABCD,SI=0x3388,DI=0x5566,BP=0x7F20,EFLAGS=flags)
+                m.call('setup_enum_store',**registers)
+                for register,expected in registers.items():
+                    assert m.cpu.reg_read(getattr(x,'UC_X86_REG_'+register))==expected,(field,value,register)
+                expected_ports=bytearray(before_ports);expected_chip=bytearray(before_chip)
+                if field==4:expected_chip[22]=(expected_chip[22]&~2)|encoded
+                else:expected_ports[slot]=encoded
+                assert bytes(m.cpu.mem_read(m.base+m.state['U_PORTS'],8))==expected_ports
+                assert bytes(m.cpu.mem_read(m.base+m.state['U_CHIP'],24))==expected_chip
+                m.call('ports_ui_parameters')
+                assert m.get('U_CHIP_VALUE')==value,(field,value,'committed display round trip')
+                rows.append(dict(field=field,choice=value,stored=encoded,flags=flags,
+                                 registers_preserved=True,only_existing_owner_changed=True))
     return rows
 
 
@@ -677,7 +759,20 @@ def t4_policy_cases(image):
                 assert b'Floppy Controller' not in text and b'DRAM Read Waits' not in text
                 labels=[text[row*80+23:row*80+48].strip() for row in range(5,10)]
                 if self.get('U_FOCUS')==1 and not b'SELECT VALUE' in text and b'DMA channel used' not in text:
-                    assert labels==[b'Serial Port',b'Serial Port B',b'Parallel Port',b'Parallel Port Mode',b'Parallel ECP DMA Channel'],labels
+                    assert labels==[b'Serial Port A',b'Serial Port B',b'Parallel Port',b'Parallel Port Mode',b'Parallel ECP DMA Channel'],labels
+                if hasattr(self,'address_checkpoints') and len(self.keys) in self.address_checkpoints:
+                    field,slot,encodings,wanted,index,popup=self.address_checkpoints.pop(len(self.keys))
+                    assert self.get('U_FIELD')==field,(field,self.get('U_FIELD'))
+                    if popup:
+                        assert b'SELECT VALUE' in text[8*80:9*80]
+                        rendered=[text[row*80+26:row*80+50].strip() for row in (10,11,12)]
+                        assert rendered==list(wanted),(field,rendered)
+                        assert not text[13*80+26:13*80+43].strip(),'Unsupported fourth address option'
+                        assert cpu.reg_read(x.UC_X86_REG_BP)==index,(field,index,'popup selection')
+                    else:
+                        assert cpu.mem_read(self.base+self.state['U_PORTS']+slot,1)[0]==encodings[index]
+                        assert text[(5+field)*80+49:(5+field)*80+77].strip()==wanted[index]
+                    self.address_seen.append((field,index,popup))
                 if hasattr(self,'checkpoints') and len(self.keys) in self.checkpoints:
                     field,lpt,mode,chip=self.checkpoints.pop(len(self.keys))
                     assert self.get('U_FIELD')==field,(field,self.get('U_FIELD'))
@@ -696,14 +791,62 @@ def t4_policy_cases(image):
                         assert b'3 is the default. Avoid other devices using it.' in text
                         self.help_seen=True
             return super().interrupt(cpu,number,data)
-    masks=bytes.fromhex('F0010170900301FFFF070F7F010F01FCFFFF0F01FF01030F')
+    masks=bytes.fromhex('F0010170900301FFFF070F7F010F01FCFFFF0F01FF01031F')
     def packed(chip):
         bits=[v>>bit&1 for v,mask in zip(chip,masks) for bit in range(8) if mask>>bit&1]
-        assert len(bits)==92
+        assert len(bits)==93
         raw=bytearray(b'W\0'+sum(v<<i for i,v in enumerate(bits)).to_bytes(13,'little'))
         raw[1]=-sum(raw)&255
         return raw
     rows=[]
+    # Exercise both directions through every supported address, then save each
+    # choice through real keyboard input. The expected encodings come from the
+    # UM8663 base selectors, independently of the firmware's display tables.
+    address_choices=((0,0,(3,1,0),(b'3E8h / COM3 / IRQ4',b'3F8h / COM1 / IRQ4',b'Disabled')),
+                     (1,1,(4,2,0),(b'2E8h / COM4 / IRQ3',b'2F8h / COM2 / IRQ3',b'Disabled')),
+                     (2,3,(3,2,0),(b'278h / LPT2',b'378h / LPT1',b'Disabled')))
+    for field,slot,encodings,wanted in address_choices:
+        for method in ('arrow','popup'):
+            for target in range(3):
+                m=Screen(image);m.initial=1;m.address_seen=[]
+                m.cpu.mem_write(m.base+m.state['C_PORTS'],bytes((1,2,1,2,2,1,0,1)))
+                before=bytes(m.cpu.mem_read(m.base+m.state['C_PORTS'],8))
+                chip=bytes(m.cpu.mem_read(m.base+m.state['C_CHIP'],24))
+                m.cpu.mem_write(m.base+m.state['C_CHIP']+22,bytes((chip[22]&~2,)))
+                chip=bytes(m.cpu.mem_read(m.base+m.state['C_CHIP'],24))
+                keys=[0x5000]*3+[9]+[0x5000]*field;points=[];index=1
+                def checkpoint(popup):
+                    points.append((len(keys),(field,slot,encodings,wanted,index,popup)))
+                if method=='popup':keys.append(13)
+                checkpoint(method=='popup')
+                for direction,key in ((1,0x5000 if method=='popup' else 0x4D00),
+                                      (-1,0x4800 if method=='popup' else 0x4B00)):
+                    for unused in range(3):
+                        keys.append(key);index=(index+direction)%3;checkpoint(method=='popup')
+                for unused in range((target-index)%3):
+                    keys.append(0x5000 if method=='popup' else 0x4D00)
+                    index=(index+1)%3;checkpoint(method=='popup')
+                if method=='popup':keys.append(13);checkpoint(False)
+                keys += [0x4400,ord('y')]
+                m.keys=keys;m.address_checkpoints={len(keys)-at:point for at,point in points}
+                m.call('setup_main',count=12000000)
+                assert not m.keys and not m.address_checkpoints and m.reset
+                assert {choice for unused,choice,popup in m.address_seen if popup==(method=='popup')}=={0,1,2}
+                expected=bytearray(before);expected[slot]=encodings[target]
+                assert bytes(m.cpu.mem_read(m.base+m.state['U_PORTS'],8))==expected
+                fresh=Screen(image);fresh.cmos[:]=m.cmos;fresh.writes.clear();fresh.call('settings_load')
+                assert not fresh.writes and bytes(fresh.cpu.mem_read(fresh.base+fresh.state['C_PORTS'],8))==expected
+                assert bytes(fresh.cpu.mem_read(fresh.base+fresh.state['C_CHIP'],24))==chip
+                fresh.call('ports_apply')
+                enables=(int(bool(expected[5]))|int(bool(expected[0]))<<1|
+                         int(bool(expected[1]))<<2|int(bool(expected[3]))<<3)
+                bases=1|(2 if expected[0]==1 else 0)|(4 if expected[1]==2 else 0)|(8 if expected[3]==2 else 0)
+                assert fresh.sio[0xC0]==(0xFF&0xD0)|enables
+                assert fresh.sio[0xC1]==0x30|bases|(0x80,0x40,0xC0)[expected[4]]
+                assert not fresh.sio_open
+                rows.append(dict(address_field=field,method=method,choice=target,stored=encodings[target],
+                                 all_choices_both_directions=True,sorted_rendered=True,
+                                 saved_reloaded=True,C0=fresh.sio[0xC0],C1=fresh.sio[0xC1]))
     for initial in (0,1,2,3):
         for action in ('cancel','save'):
             m=Screen(image);m.initial=initial
@@ -734,7 +877,7 @@ def t4_policy_cases(image):
                     assert fresh.sio[0xC4]==0xA5 and not fresh.sio_open
                 assert bytes(fresh.cpu.mem_read(fresh.base+0x60,24))==draft,'Opaque game compatibility bit changed'
             rows.append(dict(initial_compatibility_bits=initial,action=action,Game_absent=True,
-                             game_decode_forced_off=True,ECP_choice_retained=True,packed_bits=92))
+                             game_decode_forced_off=True,ECP_choice_retained=True,packed_bits=93))
     # Real keyboard navigation must skip the inactive DMA row and restore its
     # saved selection when the same parallel port returns to ECP mode.
     for inactive in ('disabled','SPP','EPP'):
@@ -744,9 +887,9 @@ def t4_policy_cases(image):
         keys=[0x5000]*3+[9]+[0x5000]*2
         points=[]
         if inactive=='disabled':
-            keys += [0x4B00,0x5000]
+            keys += [0x4D00,0x5000]
             points.append((len(keys),(2,0,2,1)))
-            keys += [0x4D00,0x5000,0x5000]
+            keys += [0x4B00,0x5000,0x5000]
         else:
             keys += [0x5000]+[0x4D00]*(2 if inactive=='SPP' else 1)+[0x5000]
             points.append((len(keys),(3,2,0 if inactive=='SPP' else 1,1)))
@@ -764,12 +907,12 @@ def t4_policy_cases(image):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--image',type=Path,default=PORT/'build/baios-m919.bin')
-    parser.add_argument('--case',choices=('ide-labels','setup-owners','game-port','ecp-dma','parity-controls','t4-policy','device-commit','device-bounds','choices','irq','cyrix','shadow','parity-fast-boot','final-state','vga-bus','vga-cache','host-header','host-cache'),action='append')
+    parser.add_argument('--case',choices=('early-bus','ide-labels','setup-owners','game-port','ecp-dma','parity-controls','t4-policy','device-commit','device-bounds','choices','irq','cyrix','shadow','parity-fast-boot','final-state','vga-bus','vga-cache','host-header','host-cache'),action='append')
     parser.add_argument('--baseline-image',type=Path,help='Prior candidate expected to fail the Setup owner audit.')
     parser.add_argument('--output',type=Path,help='Distinct evidence export for a focused run.')
     args=parser.parse_args()
     args.image=args.image.resolve()
-    checks={'ide-labels':ide_label_cases,'setup-owners':setup_owner_cases,'game-port':game_port_cases,'ecp-dma':ecp_dma_cases,'parity-controls':parity_controls_cases,'t4-policy':t4_policy_cases,'device-commit':device_commit_cases,'device-bounds':device_bounds_cases,'choices':lambda p:m.tuning_cases(p,shared=False),'irq':irq_cases,'cyrix':cyrix_cases,'shadow':shadow_cases,'parity-fast-boot':parity_fast_boot_cases,'final-state':final_state_cases,'vga-bus':vga_bus_cases,'vga-cache':lambda p:final_state_cases(p,vga_bus=True),'host-header':host_header_cases,'host-cache':host_cache_cases}
+    checks={'early-bus':early_bus_cases,'ide-labels':ide_label_cases,'setup-owners':setup_owner_cases,'game-port':game_port_cases,'ecp-dma':ecp_dma_cases,'parity-controls':parity_controls_cases,'t4-policy':t4_policy_cases,'device-commit':device_commit_cases,'device-bounds':device_bounds_cases,'choices':lambda p:m.tuning_cases(p,shared=False),'irq':irq_cases,'cyrix':cyrix_cases,'shadow':shadow_cases,'parity-fast-boot':parity_fast_boot_cases,'final-state':final_state_cases,'vga-bus':vga_bus_cases,'vga-cache':lambda p:final_state_cases(p,vga_bus=True),'host-header':host_header_cases,'host-cache':host_cache_cases}
     result_dir=args.image.parent.parent if args.image.parent.name=='image' else PORT/'build/tests/manual-rebuild'
     target=args.output.resolve() if args.output else result_dir/'oem-tuning.json'
     identity=m.verify(PORT,args.image)['sha256']
