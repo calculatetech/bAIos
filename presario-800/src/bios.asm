@@ -24,6 +24,8 @@ org 0
 %endif
 
 %include "shared-owner.inc"
+presario_shared "setup/ui-text-pairs.inc"
+presario_shared "setup/ui-text.inc"
 presario_shared "firmware/cache-lifecycle.inc"
 presario_shared "pc/cache-test.inc"
 

@@ -6,8 +6,10 @@ mp_board_controlled db 'Automatic',0
 u_chip_title db 'bAIos Setup > Chipset',0
 u_chip_open db 'Open',0x1A,0
 u_chip_help dw u_chip_menu,mp_chip_help1,mp_chip_help2
-mp_chip_help1 db 'Adjust bus, memory and ROM settings.',0
-mp_chip_help2 db 'F9 restores defaults. Save applies after restart.',0
+mp_chip_help1:
+    ui_string 'Adjust bus, memory and ROM settings.', mp_chip_help1
+mp_chip_help2:
+    ui_string 'F9 restores defaults. Save applies after restart.', mp_chip_help2
 %macro mp_reverse_field 8
     dw %1
     db %2,%3,%4
@@ -148,70 +150,110 @@ mp_clk2_4 dw mp_clk2_4_0,mp_clk2_4_1,mp_clk2_4_2,mp_clk2_4_3
 mp_clk2_2 dw mp_clk2_2_0,mp_clk2_2_1
 mp_clk2_8 dw mp_clk2_8_0,mp_clk2_8_1,mp_clk2_8_2,mp_clk2_8_3,mp_clk2_8_4,mp_clk2_8_5,mp_clk2_8_6,mp_clk2_8_7
 mp_bus_source db 'Bus Clock Source',0
-mp_bus_source_help1 db 'Select the source for the bus clock.',0
-mp_bus_source_help2 db 'Use CLK1 with the normal board configuration.',0
+mp_bus_source_help1:
+    ui_string 'Select the source for the bus clock.', mp_bus_source_help1
+mp_bus_source_help2:
+    ui_string 'Use CLK1 with the normal board configuration.', mp_bus_source_help2
 mp_bus_divisor db 'Bus Clock Divider',0
-mp_bus_divisor_help1 db 'Divide the selected bus clock by this value.',0
-mp_bus_divisor_help2 db 'Default follows the board clock switch.',0
+mp_bus_divisor_help1:
+    ui_string 'Divide the selected bus clock by this value.', mp_bus_divisor_help1
+mp_bus_divisor_help2:
+    ui_string 'Default follows the board clock switch.', mp_bus_divisor_help2
 mp_trigger db 'Bus Trigger',0
-mp_trigger_help1 db 'Choose when a bus transfer starts.',0
-mp_trigger_help2 db 'Default End. Keep it unless testing bus timing.',0
+mp_trigger_help1:
+    ui_string 'Choose when a bus transfer starts.', mp_trigger_help1
+mp_trigger_help2:
+    ui_string 'Default End. Keep it unless testing bus timing.', mp_trigger_help2
 mp_posted db 'Posted Writes',0
-mp_posted_help1 db 'Let the processor continue during a bus write.',0
-mp_posted_help2 db 'Default Disabled. Some cards need this delay.',0
+mp_posted_help1:
+    ui_string 'Let the processor continue during a bus write.', mp_posted_help1
+mp_posted_help2:
+    ui_string 'Default Disabled. Some cards need this delay.', mp_posted_help2
 mp_bale db 'BALE Width',0
-mp_bale_help1 db 'Set how long the bus address latch stays active.',0
-mp_bale_help2 db 'Default 0.5 clock. Longer can help older cards.',0
+mp_bale_help1:
+    ui_string 'Set how long the bus address latch stays active.', mp_bale_help1
+mp_bale_help2:
+    ui_string 'Default 0.5 clock. Longer can help older cards.', mp_bale_help2
 mp_wait8 db '8-bit Bus Wait',0
-mp_wait8_help1 db 'Set the wait for an 8-bit bus transfer.',0
-mp_wait8_help2 db 'Default 4 clocks. More waits give cards more time.',0
+mp_wait8_help1:
+    ui_string 'Set the wait for an 8-bit bus transfer.', mp_wait8_help1
+mp_wait8_help2:
+    ui_string 'Default 4 clocks. More waits give cards more time.', mp_wait8_help2
 mp_wait16 db '16-bit Bus Wait',0
-mp_wait16_help1 db 'Set the wait for a 16-bit bus transfer.',0
-mp_wait16_help2 db 'Default 2 clocks. More waits give cards more time.',0
+mp_wait16_help1:
+    ui_string 'Set the wait for a 16-bit bus transfer.', mp_wait16_help1
+mp_wait16_help2:
+    ui_string 'Default 2 clocks. More waits give cards more time.', mp_wait16_help2
 mp_dma_delay db 'DMA Delay',0
-mp_dma_delay_help1 db 'Wait before a direct memory transfer starts.',0
-mp_dma_delay_help2 db 'SCLK is one bus clock. Default 2 SCLK.',0
+mp_dma_delay_help1:
+    ui_string 'Wait before a direct memory transfer starts.', mp_dma_delay_help1
+mp_dma_delay_help2:
+    ui_string 'SCLK is one bus clock. Default 2 SCLK.', mp_dma_delay_help2
 mp_dma_width db 'DMA Width',0
-mp_dma_width_help1 db 'Set the active time for a direct memory transfer.',0
-mp_dma_width_help2 db 'SCLK is one bus clock. Default 4 SCLK.',0
+mp_dma_width_help1:
+    ui_string 'Set the active time for a direct memory transfer.', mp_dma_width_help1
+mp_dma_width_help2:
+    ui_string 'SCLK is one bus clock. Default 4 SCLK.', mp_dma_width_help2
 mp_dma_off db 'DMA Recovery',0
-mp_dma_off_help1 db 'Wait between direct memory transfers.',0
+mp_dma_off_help1:
+    ui_string 'Wait between direct memory transfers.', mp_dma_off_help1
 mp_dma_off_help2 equ mp_dma_delay_help2
 mp_refresh db 'Refresh Period',0
-mp_refresh_help1 db 'Choose the time between memory refreshes.',0
-mp_refresh_help2 db 'Default 15 us. Longer needs compatible RAM.',0
+mp_refresh_help1:
+    ui_string 'Choose the time between memory refreshes.', mp_refresh_help1
+mp_refresh_help2:
+    ui_string 'Default 15 us. Longer needs compatible RAM.', mp_refresh_help2
 mp_rcap db 'Read Address Timing',0
-mp_rcap_help1 db 'Choose when the RAM read address is latched.',0
-mp_rcap_help2 db 'Default End. Changing it can cause RAM errors.',0
+mp_rcap_help1:
+    ui_string 'Choose when the RAM read address is latched.', mp_rcap_help1
+mp_rcap_help2:
+    ui_string 'Default End. Changing it can cause RAM errors.', mp_rcap_help2
 mp_write_timing db 'Write Timing',0
-mp_write_timing_help1 db 'Choose when the RAM write cycle starts.',0
-mp_write_timing_help2 db 'Default Mid. Changing it can cause RAM errors.',0
+mp_write_timing_help1:
+    ui_string 'Choose when the RAM write cycle starts.', mp_write_timing_help1
+mp_write_timing_help2:
+    ui_string 'Default Mid. Changing it can cause RAM errors.', mp_write_timing_help2
 mp_address_edge db 'RAM Address Edge',0
-mp_address_edge_help1 db 'Choose the clock edge used for the RAM address.',0
-mp_address_edge_help2 db 'Default Rise. Changing it can cause RAM errors.',0
+mp_address_edge_help1:
+    ui_string 'Choose the clock edge used for the RAM address.', mp_address_edge_help1
+mp_address_edge_help2:
+    ui_string 'Default Rise. Changing it can cause RAM errors.', mp_address_edge_help2
 mp_shadow db 'System ROM Shadow',0
-mp_shadow_help1 db 'Copy the system BIOS to RAM for faster access.',0
-mp_shadow_help2 db 'Default Enabled. Disable to run from the ROM.',0
+mp_shadow_help1:
+    ui_string 'Copy the system BIOS to RAM for faster access.', mp_shadow_help1
+mp_shadow_help2:
+    ui_string 'Default Enabled. Disable to run from the ROM.', mp_shadow_help2
 mp_bank0_casras db 'CAS to RAS',0
-mp_bank0_casras_help1 db 'Wait between the column and row strobes.',0
-mp_bank0_casras_help2 db 'Default 3 CLK2. CLK2 is one memory clock step.',0
+mp_bank0_casras_help1:
+    ui_string 'Wait between the column and row strobes.', mp_bank0_casras_help1
+mp_bank0_casras_help2:
+    ui_string 'Default 3 CLK2. CLK2 is one memory clock step.', mp_bank0_casras_help2
 mp_bank0_colsetup db 'Column Address Setup',0
-mp_bank0_colsetup_help1 db 'Time to hold the column address before use.',0
-mp_bank0_colsetup_help2 db 'Default 1 CLK2. CLK2 is one memory clock step.',0
+mp_bank0_colsetup_help1:
+    ui_string 'Time to hold the column address before use.', mp_bank0_colsetup_help1
+mp_bank0_colsetup_help2:
+    ui_string 'Default 1 CLK2. CLK2 is one memory clock step.', mp_bank0_colsetup_help2
 mp_bank0_rowhold db 'Row Address Hold',0
-mp_bank0_rowhold_help1 db 'Time to keep the RAM row address stable.',0
+mp_bank0_rowhold_help1:
+    ui_string 'Time to keep the RAM row address stable.', mp_bank0_rowhold_help1
 mp_bank0_rowhold_help2 equ mp_bank0_colsetup_help2
 mp_bank0_caspre db 'CAS Precharge',0
-mp_bank0_caspre_help1 db 'Wait between column access pulses.',0
+mp_bank0_caspre_help1:
+    ui_string 'Wait between column access pulses.', mp_bank0_caspre_help1
 mp_bank0_caspre_help2 equ mp_bank0_colsetup_help2
 mp_bank0_caswidth db 'CAS Width',0
-mp_bank0_caswidth_help1 db 'Set the length of a column access pulse.',0
-mp_bank0_caswidth_help2 db 'Default 4 CLK2. CLK2 is one memory clock step.',0
+mp_bank0_caswidth_help1:
+    ui_string 'Set the length of a column access pulse.', mp_bank0_caswidth_help1
+mp_bank0_caswidth_help2:
+    ui_string 'Default 4 CLK2. CLK2 is one memory clock step.', mp_bank0_caswidth_help2
 mp_bank0_raspre db 'RAS Precharge',0
-mp_bank0_raspre_help1 db 'Wait before opening another RAM row.',0
-mp_bank0_raspre_help2 db 'Default 5 CLK2. CLK2 is one memory clock step.',0
+mp_bank0_raspre_help1:
+    ui_string 'Wait before opening another RAM row.', mp_bank0_raspre_help1
+mp_bank0_raspre_help2:
+    ui_string 'Default 5 CLK2. CLK2 is one memory clock step.', mp_bank0_raspre_help2
 mp_bank0_raswidth db 'RAS Width',0
-mp_bank0_raswidth_help1 db 'Set how long a RAM row stays active.',0
+mp_bank0_raswidth_help1:
+    ui_string 'Set how long a RAM row stays active.', mp_bank0_raswidth_help1
 mp_bank0_raswidth_help2 equ mp_bank0_raspre_help2
 mp_bank1_casras equ mp_bank0_casras
 mp_bank1_casras_help1 equ mp_bank0_casras_help1
@@ -239,7 +281,8 @@ mp_bank2_casras_help1 equ mp_bank0_casras_help1
 mp_bank2_casras_help2 equ mp_bank0_casras_help2
 mp_bank2_colsetup equ mp_bank0_colsetup
 mp_bank2_colsetup_help1 equ mp_bank0_colsetup_help1
-mp_bank2_colsetup_help2 db 'Default 2 CLK2. CLK2 is one memory clock step.',0
+mp_bank2_colsetup_help2:
+    ui_string 'Default 2 CLK2. CLK2 is one memory clock step.', mp_bank2_colsetup_help2
 mp_bank2_rowhold equ mp_bank0_rowhold
 mp_bank2_rowhold_help1 equ mp_bank0_rowhold_help1
 mp_bank2_rowhold_help2 equ mp_bank2_colsetup_help2
@@ -382,4 +425,5 @@ mp_clk2_8_6 db '7 CLK2',0
 mp_clk2_8_7 db '8 CLK2',0
 chip_page_prefix db 'Page ',0
 chip_page_slash db ' / ',0
-chip_page_keys db 'Esc Back   F1 Help   F9 Defaults   F10 Save',0
+chip_page_keys:
+    ui_string 'Esc Back   F1 Help   F9 Defaults   F10 Save', chip_page_keys

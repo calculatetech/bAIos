@@ -2373,6 +2373,24 @@ setup_text:
     push ax
     push si
     push di
+    push bx
+    push cx
+    push dx
+    mov ax, ds
+    mov dx, cs
+    cmp ax, dx
+    jne .next
+    cmp byte [si], 1
+    jne .next
+    inc si
+    mov dl, bh
+    mov cx, 32
+.encoded:
+    lodsb
+    test al, al
+    jz .done
+    call .token
+    jmp .encoded
 .next:
     lodsb
     test al, al
@@ -2384,10 +2402,41 @@ setup_text:
     pop ax
     jmp .next
 .done:
+    pop dx
+    pop cx
+    pop bx
     pop di
     pop si
     pop ax
     ret
+.token:
+    cmp al, 128
+    jb .glyph
+    jcxz .return
+    dec cx
+    xor ah, ah
+    sub al, 128
+    shl ax, 1
+    mov bx, ax
+    push bx
+    mov al, [cs:ui_text_pairs + bx]
+    call .token
+    pop bx
+    mov al, [cs:ui_text_pairs + bx + 1]
+    call .token
+    inc cx
+.return:
+    ret
+.glyph:
+    mov ah, dl
+    call setup_color
+    stosw
+    ret
+ui_text_pairs:
+    db UI_TEXT_PAIRS
+%if $ - ui_text_pairs != 256
+%error "Setup pair grammar must occupy256 bytes"
+%endif
 
 setup_value:
     push ax
@@ -3557,16 +3606,20 @@ u_standard_title db 'bAIos Setup > Standard Setup',0
 u_drives_title db 'bAIos Setup > Drives',0
 u_boot_title db 'bAIos Setup > Boot',0
 u_exit_title db 'bAIos Setup > Exit Setup',0
-u_footer db 'F1 Help   F4/F5 Theme   F9 Defaults   F10 Save',0
-u_edit_footer db 'F1 Help   F4/F5 Theme',0
-u_time_footer db 'A/P AM/PM   F1 Help   F4/F5 Theme',0
+u_footer:
+    ui_string 'F1 Help   F4/F5 Theme   F9 Defaults   F10 Save', u_footer
+u_edit_footer:
+    ui_string 'F1 Help   F4/F5 Theme', u_edit_footer
+u_time_footer:
+    ui_string 'A/P AM/PM   F1 Help   F4/F5 Theme', u_time_footer
 u_version db 'Version:',0
 u_clock_format db 'Time Format',0
 u_clock_formats dw u_clock12,u_clock24
 u_clock12 db '12 Hour',0
 u_clock24 db '24 Hour',0
 u_choices db 'SELECT VALUE',0
-u_choices_keys db 'Arrows Select   Enter Apply   Esc Cancel',0
+u_choices_keys:
+    ui_string 'Arrows Select   Enter Apply   Esc Cancel', u_choices_keys
 u_date db 'System Date',0
 u_time db 'System Time',0
 u_total db 'Total Memory',0
@@ -3657,18 +3710,24 @@ IDE_PIO_HELP_TOPIC equ ($-u_help_topics)/6
 FAST_BOOT_HELP_TOPIC equ ($-u_help_topics)/6
     dw u_fast_boot,u_help_fast1,u_help_fast2
 u_fast_boot db 'Fast Boot',0
-u_help_fast1 db 'Skip the startup RAM test above 1 MB.',0
-u_help_fast2 db 'Off runs the full test and is the default.',0
+u_help_fast1:
+    ui_string 'Skip the startup RAM test above 1 MB.', u_help_fast1
+u_help_fast2:
+    ui_string 'Off runs the full test and is the default.', u_help_fast2
 %endif
 %ifdef BOARD_IDE_32BIT_POLICY
 u_ide_dword db '32-bit ATA Transfers',0
-u_help_ide_dword1 db 'Uses 32-bit data transfers on supported IDE.',0
-u_help_ide_dword2 db 'Disabled uses the compatible 16-bit default.',0
+u_help_ide_dword1:
+    ui_string 'Uses 32-bit data transfers on supported IDE.', u_help_ide_dword1
+u_help_ide_dword2:
+    ui_string 'Disabled uses the compatible 16-bit default.', u_help_ide_dword2
 %endif
 %ifdef BOARD_ATA_PIO_POLICY
 u_ide_pio db 'PIO Mode Limit',0
-u_help_ide_pio1 db 'Limits IDE speed. Auto selects a supported mode.',0
-u_help_ide_pio2 db 'Faster modes need the actual 33 MHz timing clock.',0
+u_help_ide_pio1:
+    ui_string 'Limits IDE speed. Auto selects a supported mode.', u_help_ide_pio1
+u_help_ide_pio2:
+    ui_string 'Faster modes need the actual 33 MHz timing clock.', u_help_ide_pio2
 u_ide_pio_values dw u_auto,u_ide_pio0,u_ide_pio1,u_ide_pio2,u_ide_pio3,u_ide_pio4
 u_ide_pio_choices dw u_ide_pio0,u_ide_pio1,u_ide_pio2,u_ide_pio3,u_ide_pio4,u_auto
 u_ide_pio0 db '0',0
@@ -3690,31 +3749,56 @@ ide_ui_pio_value:
     or al,ah
     ret
 %endif
-u_help_standard1 db 'System date, time, and detected memory.',0
-u_help_standard2 db 'Select a clock field to edit it.',0
-u_help_date1 db 'Calendar date: 1980-2099.',0
-u_help_date2 db 'MM/DD/YYYY. Enter applies the date.',0
-u_help_time1 db '12-hour clock. Press A for AM or P for PM.',0
-u_help_time2 db 'Enter applies the time; Esc cancels the edit.',0
-u_help_time24 db '24-hour clock: 00:00:00 to 23:59:59.',0
-u_help_format1 db 'Choose a 12-hour or 24-hour clock display.',0
-u_help_format2 db 'This changes how the time appears in Setup.',0
-u_help_drives1 db 'Choose the installed drives and their settings.',0
-u_help_drives2 db 'Enter opens all choices. Arrows change values.',0
-u_help_exit1 db 'Save settings and restart, or discard edits.',0
-u_help_exit2 db 'Confirmed clock changes are retained.',0
-u_help_floppy1 db 'Select the installed drive type, or None.',0
-u_help_floppy2 db 'The type sets drive capacity, not disk capacity.',0
-u_help_hdd1 db 'Auto detects hard disks and CD drives at startup.',0
-u_help_hdd2 db 'Disabled stops the BIOS from using this drive.',0
-u_help_boot1 db 'Choose which device to try at each boot step.',0
-u_help_boot2 db 'Other tries boot support on expansion cards.',0
-u_help_seek1 db 'Check drives during POST. Default Enabled.',0
-u_help_seek2 db 'No disk is needed. Halt On sets error behavior.',0
-u_help_save1 db 'Save your settings and restart the computer.',0
-u_help_save2 db 'The BIOS checks that your settings were saved.',0
-u_help_discard1 db 'Return without saving your setting changes.',0
-u_help_discard2 db 'Confirmed clock changes are retained.',0
+u_help_standard1:
+    ui_string 'System date, time, and detected memory.', u_help_standard1
+u_help_standard2:
+    ui_string 'Select a clock field to edit it.', u_help_standard2
+u_help_date1:
+    ui_string 'Calendar date: 1980-2099.', u_help_date1
+u_help_date2:
+    ui_string 'MM/DD/YYYY. Enter applies the date.', u_help_date2
+u_help_time1:
+    ui_string '12-hour clock. Press A for AM or P for PM.', u_help_time1
+u_help_time2:
+    ui_string 'Enter applies the time; Esc cancels the edit.', u_help_time2
+u_help_time24:
+    ui_string '24-hour clock: 00:00:00 to 23:59:59.', u_help_time24
+u_help_format1:
+    ui_string 'Choose a 12-hour or 24-hour clock display.', u_help_format1
+u_help_format2:
+    ui_string 'This changes how the time appears in Setup.', u_help_format2
+u_help_drives1:
+    ui_string 'Choose the installed drives and their settings.', u_help_drives1
+u_help_drives2:
+    ui_string 'Enter opens all choices. Arrows change values.', u_help_drives2
+u_help_exit1:
+    ui_string 'Save settings and restart, or discard edits.', u_help_exit1
+u_help_exit2:
+    ui_string 'Confirmed clock changes are retained.', u_help_exit2
+u_help_floppy1:
+    ui_string 'Select the installed drive type, or None.', u_help_floppy1
+u_help_floppy2:
+    ui_string 'The type sets drive capacity, not disk capacity.', u_help_floppy2
+u_help_hdd1:
+    ui_string 'Auto detects hard disks and CD drives at startup.', u_help_hdd1
+u_help_hdd2:
+    ui_string 'Disabled stops the BIOS from using this drive.', u_help_hdd2
+u_help_boot1:
+    ui_string 'Choose which device to try at each boot step.', u_help_boot1
+u_help_boot2:
+    ui_string 'Other tries boot support on expansion cards.', u_help_boot2
+u_help_seek1:
+    ui_string 'Check drives during POST. Default Enabled.', u_help_seek1
+u_help_seek2:
+    ui_string 'No disk is needed. Halt On sets error behavior.', u_help_seek2
+u_help_save1:
+    ui_string 'Save your settings and restart the computer.', u_help_save1
+u_help_save2:
+    ui_string 'The BIOS checks that your settings were saved.', u_help_save2
+u_help_discard1:
+    ui_string 'Return without saving your setting changes.', u_help_discard1
+u_help_discard2:
+    ui_string 'Confirmed clock changes are retained.', u_help_discard2
 u_hdd_values dw u_disabled,u_auto
 u_boot_values dw u_disabled,u_boot_floppy,u_boot_hdd,u_boot_cd,u_boot_other
 u_boot_other db 'Other',0
@@ -3725,12 +3809,18 @@ u_halt_values dw u_halt_all,u_halt_none,u_halt_keyboard
 u_halt_all db 'All Errors',0
 u_halt_none db 'No Errors',0
 u_halt_keyboard db 'All Except Keyboard',0
-u_help_num1 db 'Choose whether Num Lock starts enabled.',0
-u_help_num2 db 'The keypad and keyboard lamp use this value.',0
-u_help_swap1 db 'Swap the names of floppy drives A and B.',0
-u_help_swap2 db 'Set each drive type for its original connector.',0
-u_help_halt1 db 'Choose which errors pause startup.',0
-u_help_halt2 db 'Serious hardware faults always stop startup.',0
+u_help_num1:
+    ui_string 'Choose whether Num Lock starts enabled.', u_help_num1
+u_help_num2:
+    ui_string 'The keypad and keyboard lamp use this value.', u_help_num2
+u_help_swap1:
+    ui_string 'Swap the names of floppy drives A and B.', u_help_swap1
+u_help_swap2:
+    ui_string 'Set each drive type for its original connector.', u_help_swap2
+u_help_halt1:
+    ui_string 'Choose which errors pause startup.', u_help_halt1
+u_help_halt2:
+    ui_string 'Serious hardware faults always stop startup.', u_help_halt2
 u_seek_values dw u_off,u_on
 u_off:
 u_disabled db 'Disabled',0
@@ -4541,32 +4631,56 @@ u_ide_block16 db '16 sectors',0
 u_ide_block32 db '32 sectors',0
 u_ide_block64 db '64 sectors',0
 u_ide_block128 db '128 sectors',0
-u_help_ide_enabled1 db 'Disabled stops the BIOS from using this drive.',0
-u_help_ide_enabled2 db 'Other drives keep their own settings.',0
-u_help_ide_type1 db 'Auto detects. None leaves it to an expansion card.',0
-u_help_ide_type2 db 'Choose User to enter the drive details yourself.',0
-u_help_ide_translation1 db 'Choose how the BIOS addresses this hard disk.',0
-u_help_ide_translation2 db 'Keep the mode used when the disk was formatted.',0
-u_help_ide_block1 db 'Transfer several disk sectors together.',0
-u_help_ide_block2 db 'Auto selects a size supported by the drive.',0
-u_help_ide_cyl1 db 'For User type, enter the cylinder count: 1-65535.',0
-u_help_ide_cyl2 db 'Use the value printed on the drive or its manual.',0
-u_help_ide_heads1 db 'For User type, enter the head count: 1-16.',0
-u_help_ide_heads2 db 'Use the value printed on the drive or its manual.',0
-u_help_ide_sectors1 db 'For User type, enter sectors per track: 1-63.',0
-u_help_ide_sectors2 db 'Use the value printed on the drive or its manual.',0
-u_help_ide_precomp1 db 'An older drive setting. 65535 means None.',0
-u_help_ide_precomp2 db 'IDE drives manage this themselves.',0
-u_help_ide_landing1 db 'An older head parking setting: 0-65535.',0
-u_help_ide_landing2 db 'IDE drives park their heads themselves.',0
-u_help_ide_edd1 db 'Enable extended BIOS support for larger disks.',0
-u_help_ide_edd2 db 'Disable only for software that needs older access.',0
+u_help_ide_enabled1:
+    ui_string 'Disabled stops the BIOS from using this drive.', u_help_ide_enabled1
+u_help_ide_enabled2:
+    ui_string 'Other drives keep their own settings.', u_help_ide_enabled2
+u_help_ide_type1:
+    ui_string 'Auto detects. None leaves it to an expansion card.', u_help_ide_type1
+u_help_ide_type2:
+    ui_string 'Choose User to enter the drive details yourself.', u_help_ide_type2
+u_help_ide_translation1:
+    ui_string 'Choose how the BIOS addresses this hard disk.', u_help_ide_translation1
+u_help_ide_translation2:
+    ui_string 'Keep the mode used when the disk was formatted.', u_help_ide_translation2
+u_help_ide_block1:
+    ui_string 'Transfer several disk sectors together.', u_help_ide_block1
+u_help_ide_block2:
+    ui_string 'Auto selects a size supported by the drive.', u_help_ide_block2
+u_help_ide_cyl1:
+    ui_string 'For User type, enter the cylinder count: 1-65535.', u_help_ide_cyl1
+u_help_ide_cyl2:
+    ui_string 'Use the value printed on the drive or its manual.', u_help_ide_cyl2
+u_help_ide_heads1:
+    ui_string 'For User type, enter the head count: 1-16.', u_help_ide_heads1
+u_help_ide_heads2:
+    ui_string 'Use the value printed on the drive or its manual.', u_help_ide_heads2
+u_help_ide_sectors1:
+    ui_string 'For User type, enter sectors per track: 1-63.', u_help_ide_sectors1
+u_help_ide_sectors2:
+    ui_string 'Use the value printed on the drive or its manual.', u_help_ide_sectors2
+u_help_ide_precomp1:
+    ui_string 'An older drive setting. 65535 means None.', u_help_ide_precomp1
+u_help_ide_precomp2:
+    ui_string 'IDE drives manage this themselves.', u_help_ide_precomp2
+u_help_ide_landing1:
+    ui_string 'An older head parking setting: 0-65535.', u_help_ide_landing1
+u_help_ide_landing2:
+    ui_string 'IDE drives park their heads themselves.', u_help_ide_landing2
+u_help_ide_edd1:
+    ui_string 'Enable extended BIOS support for larger disks.', u_help_ide_edd1
+u_help_ide_edd2:
+    ui_string 'Disable only for software that needs older access.', u_help_ide_edd2
 %ifdef BOARD_IDE_SECONDARY_DISABLE_POLICY
-u_help_ide_controller1 db 'Both Channels enables both motherboard IDE ports.',0
-u_help_ide_controller2 db 'Primary Only disables the secondary IDE port.',0
+u_help_ide_controller1:
+    ui_string 'Both Channels enables both motherboard IDE ports.', u_help_ide_controller1
+u_help_ide_controller2:
+    ui_string 'Primary Only disables the secondary IDE port.', u_help_ide_controller2
 %else
-u_help_ide_controller1 db 'Enable the motherboard hard disk controller.',0
-u_help_ide_controller2 db 'Disabled turns off its hard disk and CD drives.',0
+u_help_ide_controller1:
+    ui_string 'Enable the motherboard hard disk controller.', u_help_ide_controller1
+u_help_ide_controller2:
+    ui_string 'Disabled turns off its hard disk and CD drives.', u_help_ide_controller2
 %endif
 
 ports_ui_parameters:
@@ -4726,23 +4840,37 @@ u_lpt1 db '378h / LPT1',0
 u_lpt2 db '278h / LPT2',0
 u_printer db 'Printer',0
 u_bidirectional db 'PS/2 Bidirectional',0
-u_help_devices1 db 'Configure onboard ports and devices.',0
-u_help_devices2 db 'Save applies settings after restart.',0
-u_help_uart1 db 'Choose a COM port number for this serial port.',0
-u_help_uart2 db 'Disabled turns off the onboard serial port.',0
-u_help_pair1 db 'Choose the address pair for COM3 and COM4.',0
-u_help_pair2 db 'Match the addresses required by your software.',0
-u_help_parallel1 db 'Choose the printer port address or Disabled.',0
-u_help_parallel2 db 'Printer ports on expansion cards are also found.',0
+u_help_devices1:
+    ui_string 'Configure onboard ports and devices.', u_help_devices1
+u_help_devices2:
+    ui_string 'Save applies settings after restart.', u_help_devices2
+u_help_uart1:
+    ui_string 'Choose a COM port number for this serial port.', u_help_uart1
+u_help_uart2:
+    ui_string 'Disabled turns off the onboard serial port.', u_help_uart2
+u_help_pair1:
+    ui_string 'Choose the address pair for COM3 and COM4.', u_help_pair1
+u_help_pair2:
+    ui_string 'Match the addresses required by your software.', u_help_pair2
+u_help_parallel1:
+    ui_string 'Choose the printer port address or Disabled.', u_help_parallel1
+u_help_parallel2:
+    ui_string 'Printer ports on expansion cards are also found.', u_help_parallel2
 u_help_mode1 db BOARD_PORTS_MODE_HELP,0
-u_help_mode2 db 'Available when the parallel port is enabled.',0
-u_help_fdc1 db 'Enable or disable both motherboard floppy drives.',0
-u_help_fdc2 db 'Saved drive types remain available when enabled.',0
-u_help_mouse1 db 'Enable or disable the PS/2 mouse port.',0
-u_help_mouse2 db 'Keyboard operation remains enabled.',0
-u_help_isa1 db 'Find serial ports on ISA expansion cards.',0
-u_help_isa2 db 'Set each card with its jumpers or setup program.',0
-
+u_help_mode2:
+    ui_string 'Available when the parallel port is enabled.', u_help_mode2
+u_help_fdc1:
+    ui_string 'Enable or disable both motherboard floppy drives.', u_help_fdc1
+u_help_fdc2:
+    ui_string 'Saved drive types remain available when enabled.', u_help_fdc2
+u_help_mouse1:
+    ui_string 'Enable or disable the PS/2 mouse port.', u_help_mouse1
+u_help_mouse2:
+    ui_string 'Keyboard operation remains enabled.', u_help_mouse2
+u_help_isa1:
+    ui_string 'Find serial ports on ISA expansion cards.', u_help_isa1
+u_help_isa2:
+    ui_string 'Set each card with its jumpers or setup program.', u_help_isa2
 ports_summary:
     pushad
     push ds

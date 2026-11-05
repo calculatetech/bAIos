@@ -48,9 +48,9 @@ def failure_branch(listing,owner):
 
 
 class Settings:
-    def __init__(self, port):
+    def __init__(self, port, build_directory='build/tests/pnp-settings'):
         self.port = port
-        build = ROOT / port / 'build/tests/pnp-settings'
+        build = ROOT / port / build_directory
         self.image = build / ('baios-presario800-system.rom' if port == 'presario-800' else f'baios-{port}.bin')
         self.listing = Listing(self.image.with_suffix('.lst'))
         self.state = constants(ROOT / 'shared/src/pc/state.inc')

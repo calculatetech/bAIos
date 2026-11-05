@@ -248,8 +248,10 @@ def integration():
         data = data.replace('    db 9,4\n    dw chip_rows_12,chip_headers_12', '    db 9,5\n    dw chip_rows_12,chip_headers_12', 1)
         data = data.replace('chip_rows_12 db 5,6,7,8', 'chip_rows_12 db 5,6,7,8,9', 1)
         # Reuse this fixture's help storage so its extra descriptor fits the ROM.
-        data = data.replace("uc_138 db 'Selects the area that uses the Fast ISA divider.',0",
-                            "fixture_name:\nuc_138 db 'Fixture Range',0", 1)
+        literal = re.escape("'Selects the area that uses the Fast ISA divider.'")
+        declaration = rf"(?m)^uc_138(?:[ \t]+db[ \t]+{literal},[ \t]*0|:\n[ \t]+ui_string[ \t]+{literal}(?:,[ \t]*uc_138)?)[ \t]*$"
+        data, replaced = re.subn(declaration,"fixture_name:\nuc_138 db 'Fixture Range',0",data)
+        assert replaced == 1, 'Synthetic104th field must bind its visible name'
         (directory / 'setup-data.inc').write_text(data)
         board = (source / 'boards/presario800.inc').read_text().replace('"chipsets/vl82c481/setup-data.inc"', f'"{(directory / "setup-data.inc").as_posix()}"')
         board = board.replace("'Compaq Presario 800'", "'Fixture Board'")

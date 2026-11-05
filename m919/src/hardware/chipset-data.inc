@@ -114,41 +114,64 @@ chip_cache db 'CPU and Cache',0
 chip_bus db 'PCI Bus',0
 chip_isa_bus db 'ISA Bus',0
 chip_read db 'DRAM Read Waits',0
-chip_read_help1 db 'Adds time for memory to return data.',0
+chip_read_help1:
+    ui_string 'Adds time for memory to return data.', chip_read_help1
 chip_write db 'DRAM Write Waits',0
-chip_write_help1 db 'Adds time for memory to store data.',0
-chip_wait_help db 'Use the slowest timing until stability is proven.',0
+chip_write_help1:
+    ui_string 'Adds time for memory to store data.', chip_write_help1
+chip_wait_help:
+    ui_string 'Use the slowest timing until stability is proven.', chip_wait_help
 chip_type db 'Memory Type',0
-chip_type_help1 db 'Select FPM or EDO to match the installed memory.',0
-chip_type_help2 db 'FPM is the conservative starting choice.',0
+chip_type_help1:
+    ui_string 'Select FPM or EDO to match the installed memory.', chip_type_help1
+chip_type_help2:
+    ui_string 'FPM is the conservative starting choice.', chip_type_help2
 chip_edo_burst db 'EDO Read Burst',0
-chip_edo_burst_help1 db 'Read timing used when EDO mode is active.',0
+chip_edo_burst_help1:
+    ui_string 'Read timing used when EDO mode is active.', chip_edo_burst_help1
 chip_refresh db 'DRAM Refresh',0
-chip_refresh_help1 db 'Select how often memory is refreshed.',0
-chip_refresh_help2 db 'Normal is recommended.',0
+chip_refresh_help1:
+    ui_string 'Select how often memory is refreshed.', chip_refresh_help1
+chip_refresh_help2:
+    ui_string 'Normal is recommended.', chip_refresh_help2
 chip_parity db 'Memory Parity',0
-chip_parity_help1 db 'Reports errors when parity memory is installed.',0
-chip_parity_help2 db 'Leave disabled for non-parity SIMMs.',0
+chip_parity_help1:
+    ui_string 'Reports errors when parity memory is installed.', chip_parity_help1
+chip_parity_help2:
+    ui_string 'Leave disabled for non-parity SIMMs.', chip_parity_help2
 chip_l1 db 'Internal CPU Cache',0
-chip_l1_help1 db 'Enables the cache inside the processor.',0
-chip_l1_help2 db 'Enabled is recommended.',0
+chip_l1_help1:
+    ui_string 'Enables the cache inside the processor.', chip_l1_help1
+chip_l1_help2:
+    ui_string 'Enabled is recommended.', chip_l1_help2
 chip_l2 db 'External Cache',0
-chip_l2_help1 db 'Enables the detected external cache.',0
-chip_l2_help2 db 'Enabled is recommended after its check passes.',0
+chip_l2_help1:
+    ui_string 'Enables the detected external cache.', chip_l2_help1
+chip_l2_help2:
+    ui_string 'Enabled is recommended after its check passes.', chip_l2_help2
 chip_policy db 'External Cache Policy',0
-chip_policy_help1 db 'Select write-through or write-back operation.',0
-chip_policy_help2 db 'Write-back is the normal default.',0
+chip_policy_help1:
+    ui_string 'Select write-through or write-back operation.', chip_policy_help1
+chip_policy_help2:
+    ui_string 'Write-back is the normal default.', chip_policy_help2
 chip_burst db 'L2 Read Burst',0
-chip_burst_help1 db 'Clock cycles for each word in a cache burst.',0
+chip_burst_help1:
+    ui_string 'Clock cycles for each word in a cache burst.', chip_burst_help1
 chip_early db 'Early Cache Write',0
-chip_early_help1 db 'Selects the early cache write timing control.',0
-chip_early_help2 db 'Leave disabled during initial testing.',0
+chip_early_help1:
+    ui_string 'Selects the early cache write timing control.', chip_early_help1
+chip_early_help2:
+    ui_string 'Leave disabled during initial testing.', chip_early_help2
 chip_posted db 'CPU Posted Write Waits',0
-chip_posted_help1 db 'Wait states for CPU writes sent to PCI devices.',0
-chip_posted_help2 db '0 is faster; 1 is the conservative starting choice.',0
+chip_posted_help1:
+    ui_string 'Wait states for CPU writes sent to PCI devices.', chip_posted_help1
+chip_posted_help2:
+    ui_string '0 is faster; 1 is the conservative starting choice.', chip_posted_help2
 chip_pci_burst db 'CPU Burst Writes',0
-chip_pci_burst_help1 db 'Groups consecutive writes to PCI devices.',0
-chip_pci_burst_help2 db 'Disabled is the conservative starting choice.',0
+chip_pci_burst_help1:
+    ui_string 'Groups consecutive writes to PCI devices.', chip_pci_burst_help1
+chip_pci_burst_help2:
+    ui_string 'Disabled is the conservative starting choice.', chip_pci_burst_help2
 chip_wait_values dw chip_wait_3,chip_wait_2,chip_wait_1,chip_wait_0
 chip_wait_choices dw chip_wait_0,chip_wait_1,chip_wait_2,chip_wait_3
 chip_wait_0 db '0',0
@@ -180,44 +203,66 @@ chip_edo_burst_0 db '4-2-2-2',0
 chip_edo_burst_1 db '3-1-1-1',0
 chip_page_prefix db 'Page ',0
 chip_page_slash db ' / ',0
-chip_page_keys db 'PgUp/PgDn Page   F1 Help   F4/F5 Theme   F9 Defaults   F10 Save',0
+chip_page_keys:
+    ui_string 'PgUp/PgDn Page   F1 Help   F4/F5 Theme   F9 Defaults   F10 Save', chip_page_keys
 chipset_group_titles dw chip_cache,chip_bus,chip_irqs,chip_local_bus,chip_isa_bus,chip_memory,chip_rom
 chip_copyback db 'DRAM Burst Writes',0
-chip_copyback_help1 db 'Allows consecutive cache writes back to memory.',0
+chip_copyback_help1:
+    ui_string 'Allows consecutive cache writes back to memory.', chip_copyback_help1
 chip_mem_lock db 'DRAM Resource Lock',0
-chip_mem_lock_help1 db 'Selects the memory resource locking option.',0
+chip_mem_lock_help1:
+    ui_string 'Selects the memory resource locking option.', chip_mem_lock_help1
 chip_ldev db 'Local Device Sampling',0
-chip_ldev_help1 db 'Selects when a local device response is sampled.',0
+chip_ldev_help1:
+    ui_string 'Selects when a local device response is sampled.', chip_ldev_help1
 chip_turbo db 'Turbo Switch',0
-chip_turbo_help1 db 'Allows the board turbo switch to select speed.',0
-chip_turbo_help2 db 'Leave enabled for the normal board behavior.',0
+chip_turbo_help1:
+    ui_string 'Allows the board turbo switch to select speed.', chip_turbo_help1
+chip_turbo_help2:
+    ui_string 'Leave enabled for the normal board behavior.', chip_turbo_help2
 chip_deturbo db 'Deturbo Speed',0
-chip_deturbo_help1 db 'Speed ratio used when the board is in slow mode.',0
-chip_deturbo_help2 db 'This does not change the normal CPU bus speed.',0
+chip_deturbo_help1:
+    ui_string 'Speed ratio used when the board is in slow mode.', chip_deturbo_help1
+chip_deturbo_help2:
+    ui_string 'This does not change the normal CPU bus speed.', chip_deturbo_help2
 chip_pci_posted db 'PCI Posted Writes',0
-chip_pci_posted_help1 db 'Buffers PCI memory writes through the bridge.',0
+chip_pci_posted_help1:
+    ui_string 'Buffers PCI memory writes through the bridge.', chip_pci_posted_help1
 chip_devsel db 'PCI Device Response',0
-chip_devsel_help1 db 'Selects how quickly the bridge claims a transfer.',0
+chip_devsel_help1:
+    ui_string 'Selects how quickly the bridge claims a transfer.', chip_devsel_help1
 chip_bus_lock db 'PCI Lock Method',0
-chip_bus_lock_help1 db 'Locks the bus or the resource during access.',0
+chip_bus_lock_help1:
+    ui_string 'Locks the bus or the resource during access.', chip_bus_lock_help1
 chip_park db 'PCI Bus Parking',0
-chip_park_help1 db 'Lets a PCI master retain the bus while idle.',0
+chip_park_help1:
+    ui_string 'Lets a PCI master retain the bus while idle.', chip_park_help1
 chip_preempt db 'PCI Master Preemption',0
-chip_preempt_help1 db 'Allows a waiting master to request the PCI bus.',0
+chip_preempt_help1:
+    ui_string 'Allows a waiting master to request the PCI bus.', chip_preempt_help1
 chip_pci_parity db 'PCI Parity Check',0
-chip_pci_parity_help1 db 'Selects parity checking for PCI transfers.',0
-chip_pci_parity_help2 db 'Keep the hardware choice unless testing parity.',0
+chip_pci_parity_help1:
+    ui_string 'Selects parity checking for PCI transfers.', chip_pci_parity_help1
+chip_pci_parity_help2:
+    ui_string 'Keep the hardware choice unless testing parity.', chip_pci_parity_help2
 chip_pci_clock db 'PCI Clock Ratio',0
-chip_pci_clock_help1 db 'Selects the PCI clock relative to the CPU bus.',0
+chip_pci_clock_help1:
+    ui_string 'Selects the PCI clock relative to the CPU bus.', chip_pci_clock_help1
 chip_isa_clock db 'ISA Clock Divider',0
-chip_isa_help1 db 'Divides the PCI clock to produce the ISA clock.',0
-chip_clock_help db 'Ratios use bus clocks, not the CPU multiplier.',0
+chip_isa_help1:
+    ui_string 'Divides the PCI clock to produce the ISA clock.', chip_isa_help1
+chip_clock_help:
+    ui_string 'Ratios use bus clocks, not the CPU multiplier.', chip_clock_help
 chip_io_recovery db 'ISA I/O Recovery',0
-chip_io_help1 db 'Adds ISA bus clocks between I/O transfers.',0
-chip_io_help2 db '12 BCLK is the conservative starting choice.',0
+chip_io_help1:
+    ui_string 'Adds ISA bus clocks between I/O transfers.', chip_io_help1
+chip_io_help2:
+    ui_string '12 BCLK is the conservative starting choice.', chip_io_help2
 chip_kbc_clock db 'Keyboard Clock',0
-chip_kbc_help1 db 'Selects the keyboard controller clock source.',0
-chip_keep_help db 'Keep Current preserves the hardware choice.',0
+chip_kbc_help1:
+    ui_string 'Selects the keyboard controller clock source.', chip_kbc_help1
+chip_keep_help:
+    ui_string 'Keep Current preserves the hardware choice.', chip_keep_help
 chip_keep db 'Keep Current',0
 chip_keep_switch_values dw chip_keep,u_on,u_disabled
 chip_keep_switch_choices dw u_disabled,u_on,chip_keep
@@ -261,27 +306,40 @@ chip_irqs db 'PCI Interrupts',0
 chip_local_bus db 'Local Bus',0
 chip_rom db 'ROM Shadow and Cache',0
 chip_boot_speed db 'Boot CPU Speed',0
-chip_speed_help1 db 'Starts the board in normal or slow speed mode.',0
-chip_speed_help2 db 'High is recommended for normal use.',0
+chip_speed_help1:
+    ui_string 'Starts the board in normal or slow speed mode.', chip_speed_help1
+chip_speed_help2:
+    ui_string 'High is recommended for normal use.', chip_speed_help2
 chip_boot_speed_values dw chip_high,chip_low
 chip_high db 'High',0
 chip_low db 'Low',0
 chip_cyrix_linear db 'Cyrix Linear Burst',0
-chip_linear_help1 db 'Enables linear cache bursts on a Cyrix 5x86.',0
+chip_linear_help1:
+    ui_string 'Enables linear cache bursts on a Cyrix 5x86.', chip_linear_help1
 chip_cyrix_lsser db 'Cyrix Load/Store Tuning',0
-chip_lsser_help1 db 'Uses the AMI load/store setting on a Cyrix 5x86.',0
-chip_cyrix_help db 'Other processors keep their own cache protocol.',0
+chip_lsser_help1:
+    ui_string 'Uses the AMI load/store setting on a Cyrix 5x86.', chip_lsser_help1
+chip_cyrix_help:
+    ui_string 'Other processors keep their own cache protocol.', chip_cyrix_help
 chip_mapping db 'Device Number Mapping',0
-chip_mapping_help1 db 'Selects the alternate device-number mapping.',0
-chip_mapping_help2 db 'Leave disabled unless an expansion device needs it.',0
+chip_mapping_help1:
+    ui_string 'Selects the alternate device-number mapping.', chip_mapping_help1
+chip_mapping_help2:
+    ui_string 'Leave disabled unless an expansion device needs it.', chip_mapping_help2
 chip_palette db 'VGA Palette Snoop',0
-chip_palette_help1 db 'Lets a second graphics device follow palette writes.',0
-chip_palette_help2 db 'Leave disabled for a single graphics card.',0
+chip_palette_help1:
+    ui_string 'Lets a second graphics device follow palette writes.', chip_palette_help1
+chip_palette_help2:
+    ui_string 'Leave disabled for a single graphics card.', chip_palette_help2
 chip_video_cache db 'Video BIOS Cacheable',0
-chip_video_cache_help1 db 'Allows the copied video BIOS to use external cache.',0
-chip_video_cache_help2 db 'Requires a working, enabled external cache.',0
-chip_shadow_help1 db 'Copies this option ROM area into faster memory.',0
-chip_shadow_help2 db 'Auto keeps copies required by discovered ROMs.',0
+chip_video_cache_help1:
+    ui_string 'Allows the copied video BIOS to use external cache.', chip_video_cache_help1
+chip_video_cache_help2:
+    ui_string 'Requires a working, enabled external cache.', chip_video_cache_help2
+chip_shadow_help1:
+    ui_string 'Copies this option ROM area into faster memory.', chip_shadow_help1
+chip_shadow_help2:
+    ui_string 'Auto keeps copies required by discovered ROMs.', chip_shadow_help2
 chip_shadow_values dw chip_auto,u_on
 chip_auto db 'Auto',0
 chip_shadow_c800 db 'C8000-CBFFF Shadow',0
@@ -290,10 +348,14 @@ chip_shadow_d000 db 'D0000-D3FFF Shadow',0
 chip_shadow_d400 db 'D4000-D7FFF Shadow',0
 chip_shadow_d800 db 'D8000-DBFFF Shadow',0
 chip_shadow_dc00 db 'DC000-DFFFF Shadow',0
-chip_irq_help1 db 'Assigns an interrupt to this PCI routing link.',0
-chip_irq_help2 db 'Auto avoids the active onboard ISA devices.',0
-chip_trigger_help1 db 'Trigger mode for PCI IDE cards using IRQ 14 or 15.',0
-chip_trigger_help2 db 'Edge is recommended for legacy IDE operation.',0
+chip_irq_help1:
+    ui_string 'Assigns an interrupt to this PCI routing link.', chip_irq_help1
+chip_irq_help2:
+    ui_string 'Auto avoids the active onboard ISA devices.', chip_irq_help2
+chip_trigger_help1:
+    ui_string 'Trigger mode for PCI IDE cards using IRQ 14 or 15.', chip_trigger_help1
+chip_trigger_help2:
+    ui_string 'Edge is recommended for legacy IDE operation.', chip_trigger_help2
 chip_irq_1 db 'INTA Interrupt',0
 chip_irq_2 db 'INTB Interrupt',0
 chip_irq_3 db 'INTC Interrupt',0

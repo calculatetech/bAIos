@@ -920,7 +920,26 @@ def ui():
     m.call('chipset_ui_descriptor')
     descriptor=m.cpu.reg_read(x.UC_X86_REG_SI)
     def text_at(pointer):
-        return rom[pointer:].split(b'\0',1)[0]
+        def segments(cpu, address, size, unused):
+            cpu.reg_write(x.UC_X86_REG_DS,0xF000)
+            cpu.reg_write(x.UC_X86_REG_ES,0xB800)
+        m.cpu.mem_write(0xB8000,b'\0'*512)
+        m.cpu.reg_write(x.UC_X86_REG_SI,pointer)
+        m.cpu.reg_write(x.UC_X86_REG_DI,0)
+        m.cpu.reg_write(x.UC_X86_REG_BX,0x0700)
+        entry=0xF0000+setup.rtc.symbol('setup_text')
+        hook=m.cpu.hook_add(UC_HOOK_CODE,segments,begin=entry,end=entry)
+        try:
+            m.call('setup_text')
+        finally:
+            m.cpu.hook_del(hook)
+        text=bytes(m.cpu.mem_read(0xB8000,512))[::2].split(b'\0',1)[0]
+        assert text or rom[pointer]==0, ('Renderer produced no text',hex(pointer))
+        return text
+    literal=b'bAIos Setup > Standard Setup'
+    assert rom.count(literal+b'\0')==1
+    assert text_at(rom.index(literal+b'\0'))==literal
+    assert text_at(setup.rtc.symbol('u_help_format1'))==b'Choose a 12-hour or 24-hour clock display.'
     for field in range(103):
         label,byte,shift,mask,count,values,h1,h2,reserved=struct.unpack_from('<HBBBHHHHB',rom,descriptor+14*field)
         assert len(text_at(label))<=24, text_at(label)

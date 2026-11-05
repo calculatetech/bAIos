@@ -9,6 +9,7 @@ bits 16
 %error "Select a board definition before composing the firmware core"
 %endif
 %include BOARD_DEFINITION
+%include "setup/ui-text.inc"
 %include "firmware/cache-lifecycle.inc"
 %include "pc/processor.inc"
 %ifdef EMULATOR_WARM_RESET_TEST

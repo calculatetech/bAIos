@@ -227,6 +227,9 @@ pnp_reserved db 'Reserved',0
 pnp_irq_prefix db 'IRQ ',0
 pnp_dma_prefix db 'DMA ',0
 pnp_memory_suffix db '000h (16 KiB)',0
-pnp_help1 db 'Reserve resources used by manual cards.',0
-pnp_help2 db 'I/O is decimal. Length 0 disables a window.',0
-pnp_help3 db 'Use BIOS. Clear keeps manual reservations.',0
+pnp_help1:
+    ui_string 'Reserve resources used by manual cards.', pnp_help1
+pnp_help2:
+    ui_string 'I/O is decimal. Length 0 disables a window.', pnp_help2
+pnp_help3:
+    ui_string 'Use BIOS. Clear keeps manual reservations.', pnp_help3
