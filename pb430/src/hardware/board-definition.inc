@@ -1,3 +1,5 @@
+%define PB430_PORT 1
+%define BOARD_PNP_SETUP_LATE 1
 %ifndef BOARD_ATA_PIO_MAX
 %define BOARD_ATA_PIO_MAX 4
 %endif

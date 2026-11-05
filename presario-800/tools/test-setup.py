@@ -852,7 +852,7 @@ def cmos_recovery():
             policy[10] |= 0x80
             policy[17:19] = bytes((4, 1))
             model.draft(policy)
-            model.call('chipset_settings_save')
+            model.save_chipset()
             model.chipset[2], model.chipset[3], model.chipset[4] = 0xCC, 0x88, 0x36
             model.cpu.mem_write(model.base+0x78, struct.pack('<H', 7168))
             model.cmos[bad_record] ^= 0xFF
@@ -866,7 +866,7 @@ def cmos_recovery():
             model.startup(entry='post_clock_alert', through_visible=True)
             assert model.restarts == 1 and model.chipset[4] == 0x16
             assert model.record() == chipset.NORMAL and model.chipset[1] == 0x96
-            assert model.cmos[0x69] == 0xC2 and bytes(model.cmos[0x6B:0x80]+model.cmos[0x33:0x36]) == chipset.NORMAL
+            assert chipset.nv6_valid(model) and model.cmos[0x69] == 0 and chipset.stored_policy(model) == chipset.NORMAL
             assert bytes(model.cmos[0x17:0x19]) == bytes(model.cmos[0x30:0x32]) == struct.pack('<H', 7168)
             assert not model.cmos[0x36] and 'RAM test failed' not in model.console
         else:
@@ -884,7 +884,7 @@ def cmos_recovery():
         if not getattr(model, 'restarts', 0):
             assert model.speaker == 0xA0
         assert model.cpu.mem_read(model.base + 0xF4, 1) == bytes((choice == 'setup',))
-        assert loaded(model) == (bytes((0x40, 1, 1, 1))
+        assert loaded(model) == (bytes((0x40, 1, 3, 1))
                                   if bad_record is not None and choice == 'defaults' else active)
         if choice == 'setup':
             assert bytes(model.cmos[0x10:]) == before[0x10:] and not model.writes

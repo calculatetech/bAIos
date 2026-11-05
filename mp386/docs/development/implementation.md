@@ -42,6 +42,8 @@ The boot handoff clears the motherboard A20 override and leaves the keyboard-con
 
 ## POST and configuration
 
+Complete verified Save migrates legacy extensions to the [shared NV6 format](../../../docs/development/firmware.md). Logical 40h..7Fh still maps only to NVRAM 0200h..023Fh. Logical 33h..35h and 11h/13h/2Dh use the ordinary RTC. Recovery 69h maps to 0229h and remains outside the payload checksum. OEM records 0240h..02FFh remain unchanged. The new format preserves all 24 chipset bytes and the complete two-position IDE geometry.
+
 Power-cycle the board after programming. If POST reports invalid configuration, press Enter to save defaults or Delete to open Setup. Saving defaults causes one restart. F10 saves Setup changes and restarts. No external OEM Setup disk is needed.
 
 The port uses ordinary RTC bytes through index 3Fh. It stores the remaining bAIos configuration in Mitsubishi NVRAM 0200h..023Fh through the OEM port-48 protocol. This replaces part of the old OEM configuration. It does not restore or maintain the OEM format.

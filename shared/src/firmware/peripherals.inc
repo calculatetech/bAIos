@@ -45,6 +45,15 @@ ports_settings_load:
     pushad
     mov di, C_PORTS
     call ports_defaults
+    call settings_nv6_present
+    jne .legacy
+    call settings_nv6_ports_load
+    jc .bad
+    mov si,C_PORTS
+    call ports_valid
+    jc .bad
+    jmp .done
+.legacy:
 %if BOARD_ATA_DEVICE_COUNT = 4
     call settings_format
     cmp al,1
@@ -118,60 +127,8 @@ ports_settings_save:
     mov si, U_PORTS
     call ports_valid
     jc .bad
-%if BOARD_ATA_DEVICE_COUNT = 4
-    call ports_packed_save
+    call settings_nv6_ports_save
     popad
-    ret
-%endif
-    mov ax, 0x005D
-    call rtc_write
-    mov bl, 'P'+'1'+1
-    mov dl, 0x60
-    mov cx, 8
-.write:
-    mov ah, [fs:si]
-    add bl, ah
-    mov al, dl
-    call rtc_write
-    inc si
-    inc dl
-    loop .write
-    neg bl
-    mov ah, bl
-    mov al, 0x68
-    call rtc_write
-    mov ax, 0x015F
-    call rtc_write
-    mov ax, ('1' << 8)|0x5E
-    call rtc_write
-    mov ax, ('P' << 8)|0x5D
-    call rtc_write
-    mov ax, ('P' << 8)|0x5D
-    call settings_verify_byte
-    jne .bad
-    mov ax, ('1' << 8)|0x5E
-    call settings_verify_byte
-    jne .bad
-    mov ax, 0x015F
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x68
-    mov ah, bl
-    call settings_verify_byte
-    jne .bad
-    mov si, U_PORTS
-    mov dl, 0x60
-    mov cx, 8
-.verify:
-    mov ah, [fs:si]
-    mov al, dl
-    call settings_verify_byte
-    jne .bad
-    inc dl
-    inc si
-    loop .verify
-    popad
-    clc
     ret
 .bad:
     popad
@@ -207,29 +164,8 @@ ports_packed_load:
     stc
     ret
 
-ports_packed_save:
-    pushad
-    sub sp,5
-    mov bp,sp
-    mov word [ss:bp],0x0250
-    mov byte [ss:bp+2],0
-    mov word [ss:bp+3],0
-    lea di,[bp+3]
-    mov si,U_PORTS
-    mov bx,ports_packed_masks
-    mov cx,8
-    call settings_pack
-    mov di,bp
-    mov cx,5
-    mov bx,2
-    call settings_record_checksum
-    mov ax,0x006C
-    call settings_record_write
-    lea sp,[bp+5]
-    popad
-    ret
-ports_packed_masks db 7,7,1,3,3,1,1,1
 %endif
+ports_packed_masks db 7,7,1,3,3,1,1,1
 
 ; AL=logical onboard selection0..4; AX=base (zero for Disabled).
 ports_uart_base:

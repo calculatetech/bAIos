@@ -121,6 +121,15 @@ ide_settings_load:
     call ide_defaults
     cmp byte [fs:C_VALID], 1
     jne .done
+    call settings_nv6_present
+    jne .legacy
+    call settings_nv6_ide_load
+    jc .invalid
+    mov si,C_IDE
+    call ide_settings_valid
+    jc .invalid
+    jmp .done
+.legacy:
 %if BOARD_ATA_DEVICE_COUNT = 4
     call settings_format
     cmp al,1
@@ -177,70 +186,10 @@ ide_settings_load:
     ret
 
 ide_settings_save:
-    pushad
-    mov si, U_IDE
+    mov si,U_IDE
     call ide_settings_valid
-    jc .bad
-%if BOARD_ATA_DEVICE_COUNT = 4
-    call ide_packed_save
-    popad
-    ret
-%endif
-    mov ax, 0x0040
-    call rtc_write
-    mov bl, 'I' + 'D' + 1
-    mov si, U_IDE
-    mov dl, 0x44
-    mov cx, IDE_SETTINGS_SIZE
-.write:
-    mov ah, [fs:si]
-    add bl, ah
-    mov al, dl
-    call rtc_write
-    inc si
-    inc dl
-    loop .write
-    neg bl
-    mov al, 0x43
-    mov ah, bl
-    call rtc_write
-    mov ax, 0x0142
-    call rtc_write
-    mov ax, ('D' << 8) | 0x41
-    call rtc_write
-    mov ax, ('I' << 8) | 0x40
-    call rtc_write
-    mov ax, ('I' << 8) | 0x40
-    call settings_verify_byte
-    jne .bad
-    mov ax, ('D' << 8) | 0x41
-    call settings_verify_byte
-    jne .bad
-    mov ax, 0x0142
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x43
-    mov ah, bl
-    call settings_verify_byte
-    jne .bad
-    mov si, U_IDE
-    mov dl, 0x44
-    mov cx, IDE_SETTINGS_SIZE
-.verify:
-    mov al, dl
-    mov ah, [fs:si]
-    call settings_verify_byte
-    jne .bad
-    inc si
-    inc dl
-    loop .verify
-    popad
-    clc
-    ret
-.bad:
-    popad
-    stc
-    ret
+    jc settings_nv6_bad
+    jmp settings_nv6_ide_save
 
 ; Late, after saved policy/recovery; preserve every non-IDE SuperIO bit.
 ; IDENTIFY data is still at0000:0800. Native and translated geometry differ.
@@ -741,71 +690,6 @@ ide_packed_load:
     stc
     ret
 
-ide_packed_save:
-    pushad
-    sub sp,44
-    mov bp,sp
-    mov word [ss:bp],0x4449
-    mov word [ss:bp+2],2
-    mov al,[fs:U_IDE]
-    mov [ss:bp+4],al
-    xor ebx,ebx
-    xor di,di
-    mov si,U_IDE+1
-.drive:
-    mov al,[fs:si+IDE_TYPE]
-    mov ah,[fs:si+IDE_TRANSLATION]
-    shl ah,6
-    or al,ah
-    mov [ss:bp+di+5],al
-    mov al,[fs:si+IDE_BLOCK]
-    mov ah,[fs:si+IDE_EDD_OFF]
-    shl ah,4
-    or al,ah
-    cmp di,2
-    jb .flags
-    mov ah,[fs:U_IDE+IDE_ENABLE_EXTRA-2+di]
-    shl ah,5
-    or al,ah
-.flags:
-    movzx eax,al
-    mov cx,di
-    imul cx,6
-    shl eax,cl
-    or ebx,eax
-    push si
-    push di
-    mov ax,di
-    shl ax,3
-    add ax,bp
-    add ax,12
-    mov di,ax
-    add si,IDE_CYLINDERS
-    mov cx,8
-.byte:
-    mov al,[fs:si]
-    mov [ss:di],al
-    inc di
-    inc si
-    loop .byte
-    pop di
-    pop si
-    add si,IDE_RECORD_SIZE
-    inc di
-    cmp di,4
-    jb .drive
-    mov [ss:bp+9],bx
-    shr ebx,16
-    mov [ss:bp+11],bl
-    mov di,bp
-    mov cx,44
-    mov bx,3
-    call settings_record_checksum
-    mov ax,0x0040
-    call settings_record_write
-    lea sp,[bp+44]
-    popad
-    ret
 %endif
 
 ; Phoenix System BIOS1989 pp64..66. Eight bytes: C,H,S,precomp,landing.

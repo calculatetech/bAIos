@@ -204,7 +204,7 @@ def saves():
         initial[17], initial[19] = 0x41, 0x42
         initial[18] = initial[20] = 0  # Both ISA mappings stay disabled.
         m.draft(initial)
-        m.call('chipset_settings_save')
+        m.save_chipset()
         m.call('chipset_settings_load')  # POST loads saved policy before entering Setup.
         before = bytes(m.cmos)
         # Cancel one changed pending selection, reopen it, then choose a value.
@@ -220,7 +220,7 @@ def saves():
         other = 19 if offset == 17 else 17
         assert m.record()[other] == initial[other]
         # Independent CMOS indices: offset7->72h, offset17->7Ch, offset19->7Eh.
-        assert m.cmos[0x6B + offset] == selected[offset]
+        assert chip.stored_policy(m)[offset] == selected[offset]
     print('PASS numeric popup Cancel/Apply -> actual F10 warm restart -> startup/load/application; both window identities and bit6 retained', flush=True)
 
 
@@ -247,7 +247,9 @@ def integration():
         data = data.replace('chip_fields_end:', '    chipset_field fixture_name,7,0,255,128,CHIP_VALUES_FAST_REGION,uc_138,uc_139\nchip_fields_end:', 1)
         data = data.replace('    db 9,4\n    dw chip_rows_12,chip_headers_12', '    db 9,5\n    dw chip_rows_12,chip_headers_12', 1)
         data = data.replace('chip_rows_12 db 5,6,7,8', 'chip_rows_12 db 5,6,7,8,9', 1)
-        data += "\nfixture_name db 'Fixture Range',0\n"
+        # Reuse this fixture's help storage so its extra descriptor fits the ROM.
+        data = data.replace("uc_138 db 'Selects the area that uses the Fast ISA divider.',0",
+                            "fixture_name:\nuc_138 db 'Fixture Range',0", 1)
         (directory / 'setup-data.inc').write_text(data)
         board = (source / 'boards/presario800.inc').read_text().replace('"chipsets/vl82c481/setup-data.inc"', f'"{(directory / "setup-data.inc").as_posix()}"')
         board = board.replace("'Compaq Presario 800'", "'Fixture Board'")
@@ -270,7 +272,7 @@ def integration():
             assert observed == set(range(14)), observed
             assert m.warm and m.record(True)[7] == 127
             selected = m.record(True)
-            assert m.cmos[0x72] == 127 and m.cmos[0x69] == 0xC2
+            assert chip.stored_policy(m)[7] == 127 and chip.nv6_valid(m) and m.cmos[0x69] == 0
             m.startup(through_gate=True, expected_record=selected)
             assert m.record() == selected
             # Seed independent checksum-valid records and exercise the real loader.

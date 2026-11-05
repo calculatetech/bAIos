@@ -16,6 +16,21 @@ chipset_settings_load:
     pushad
     mov di, C_CHIP
     call chipset_defaults
+    call settings_recovery_read
+    cmp al,0xD2
+    je .recovery
+    call settings_nv6_present
+    jne .legacy
+    call settings_nv6_chip_load
+    jc .bad
+    mov si,C_CHIP
+    call chipset_valid
+    jc .bad
+    call settings_recovery_read
+    cmp al,0xD2
+    je .recovery
+    jmp .done
+.legacy:
 %if BOARD_ATA_DEVICE_COUNT = 4
     call settings_format
     cmp al,1
@@ -87,84 +102,11 @@ chipset_settings_save:
 
 ; SI=active or draft record. Preserve verified publication and D2 on failure.
 chipset_record_save:
-    pushad
-%if BOARD_ATA_DEVICE_COUNT = 4
-    call settings_format
-    cmp al,1
-    je .packed
-    test al,al
-    jnz .format_bad
-%endif
-    xor dx,dx
-    mov al,0x69
-    call rtc_read
-    cmp al,0xD2
-    jne .validate
-    mov dl,0xD2
-.validate:
-    mov bx,20                 ; Legacy marker bytes must remain zero.
-.clear_reserved:
-    mov byte [fs:si+bx],0
-    inc bx
-    cmp bx,CHIP_SIZE
-    jb .clear_reserved
     call chipset_valid
-    jc .bad
-.publish:
-    mov ax,0x0069
-    mov ah,dl
-    call rtc_write
-    mov bl,CHIP_RECORD_TAG
-    xor bp,bp
-.byte:
-    mov al,[cs:chipset_cmos+bp]
-    mov ah,[fs:si+bp]
-    add bl,ah
-    call rtc_write
-    inc bp
-    cmp bp,CHIP_SIZE
-    jb .byte
-    neg bl
-    mov al,0x6A
-    mov ah,bl
-    call rtc_write
-    mov al,0x6A
-    call settings_verify_byte
-    jne .bad
-    xor bp,bp
-.verify:
-    mov al,[cs:chipset_cmos+bp]
-    mov ah,[fs:si+bp]
-    call settings_verify_byte
-    jne .bad
-    inc bp
-    cmp bp,CHIP_SIZE
-    jb .verify
-    mov ax,(CHIP_RECORD_TAG << 8) | 0x69
-    call rtc_write
-    mov ax,(CHIP_RECORD_TAG << 8) | 0x69
-    call settings_verify_byte
-    jne .bad
-    popad
-    clc
-    ret
-.bad:
-    mov ax,0x0069
-    mov ah,dl
-    call rtc_write
-    popad
-    stc
-    ret
-%if BOARD_ATA_DEVICE_COUNT = 4
-.packed:
-    call chipset_packed_save
-    popad
-    ret
-.format_bad:
-    popad
-    stc
-    ret
+    jc settings_nv6_bad
+    jmp settings_nv6_chip_save
 
+%if BOARD_ATA_DEVICE_COUNT = 4
 ; CMOS71..7F: tag/checksum plus13 bytes of mask-selected policy bits.
 chipset_packed_load:
     pushad
@@ -223,52 +165,6 @@ chipset_packed_load:
     stc
     ret
 
-chipset_packed_save:
-    pushad
-    sub sp,15
-    mov bp,sp
-    mov bx,CHIP_OPTION_BYTES
-    jmp .reserved_test
-.reserved:
-    mov byte [fs:si+bx],0
-    inc bx
-.reserved_test:
-    cmp bx,CHIP_SIZE
-    jb .reserved
-    call chipset_valid
-    jc .bad
-    mov di,bp
-    mov cx,15
-.zero:
-    mov byte [ss:di],0
-    inc di
-    loop .zero
-    mov byte [ss:bp],CHIP_RECORD_TAG
-    lea di,[bp+2]
-    mov bx,chipset_masks
-    mov cx,CHIP_OPTION_BYTES
-    call settings_pack
-    mov di,bp
-    mov cx,15
-    mov bx,1
-    call settings_record_checksum
-    mov al,0x71
-    call rtc_read
-    mov ah,0
-    cmp al,0xD2
-    jne .write
-    mov ah,0xD2
-.write:
-    mov al,0x71
-    call settings_record_write
-    lea sp,[bp+15]
-    popad
-    ret
-.bad:
-    lea sp,[bp+15]
-    popad
-    stc
-    ret
 %endif
 
 chipset_cmos db 0x6B,0x6C,0x6D,0x6E,0x6F,0x70,0x71,0x72,0x73,0x74,0x75

@@ -50,6 +50,21 @@ chipset_settings_load:
     pushad
     mov di,C_CHIP
     call chipset_defaults
+    call settings_recovery_read
+    cmp al,0xD2
+    je .safe
+    call settings_nv6_present
+    jne .legacy
+    call settings_nv6_chip_load
+    jc .bad
+    mov si,C_CHIP
+    call chipset_valid
+    jc .bad
+    call settings_recovery_read
+    cmp al,0xD2
+    je .safe
+    jmp .done
+.legacy:
     mov al,0x69
     call rtc_read
     cmp al,0xD3
@@ -76,57 +91,19 @@ chipset_settings_load:
     mov di,C_CHIP
     call chipset_defaults
     mov byte [fs:C_VALID],0
+.safe:
+    mov di,C_CHIP
+    call chipset_defaults
 .done:
     popad
     ret
 
 chipset_settings_save:
-    pushad
     mov si,U_CHIP
     call chipset_valid
-    jc .bad
-    mov ax,0xD269             ; Safe selection stays held until the whole Save verifies.
-    call rtc_write
-    mov ax,0xD269
-    call settings_verify_byte
-    jne .bad
-    mov bl,0xD3
-    xor bp,bp
-.byte:
-    mov ax,bp
-    add al,0x6B
-    mov ah,[fs:U_CHIP+bp]
-    add bl,ah
-    call rtc_write
-    inc bp
-    cmp bp,21
-    jb .byte
-    neg bl
-    mov al,0x6A
-    mov ah,bl
-    call rtc_write
-    mov al,0x6A
-    call settings_verify_byte
-    jne .bad
-    xor bp,bp
-.verify:
-    mov ax,bp
-    add al,0x6B
-    mov ah,[fs:U_CHIP+bp]
-    call settings_verify_byte
-    jne .bad
-    inc bp
-    cmp bp,21
-    jb .verify
-    popad
-    clc
-    ret
-.bad:
-    mov ax,0xD269
-    call rtc_write
-    popad
-    stc
-    ret
+    jc settings_nv6_bad
+    jmp settings_nv6_chip_save
+
 
 chipset_apply:
     call chipset_timing_trial_begin
@@ -200,11 +177,6 @@ chipset_timing_marker_failed:
 ; Shared settings_save calls this only after every record verifies.
 chipset_timing_saved:
     push ax
-    mov ax,0xD369
-    call rtc_write
-    mov ax,0xD369
-    call settings_verify_byte
-    jne .bad
     mov ax,0x0036
     call rtc_write
     mov ax,0x0036

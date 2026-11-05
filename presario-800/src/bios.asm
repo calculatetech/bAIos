@@ -1,7 +1,9 @@
 bits 16
+%define BOARD_PNP_SETUP_LATE 1
+%define BOARD_PNP_NV6_LATE 1
 org 0
 
-%define BIOS_VERSION '0.4.1'
+%define BIOS_VERSION '0.5.0'
 %define BIOS_RELEASE_DATE '10/31/2026'
 %substr BIOS_DATE_PREFIX BIOS_RELEASE_DATE 1,6
 %substr BIOS_DATE_YEAR BIOS_RELEASE_DATE 9,2
@@ -3244,6 +3246,9 @@ int42_compat:
     jmp VGA_SEGMENT:VGA_INT10_ENTRY
 .unsupported:
     iret
+
+presario_shared "firmware/settings-nv6.inc"
+presario_shared "firmware/setup-pnp.inc"
 
 ; The guarded name catalogue uses free ROM after the retained INT42 shim.
 presario_shared "pc/cpu.inc"

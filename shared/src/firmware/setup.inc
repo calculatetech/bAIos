@@ -252,6 +252,20 @@ settings_load:
     call ide_settings_load
     call ports_settings_load
     call chipset_settings_load
+    mov di,C_PNP
+    call pnp_defaults
+    call settings_nv6_present
+    jne .pnp_done
+    call settings_nv6_pnp_load
+    jc .pnp_bad
+    mov si,C_PNP
+    call pnp_settings_valid
+    jnc .pnp_done
+.pnp_bad:
+    mov di,C_PNP
+    call pnp_defaults
+    mov byte [fs:C_VALID],0
+.pnp_done:
     pop fs
     popad
     ret
@@ -311,15 +325,7 @@ settings_save:
 .write:
     mov ax, 0x0038          ; Invalidate before data; signature published last.
     call rtc_write
-%if BOARD_ATA_DEVICE_COUNT = 4
-    call settings_format_prepare
-    jc .bad
-%endif
-    call ide_settings_save
-    jc .bad
-    call ports_settings_save
-    jc .bad
-    call chipset_settings_save
+    call settings_nv6_save_all
     jc .bad
     call settings_logical_types
     mov al, 0x10
@@ -382,10 +388,18 @@ settings_save:
     mov ah, [fs:U_BOOT_THIRD]
     call settings_verify_byte
     jne .bad
+    call settings_nv6_publish
+    jc .bad
 %ifdef BOARD_SETTINGS_SAVED
     call BOARD_SETTINGS_SAVED
     jc .bad
 %endif
+    ; Only the verified whole Save may release a prior Compatibility request.
+    mov ax,0x0069
+    call rtc_write
+    mov ax,0x0069
+    call settings_verify_byte
+    jne .bad
     pop fs
     popad
     popf
@@ -678,6 +692,8 @@ setup_defaults:
     call ports_defaults
     mov di, U_CHIP
     call chipset_defaults
+    mov di,U_PNP
+    call pnp_defaults
     ret
 
 post_numlock_apply:
@@ -957,6 +973,11 @@ setup_main:
     mov di, U_CHIP
     mov cx, CHIP_SIZE
     call ide_copy_bytes
+    mov si,C_PNP
+    mov di,U_PNP
+    mov cx,PNP_SIZE
+    call ide_copy_bytes
+    mov byte [fs:U_PNP_SCREEN],0
     mov byte [fs:U_CHIP_SCREEN], 0
     mov byte [fs:U_IDE_DEVICE], 0xFF
     call setup_video_mode
@@ -1039,6 +1060,11 @@ setup_main:
     jb .start_edit
     jmp .choices
 .non_clock_enter:
+    cmp byte [fs:U_PAGE],6
+    jne .non_pnp_enter
+    call pnp_ui_select
+    jmp .redraw
+.non_pnp_enter:
     cmp byte [fs:U_PAGE], 4
     je .exit_action
     cmp byte [fs:U_PAGE], 1
@@ -1106,19 +1132,9 @@ setup_main:
 .up:
     cmp byte [fs:U_FOCUS], 0
     jne .field
-    cmp byte [fs:U_PAGE], 0
-    je .input
-    mov al, [fs:U_PAGE]
-    cmp al, 4
-    je .up_exit
-    cmp al, 5
-    jne .up_regular
-    mov al, 4
-.up_regular:
-    dec al
+    movzx bx,byte [fs:U_PAGE]
+    mov al,[cs:pnp_sidebar_up+bx]
     jmp .sidebar_selected
-.up_exit:
-    mov al, 5
 .sidebar_selected:
     mov [fs:U_PAGE], al
     mov byte [fs:U_FIELD], 0
@@ -1126,18 +1142,8 @@ setup_main:
 .down:
     cmp byte [fs:U_FOCUS], 0
     jne .field
-    mov al, [fs:U_PAGE]
-    cmp al, 4
-    je .input
-    cmp al, 5
-    jne .down_regular
-    mov al, 4
-    jmp .sidebar_selected
-.down_regular:
-    inc al
-    cmp al, 4
-    jne .sidebar_selected
-    mov al, 5
+    movzx bx,byte [fs:U_PAGE]
+    mov al,[cs:pnp_sidebar_down+bx]
     jmp .sidebar_selected
 .field:
     mov bl, 1
@@ -1170,6 +1176,12 @@ setup_main:
     ja .field_limit
     mov bl, IDE_FIELD_COUNT-1
 .field_limit:
+    cmp byte [fs:U_PAGE],6
+    jne .field_count_ready
+    call pnp_ui_count
+    mov bl,cl
+    dec bl
+.field_count_ready:
     mov cl, [fs:U_FIELD]
     cmp ah, 0x48
     jne .field_down
@@ -1212,6 +1224,16 @@ setup_main:
     call setup_change
     jmp .redraw
 .escape:
+    cmp byte [fs:U_PAGE],6
+    jne .non_pnp_escape
+    cmp byte [fs:U_PNP_SCREEN],0
+    je .non_pnp_escape
+    mov al,[fs:U_PNP_SCREEN]
+    dec al
+    mov [fs:U_FIELD],al
+    mov byte [fs:U_PNP_SCREEN],0
+    jmp .redraw
+.non_pnp_escape:
     cmp byte [fs:U_PAGE], 5
     jne .non_chip_escape
 %ifndef BOARD_SETUP_READONLY_PAGES
@@ -1820,6 +1842,8 @@ setup_restore_text:
 
 ; AH selects Left/Right. Non-clock edits stay in the draft, not active state.
 setup_change:
+    cmp byte [fs:U_PAGE],6
+    je pnp_ui_change
     cmp byte [fs:U_PAGE], 0
     jne .non_clock
     xor byte [fs:U_CLOCK24], 1
@@ -1911,6 +1935,8 @@ setup_change:
     ret
 
 setup_enum_store:
+    cmp byte [fs:U_PAGE],6
+    je pnp_ui_commit
     pushf
     pushad
     cmp byte [fs:U_PAGE],1
@@ -2046,6 +2072,8 @@ setup_ide_controller_store:
 
 ; Enter opens the complete enum. Arrows still offer the normal quick change.
 setup_choices:
+    cmp byte [fs:U_PAGE],6
+    je pnp_ui_choices
     cmp byte [fs:U_PAGE], 5
     je chipset_ui_choices
     cmp byte [fs:U_PAGE], 3
@@ -2479,13 +2507,10 @@ setup_draw:
     ui_text 7, 2, u_boot, 0x07
     ui_text 8, 2, u_devices, 0x07
     ui_text 9, 2, u_chip_menu, 0x07
-    ui_text 10, 2, u_exit, 0x07
-    movzx ax, byte [fs:U_PAGE]
-    cmp al, 4
-    jb .sidebar_row
-    xor al, 1
-.sidebar_row:
-    add ax, 5
+    ui_text 10,2,pnp_menu,0x07
+    ui_text 11, 2, u_exit, 0x07
+    movzx bx,byte [fs:U_PAGE]
+    movzx ax,byte [cs:pnp_sidebar_rows+bx]
     imul di, ax, 160
     add di, 2 * 2
     mov bx, ax
@@ -2503,6 +2528,9 @@ setup_draw:
     je .sidebar
     mov si, u_exit
     cmp byte [fs:U_PAGE], 4
+    je .sidebar
+    mov si,pnp_menu
+    cmp byte [fs:U_PAGE],6
     je .sidebar
     mov si, u_chip_menu
 .sidebar:
@@ -2547,6 +2575,11 @@ setup_draw:
     call chipset_ui_draw
     jmp .done
 .ordinary_page:
+    cmp byte [fs:U_PAGE],6
+    jne .non_pnp_page
+    call pnp_ui_draw
+    jmp .done
+.non_pnp_page:
     cmp byte [fs:U_PAGE], 1
     je .drives
     cmp byte [fs:U_PAGE], 2
@@ -2806,6 +2839,15 @@ setup_field_highlight:
     mov cx, UI_VALUE_WIDTH + 2
     jmp .paint
 .ordinary_highlight:
+    cmp byte [fs:U_PAGE],6
+    jne .non_pnp_highlight
+    movzx di,cl
+    add di,5
+    imul di,160
+    add di,(UI_VALUE_COL-1)*2
+    mov cx,UI_VALUE_WIDTH+2
+    jmp .paint
+.non_pnp_highlight:
     movzx bx, cl
     mov si, u_clock_rows
     cmp byte [fs:U_PAGE], 0
@@ -2974,6 +3016,11 @@ setup_help:
     call chipset_ui_help
     jmp .wait
 .ordinary_help:
+    cmp byte [fs:U_PAGE],6
+    jne .non_pnp_help
+    call pnp_ui_help
+    jmp .wait
+.non_pnp_help:
     mov di, 17 * 160 + 23 * 2
     mov dx, 6
     mov ax, 0x1E20
@@ -4313,12 +4360,18 @@ ide_ui_number:
     pushad
     call ide_ui_record
     cmp byte [fs:bx + IDE_TYPE], 48
-    jne .done
+    jne setup_number_editor.done
     movzx bp, byte [fs:U_FIELD]
     sub bp, 2
     shl bp, 1
     mov di, [cs:u_ide_number_offsets + bp]
     add bx, di
+    jmp setup_number_editor
+pnp_ui_number:
+    pushad
+    call pnp_ui_parameters
+    mov bp,10
+setup_number_editor:
     mov byte [fs:U_POSITION], 0
     mov byte [fs:U_BUFFER], 0
     push bx
@@ -4399,6 +4452,16 @@ ide_ui_number:
     test eax, eax
     jz .bad
 .store:
+    cmp byte [fs:U_PAGE],6
+    jne .ide_store
+    mov dx,[fs:bx]
+    mov [fs:bx],ax
+    mov si,U_PNP
+    call pnp_settings_valid
+    jnc .done
+    mov [fs:bx],dx
+    jmp .bad
+.ide_store:
     cmp bp, 2
     je .byte_store
     cmp bp, 4
@@ -4427,7 +4490,7 @@ u_ide_labels dw u_ide_enabled,u_ide_type,u_ide_cyl,u_ide_heads,u_ide_sectors
 %endif
 IDE_FIELD_COUNT equ ($-u_ide_labels)/2
 u_ide_number_offsets dw IDE_CYLINDERS,IDE_HEADS,IDE_SECTORS,IDE_PRECOMP,IDE_LANDING
-u_ide_number_max dw 65535,16,63,65535,65535
+u_ide_number_max dw 65535,16,63,65535,65535,65535
 u_ide_translation_values dw u_auto,u_ide_normal,u_ide_large,u_ide_lba
 u_ide_translation_choices dw u_auto,u_ide_large,u_ide_lba,u_ide_normal
 ide_translation_to_display db 0,3,1,2
@@ -4731,4 +4794,46 @@ u_ide_policy3 db 'Secondary IDE Master',0
 u_ide_policy4 db 'Secondary IDE Slave',0
 %else
     dw u_hdd_policy,u_slave_policy
+%endif
+
+%macro pnp_ui_navigation 0
+; The shared Setup draft owns every reservation. No probing or allocation here.
+pnp_ui_count:
+    movzx bx,byte [fs:U_PNP_SCREEN]
+    mov cl,[cs:pnp_counts+bx]
+    ret
+pnp_counts db 7,8,8,8,4,12
+pnp_ui_select:
+    cmp byte [fs:U_PNP_SCREEN],0
+    jne .edit
+    mov al,[fs:U_FIELD]
+    cmp al,5
+    jae .edit
+    inc al
+    mov [fs:U_PNP_SCREEN],al
+    mov byte [fs:U_FIELD],0
+    ret
+.edit:
+    cmp byte [fs:U_PNP_SCREEN],4
+    je pnp_ui_number
+    jmp setup_choices
+
+%endmacro
+%ifndef BOARD_PNP_NV6_LATE
+pnp_ui_navigation
+%endif
+pnp_ui_choices:
+    pushad
+    call pnp_ui_parameters
+    jmp setup_choices.enum
+pnp_sidebar_up db 0,0,1,2,6,3,5
+pnp_sidebar_down db 1,2,3,5,4,6,4
+pnp_sidebar_rows db 5,6,7,8,11,9,10
+%ifndef BOARD_PNP_SETUP_LATE
+%ifdef PRESARIO_SHARED_OWNER
+%strcat PNP_SHARED_SOURCE PRESARIO_SOURCE_DIRECTORY,"../../shared/src/firmware/setup-pnp.inc"
+%include PNP_SHARED_SOURCE
+%else
+%include "firmware/setup-pnp.inc"
+%endif
 %endif

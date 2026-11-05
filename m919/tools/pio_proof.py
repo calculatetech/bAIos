@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from m919.tools.ide_completeness_proof import Machine, x
+from shared.tools.checkpoint_proof import nv6_payload, nv6_fixture, selected_bits
 
 
 class PIO(Machine):
@@ -376,19 +377,19 @@ def policy_cases(image):
             at=self.base+self.state['U_CHIP_SCREEN']
             assert self.state['U_CHIP']+self.state['CHIP_SIZE']==self.state['U_CHIP_SCREEN']
             def entry(cpu,address,size,data):
-                assert cpu.reg_read(x.UC_X86_REG_SI)==self.state['U_CHIP']
+                if cpu.reg_read(x.UC_X86_REG_SI)!=self.state['U_CHIP']:return
                 # Valid submenu plus adjacent popup state must survive either save result.
                 self.put('U_CHIP_SCREEN',5);self.put('U_CHIP_VALUE',0xA6)
                 self.save_boundary=bytes(cpu.mem_read(at,2))
             def adjacent_write(cpu,access,address,size,value,data):
                 if self.save_boundary is not None:
                     raise AssertionError(('packed save wrote adjacent Setup state',hex(address),size,value))
-            self.cpu.hook_add(UC_HOOK_CODE,entry,None,0xF0000+self.listing.symbol('chipset_packed_save'),0xF0000+self.listing.symbol('chipset_packed_save'))
+            self.cpu.hook_add(UC_HOOK_CODE,entry,None,0xF0000+self.listing.symbol('settings_nv6_pack_component'),0xF0000+self.listing.symbol('settings_nv6_pack_component'))
             self.cpu.hook_add(UC_HOOK_MEM_WRITE,adjacent_write,None,at,at+1)
         def interrupt(self, cpu, number, data):
             if number==0x16 and cpu.reg_read(x.UC_X86_REG_AH)==0 and self.save_boundary is not None:
                 assert bytes(cpu.mem_read(self.base+self.state['U_CHIP_SCREEN'],2))==self.save_boundary
-                assert self.failed_write==0x71 and self.cmos[0x38]==0 and self.cmos[0x71]==0
+                assert self.failed_write==0x35 and self.cmos[0x38]==0 and self.cmos[0x33]==0
                 self.failed_save_resumed=True;self.save_boundary=None
             if (number == 0x16 and cpu.reg_read(x.UC_X86_REG_AH) == 0 and self.keys and
                     self.get('U_PAGE') == 1 and self.get('U_FIELD') == 11 and self.keys[0] == 0x4800):
@@ -415,7 +416,7 @@ def policy_cases(image):
         keys += [27]
         keys += [27, ord('y')] if action == 'cancel' else [0x4400, ord('y')]
         if action=='failed-save':
-            m.failed_write=0x71
+            m.failed_write=0x35
             keys += [27,27,27,ord('y')]
         m.keys = keys
         m.call('setup_main', count=20000000)
@@ -427,17 +428,16 @@ def policy_cases(image):
         if action == 'cancel':
             assert not m.writes and not m.reset
         elif action=='failed-save':
-            assert not m.reset and m.failed_save_resumed and (0x71,ord('W')) in m.writes
+            assert not m.reset and m.failed_save_resumed and any(address==0x35 for address,_ in m.writes)
             assert (0x38,ord('B')) not in m.writes
         else:
-            assert m.reset and m.cmos[0x33:0x36] == bytes.fromhex('3402ca')
+            assert m.reset and m.cmos[0x33:0x35] == b'N\x06' and m.cmos[0x69]==0
             assert m.save_boundary==b'\x05\xa6'
             assert bytes(m.cpu.mem_read(m.base+m.state['U_CHIP_SCREEN'],2))==m.save_boundary
             masks = bytes.fromhex('F0010170900301FFFF070F7F010F01FCFFFF0F01FF01031F')
             bits = [(v >> b) & 1 for v, mask in zip(draft, masks) for b in range(8) if mask >> b & 1]
-            packed = bytearray(b'W\0'+sum(v << n for n, v in enumerate(bits)).to_bytes(13, 'little'))
-            packed[1] = -sum(packed) & 255
-            assert m.cmos[0x71:0x80] == packed
+            packed=selected_bits(draft,masks)
+            assert nv6_payload(m.cmos)[41:53] == packed
             restored = PIO(image)
             restored.cmos[:] = m.cmos
             restored.call('settings_load')
@@ -457,18 +457,18 @@ def policy_cases(image):
             old=draft[:23]+b'\0'
             def pack(chip):
                 bits=[(v>>b)&1 for v,mask in zip(chip,masks) for b in range(8) if mask>>b&1]
-                raw=bytearray(b'W\0'+sum(v<<n for n,v in enumerate(bits)).to_bytes(13,'little'))
-                raw[1]=-sum(raw)&255
-                return raw
+                return sum(v<<n for n,v in enumerate(bits)).to_bytes(12,'little')
             old_record=pack(old)
-            assert old_record[2:13]==packed[2:13],'Old88-bit prefix moved'
+            assert old_record[:11]==packed[:11],'Old88-bit prefix moved'
             for invalid in (None,6,7):
                 for pos in ((0,) if invalid is None else range(4)):
                     chip=bytearray(old)
                     if invalid is not None:
                         chip[20]=(chip[20]&~(3<<(2*pos)))|((invalid&3)<<(2*pos))
                         chip[23]|=1<<pos
-                    fresh=PIO(image);fresh.cmos[:]=m.cmos;fresh.cmos[0x71:0x80]=pack(chip)
+                    fresh=PIO(image)
+                    payload=bytearray(nv6_payload(m.cmos));payload[41:53]=pack(chip)
+                    fresh.cmos[:]=nv6_fixture(m.cmos,payload)
                     fresh.writes.clear();fresh.call('settings_load')
                     assert not fresh.writes
                     actual=bytes(fresh.cpu.mem_read(fresh.base+0x60,24))
@@ -498,15 +498,14 @@ def policy_cases(image):
 def legacy_policy_case(image):
     m = PIO(image,requests=(5,)*4)
     before = bytes(m.cmos)
+    m.writes.clear()
     m.call('chipset_record_save', SI=m.state['C_CHIP'])
-    assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-    assert m.cmos[0x33:0x36] == bytes(3) and m.cmos[0x69] == 0x57
-    assert bytes(m.cpu.mem_read(m.base+0x60+20, 4)) == bytes(4)
-    assert m.cmos[0x40:0x69] == before[0x40:0x69]
+    assert m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
+    assert bytes(m.cmos)==before and not m.writes
     m.writes.clear()
     m.call('settings_load')
     assert not m.writes and bytes(m.cpu.mem_read(m.base+0x60+20, 4)) == bytes(4)
-    return dict(legacy_standalone_keeps_format=True, new_fields_zero=True, unrelated_owners_retained=True)
+    return dict(legacy_standalone_rejected_without_writes=True, new_fields_zero=True, unrelated_owners_retained=True)
 
 
 def run(image):

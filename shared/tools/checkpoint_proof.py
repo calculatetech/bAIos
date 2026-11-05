@@ -12,6 +12,37 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from shared.tools.ram_proof import Listing, constants
 
+NV6_INDICES=tuple(range(0x40,0x69))+tuple(range(0x6A,0x80))+(0x11,0x13,0x2D)
+
+
+def nv6_payload(cmos):
+    return bytes(cmos[i] for i in NV6_INDICES)
+
+
+def nv6_fixture(cmos,payload):
+    """Independent persisted input, including checksum-valid invalid selectors."""
+    assert len(payload)==66
+    result=bytearray(cmos)
+    for index,value in zip(NV6_INDICES,payload):result[index]=value
+    result[0x33:0x36]=bytes((ord('N'),6,(-ord('N')-6-sum(payload))&255))
+    result[0x2E:0x30]=sum(result[0x10:0x2E]).to_bytes(2,'big')
+    return result
+
+
+def selected_bits(record,masks):
+    bits=[value>>bit&1 for value,mask in zip(record,masks) for bit in range(8) if mask>>bit&1]
+    return sum(value<<bit for bit,value in enumerate(bits)).to_bytes((len(bits)+7)//8,'little')
+
+
+def draft_from_active(read,write,call,devices=2):
+    """Prepare every logical owner before an actual complete migration Save."""
+    call('setup_defaults')
+    ide=(0xA00,0xA40,51) if devices==4 else (0x190,0x1B0,25)
+    for active,draft,size in ((0x170,0x180,4),(0x177,0x184,1),(0x17D,0x18B,3),
+                             (0x189,0x18E,2),(0x1F6,0x1F7,1),(0x13C,0xFC,1),
+                             (0x13D,0xFB,1),ide,(0x1E6,0x1EE,8),(0x60,0x260,24),(0x300,0x310,15)):
+        write(draft,read(active,size))
+
 
 def run(image):
     listing = Listing(image.with_suffix('.lst'))

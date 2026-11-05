@@ -283,7 +283,7 @@ def idle():
             record = bytearray(m.record())
             record[6] = 0x40 if slow else 0
             m.draft(record)
-            m.call('chipset_settings_save')
+            m.save_chipset()
             m.call('chipset_settings_load')
             m.call('chipset_apply')
             m.connect(mode)

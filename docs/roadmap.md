@@ -13,15 +13,13 @@ Status legend:
 
 ## Active
 
-No task is active.
+- **BAIOS-012: Add Plug and Play support.** Identify supported expansion devices, assign resources without conflicts, and provide the standard BIOS interface to operating systems. Share the common logic and keep controller-specific operations in board adapters. Include ISA Plug and Play, PCI resource coordination, saved manual reservations, BIOS/OS configuration policy and Clear ESCD. Prioritize this work ahead of the remaining CPU tuning and retain the 64 KB system-ROM layouts.
 
 ## Planned next
 
 - **BAIOS-005: Add CPU-specific performance initialization.** After BAIOS-003, investigate the performance features that supported processors can provide. Detect exact CPU vendor, model and revision before applying documented controls. Cover Cyrix/IBM 5x86 performance registers, Intel P24T Pentium OverDrive enhancements, AMD Am5x86 cache controls, and other supported CPU-specific optimizations. Use the datasheets in `reference/processors/` and record missing references. Respect board wiring, chipset coherency and reset requirements. Preserve conservative defaults and compare cold boot, warm reset, DMA and real workloads. Coordinate cache operations with BAIOS-003 and SMM behavior with BAIOS-004.
 
 ## Planned later
-
-- **BAIOS-012: Add Plug and Play support.** Identify supported expansion devices, assign resources without conflicts, and provide the standard BIOS interface to operating systems. Share the common logic and keep controller-specific operations in board adapters. Include ISA Plug and Play and its interaction with PCI resource allocation.
 
 - **BAIOS-013: Add ACPI support.** Provide Advanced Configuration and Power Interface tables and operating-system services through shared code and board adapters. Describe the actual hardware and implement each advertised power operation. Coordinate with existing APM support and preserve legacy operating-system startup.
 

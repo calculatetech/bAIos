@@ -7,6 +7,7 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import zlib
 
 from unicorn import Uc, UC_ARCH_X86, UC_MODE_16, UC_HOOK_CODE, UC_HOOK_INSN, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE, UC_HOOK_INTR, UC_MEM_WRITE
@@ -14,13 +15,28 @@ from unicorn import x86_const as x
 
 setup = importlib.import_module('test-setup')
 ROOT = setup.ROOT
+sys.path.insert(0,str(ROOT.parent))
+from shared.tools.checkpoint_proof import draft_from_active
 BUILD = setup.rtc.BUILD
 NORMAL = bytes.fromhex('96160000883830000031285555555555aa00000000030003')
 RECOVERY = bytes.fromhex('a6160000883830000031685555555555aa00000000030003')
+NV6_INDICES=list(range(0x40,0x69))+list(range(0x6A,0x80))+[0x11,0x13,0x2D]
+
+def nv6_valid(model):
+    return model.cmos[0x33:0x35]==b'N\x06' and (ord('N')+6+model.cmos[0x35]+sum(model.cmos[i] for i in NV6_INDICES))&255==0
+
+def stored_policy(model):
+    if model.cmos[0x34]==6:
+        payload=bytes(model.cmos[i] for i in NV6_INDICES)
+        assert (ord('N')+6+model.cmos[0x35]+sum(payload))&255==0
+        return payload[22:46] # Two-device NV6 retains all24 chipset bytes.
+    return bytes(model.cmos[0x6B:0x80]+model.cmos[0x33:0x36])
 
 def saved_policy(model):
     if model.cmos[0x69] == 0xD2:
         return RECOVERY
+    if model.cmos[0x34]==6:
+        return stored_policy(model) if nv6_valid(model) else NORMAL
     if model.cmos[0x69] not in (0xC1, 0xC2):
         return NORMAL
     policy = bytearray(model.cmos[0x6B:0x80]+model.cmos[0x33:0x36])
@@ -42,6 +58,26 @@ class Chipset(setup.Setup):
         self.fast = None
         self.warm = False
         self.dma_masks = []
+        self.prepare_nv6()
+        self.writes.clear() # Fixture preparation precedes the measured operation.
+
+    def prepare_nv6(self):
+        if nv6_valid(self):
+            return
+        draft=bytes(self.cpu.mem_read(self.base+U,SIZE))
+        recovery=self.cmos[0x69]==0xD2
+        self.call('settings_load')
+        self.call('setup_defaults')
+        draft_from_active(lambda off,size:bytes(self.cpu.mem_read(self.base+off,size)),
+                          lambda off,data:self.cpu.mem_write(self.base+off,data),self.call)
+        self.call('settings_save')
+        assert not self.cpu.reg_read(x.UC_X86_REG_EFLAGS)&1 and nv6_valid(self)
+        self.cpu.mem_write(self.base+U,draft)
+        if recovery:self.cmos[0x69]=0xD2
+
+    def save_chipset(self):
+        self.prepare_nv6()
+        self.call('chipset_settings_save')
 
     def interrupt(self,cpu,vector,unused):
         if vector==0x10 and cpu.reg_read(x.UC_X86_REG_AH)==2:
@@ -237,7 +273,7 @@ def profiles():
     def choice(current, selected):
         return [28] + [0x48]*current + [0x50]*selected + [28]
     def stored(m):
-        return bytes(m.cmos[0x6B:0x80]+m.cmos[0x33:0x36])
+        return stored_policy(m)
     # Independent values from the supplied profile table, not the ROM lookup.
     table = ((0x04, 0x12, 0x12, 0x16), (0x16, 0x16, 0x16, 0x26))
     choices_seen, help_seen = set(), set()
@@ -264,9 +300,9 @@ def profiles():
                 expected[0] = 0x80 | low
                 expected[10] = 8 | (speed << 4) | (mode << 6)
                 expected[23] = 1 | (clock << 1)
-                assert m.warm and m.cmos[0x69] == 0xC2
+                assert m.warm and nv6_valid(m) and m.cmos[0x69] == 0
                 assert stored(m) == expected and not (low & 1), (mode,clock,speed,stored(m).hex())
-                assert (sum(expected)+m.cmos[0x6A]+0xC2)&255 == 0
+                assert (ord('N')+6+m.cmos[0x35]+sum(m.cmos[i] for i in NV6_INDICES))&255 == 0
                 m.startup()
                 assert m.record() == expected and m.chipset[1] == expected[0]
                 assert m.chipset[4] == 0x16 and m.chipset[0x19] == 0 and m.fast
@@ -274,7 +310,7 @@ def profiles():
     assert choices_seen >= {(0,'25 MHz'),(0,'33 MHz'),(1,'Unknown'),(1,'60 ns'),(1,'70 ns'),
                             (2,'Normal'),(2,'Compatibility')}, choices_seen
     assert help_seen >= {'Timing Profile Clock','DRAM Speed','Memory Timing'}, help_seen
-    print('Profiles: all 12 identities / Unknown alias via Setup popup/F1 -> verified C2 save -> warm POST -> exact hardware tuple and unrelated controls: PASS', flush=True)
+    print('Profiles: all 12 identities / Unknown alias via Setup popup/F1 -> verified NV6 save -> warm POST -> exact hardware tuple and unrelated controls: PASS', flush=True)
 
     m = Chipset()
     m.observer = observe
@@ -299,10 +335,10 @@ def profiles():
                 seen.append(True)
         m.observer = isolated_edit
         m.open(enter + [0x50]*2 + choice(0,2) + [0x50]*(field-2) + [0x4B,0x44,28])
-        assert seen and m.cmos[0x69] == 0xC2 and stored(m) == expected
+        assert seen and nv6_valid(m) and m.cmos[0x69] == 0 and stored(m) == expected
         m.startup()
         assert m.record() == expected and m.chipset[1] == raw
-    print('Profiles: isolated cycle-start/precharge/RCD/CAS edits -> immediate Manual -> verified C2 save -> exact warm hardware tuple: PASS', flush=True)
+    print('Profiles: isolated cycle-start/precharge/RCD/CAS edits -> immediate Manual -> verified NV6 save -> exact warm hardware tuple: PASS', flush=True)
 
     # Select the 2T-write code through the actual popup, then keep it through L2.
     m = Chipset()
@@ -319,7 +355,7 @@ def profiles():
             seen.add('selected')
     m.observer = write_width
     m.open(enter + [0x50]*2 + choice(0,2) + [0x50]*4 + choice(2,3) + [0x44,28])
-    assert seen == {'popup','selected'} and m.cmos[0x69] == 0xC2 and stored(m) == expected
+    assert seen == {'popup','selected'} and nv6_valid(m) and m.cmos[0x69] == 0 and stored(m) == expected
     m.startup()
     assert m.record() == expected and m.chipset[1] == 0x97
     m.call('chipset_late_cache',flags=2)
@@ -359,10 +395,10 @@ def profiles():
         assert bytes(m.cmos[0x69:]) == before[0x69:] and bytes(m.cmos[0x33:0x36]) == before[0x33:0x36]
         m.warm = False
         m.open([0x44,28])
-        assert m.cmos[0x69] == 0xC2 and stored(m) == migrated
+        assert nv6_valid(m) and m.cmos[0x69] == 0 and stored(m) == migrated
         m.startup()
         assert m.record() == migrated and m.fast == bool(fast)
-    print('Profiles: custom C1 -> Manual/70/33 in RAM, CMOS unchanged; verified C2 migration keeps raw timings and CPU bit0: PASS', flush=True)
+    print('Profiles: custom C1 -> Manual/70/33 in RAM, CMOS unchanged; verified NV6 migration keeps raw timings and CPU bit0: PASS', flush=True)
     # Full startup rejects reserved selectors, C1 reserved bits, and both automatic lies.
     for signature,index,value in ((0xC1,10,0x28),(0xC1,23,3),(0xC2,10,0xE8),
                                   (0xC2,10,0x38),(0xC2,23,7),(0xC2,0,0x94),
@@ -387,16 +423,16 @@ def profiles():
         policy = bytearray(NORMAL)
         policy[0], policy[10] = 0x54, 0xA8
         m.draft(policy)
-        m.call('chipset_settings_save')
-        assert m.cmos[0x69] == 0xC2
+        m.save_chipset()
+        assert nv6_valid(m) and m.cmos[0x69] == 0
         if corrupt:
-            m.cmos[0x6A] ^= 1
+            m.cmos[0x35 if m.cmos[0x34]==6 else 0x6A] ^= 1
         before = bytes(m.cmos)
         expected = NORMAL if corrupt else policy
         m.startup(expected_record=expected)
         assert m.record() == expected and m.chipset[1] == (0x96 if corrupt else 0x54)
         assert bytes(m.cmos[0x69:]) == before[0x69:] and bytes(m.cmos[0x33:0x36]) == before[0x33:0x36]
-    print('Profiles: same custom C2 with valid/corrupt checksum -> actual startup -> custom54h or NORMAL96h hardware; saved bytes unchanged: PASS', flush=True)
+    print('Profiles: same custom NV6 with valid/corrupt checksum -> actual startup -> custom54h or NORMAL96h hardware; saved bytes unchanged: PASS', flush=True)
 
     # Real comparison failure commits D2, which survives unsaved F9/F10/discard.
     for commit in ('discard','Auto','Manual'):
@@ -416,18 +452,18 @@ def profiles():
         else:
             script = [0x43,28] + (enter+[0x50]*2+choice(0,2)+[0x50,0x4B] if commit == 'Manual' else []) + [0x44,28]
             m.open(script)
-            assert m.cmos[0x69] == 0xC2
+            assert nv6_valid(m) and m.cmos[0x69] == 0
             expected = bytearray(NORMAL)
             if commit == 'Manual': expected[0],expected[10] = 0x56,0xA8
             assert stored(m) == expected
             m.startup()
             assert m.record() == expected and m.chipset[1] == expected[0]
-    print('Profiles: actual RAM failure D2 -> Setup F9/cancel F10/discard -> next reset retains A6; verified Auto/Manual saves replace D2 with C2: PASS', flush=True)
+    print('Profiles: actual RAM failure D2 -> Setup F9/cancel F10/discard -> next reset retains A6; verified Auto/Manual saves replace D2 with NV6: PASS', flush=True)
 
     class FailedRecoverySave(Chipset):
         def port_in(self, cpu, port, size, unused):
             value = super().port_in(cpu, port, size, unused)
-            if port == 0x71 and self.index == 0x6A and getattr(self, 'fail_save', False):
+            if port == 0x71 and self.index == 0x35 and getattr(self, 'fail_save', False) and (0x33,0) in self.writes:
                 return value ^ 1  # Existing RTC verification-mismatch stimulus.
             return value
     m = FailedRecoverySave()
@@ -439,7 +475,7 @@ def profiles():
     m.draft(NORMAL)
     m.writes.clear()
     m.fail_save = True
-    m.call('chipset_settings_save')
+    m.save_chipset()
     assert m.cpu.reg_read(x.UC_X86_REG_EFLAGS)&1 and m.cmos[0x69] == 0xD2
     assert all(value == 0xD2 for index,value in m.writes if index == 0x69)
     m.fail_save = False
@@ -465,18 +501,22 @@ def profiles():
                 assert hit and m.cmos[0x69] == 0xD2
             else:
                 m.draft(NORMAL)
-                m.call('chipset_settings_save')
+                m.save_chipset()
                 m.startup()
             active = RECOVERY if recovering else NORMAL
             attempted = bytearray(NORMAL)
             if manual: attempted[0], attempted[10] = 0x56, 0xA8
+            hardware = dict(m.chipset)
             seen = []
             def failed_save_observer(model):
                 if 'CMOS verification failed.' in model.text(19, 23, 46):
                     assert not model.warm and model.record() == active
-                    assert model.cmos[0x69] == (0xD2 if recovering else 0xC2)
+                    assert model.record(True) == attempted and model.chipset == hardware
+                    assert model.cmos[0x69] == 0xD2 and model.cmos[0x33]==0
                     assert stored(model) == attempted
-                    assert model.text(20, 49, 8) == '3E 02 FD'
+                    assert model.text(20, 49, 8) == '3E 01 FE'
+                    if not recovering:
+                        assert model.cmos[0x36] not in (0x1A,0x5A,0xDA), 'Save failure fabricated a RAM notice'
                     seen.append(True)
                     model.observer = None
                     model.script = ([1, 1, 1, 28] if manual else [1, 28])  # Field/sidebar discard.
@@ -488,10 +528,13 @@ def profiles():
             assert seen and not m.warm
             m.fail_save = False
             m.startup(reset=True)
-            expected = RECOVERY if recovering else attempted
+            expected = RECOVERY
             assert m.record() == expected and m.chipset[1] == expected[0]
-            assert m.cmos[0x69] == (0xD2 if recovering else 0xC2)
-    print('Profiles: real F10 base verification failure -> visible error -> discard -> reset; D2 retains A6, ordinary C2 stays ordinary: PASS', flush=True)
+            assert m.cmos[0x69] == 0xD2 and m.cmos[0x33]==0
+            if not recovering:
+                assert m.cmos[0x36] not in (0x1A,0x5A,0xDA)
+                assert 'RAM test failed' not in m.console
+    print('Profiles: real F10 base verification failure -> visible error -> discard -> reset; D2 retains A6, unpublished ordinary Save selects Compatibility without a RAM notice: PASS', flush=True)
 
     # CAS01 display must remain the actual VL82C481 table, without raw correction.
     for l2,hspd in ((False,False),(True,False),(False,True),(True,True)):
@@ -500,7 +543,7 @@ def profiles():
         policy[0],policy[10] = 0x95,0xAA if hspd else 0xA9
         policy[9] = 0x31 if l2 else 0x30
         m.draft(policy)
-        m.call('chipset_settings_save')
+        m.save_chipset()
         m.call('settings_load')
         seen=[]
         def cas(model):
@@ -562,8 +605,8 @@ def profile_locks():
         m.open(script+[0x44,28])
         if mode == 2: assert seen == changed == set(locked)
         else: assert seen >= {2,8,9,10,11,12,13} and pages == {0,1}
-        assert m.warm and m.cmos[0x69] == 0xC2
-        assert bytes(m.cmos[0x6B:0x80]+m.cmos[0x33:0x36]) == expected
+        assert m.warm and nv6_valid(m) and m.cmos[0x69] == 0
+        assert stored_policy(m) == expected
         m.startup()
         assert m.record() == expected and m.chipset[1] == raw
         m.call('chipset_late_cache',flags=2)
@@ -578,8 +621,8 @@ def profile_locks():
         expected[1] = 0x06  # RAS Timeout enabled, other RAM configuration unchanged.
         script = enter+[0x50]*2+[28]+[0x50]*mode+[28,0x51,0x4D,0x50,28,0x50,28,0x50,0x4D,0x50,0x50,28,0x48,28,0x44,28]
         m.open(script)
-        assert m.warm and m.cmos[0x69] == 0xC2
-        assert bytes(m.cmos[0x6B:0x80]+m.cmos[0x33:0x36]) == expected
+        assert m.warm and nv6_valid(m) and m.cmos[0x69] == 0
+        assert stored_policy(m) == expected
         m.startup()
         assert m.record() == expected and m.chipset[1] == raw
         m.call('chipset_late_cache',flags=2)
@@ -618,7 +661,7 @@ def profile_locks():
             script = enter+[28]+[0x48]+[0x50]*clock+[28,0x50,28]+[0x48]*2+[0x50]*speed+[28,0x50,28]
             script += ([0x50]*3+[28] if available else [1])+[0x44,28]
             m.open(script)
-            assert seen and m.cmos[0x69] == 0xC2
+            assert seen and nv6_valid(m) and m.cmos[0x69] == 0
             expected = bytearray(NORMAL)
             normal = (0x04,0x12,0x12,0x16)[clock*2+(speed != 1)]
             expected[0] = 0x80 | (normal-1 if available else normal)
@@ -635,7 +678,7 @@ def profile_locks():
         fast = bytearray(NORMAL)
         fast[0],fast[10] = 0x95,0xE8
         m.draft(fast)
-        m.call('chipset_settings_save')
+        m.save_chipset()
         m.startup()
         m.warm = False
         m.open(enter+[0x50]*field+[0x4B,0x44,28])
@@ -650,7 +693,7 @@ def profile_locks():
     fast = bytearray(NORMAL)
     fast[0],fast[10] = 0x95,0xE8
     m.draft(fast)
-    m.call('chipset_settings_save')
+    m.save_chipset()
     m.startup()
     m.warm = False
     m.open(enter+[0x4B,0x50,0x4B,0x44,28])
@@ -681,9 +724,9 @@ def cmos_and_policy():
         assert baseline[4]&8 and baseline[9]&1, 'Both caches requested enabled'
         assert baseline[0]&0x3F==0x16 and baseline[10]&8
         m.draft(baseline)
-        m.call('chipset_settings_save')
+        m.save_chipset()
         assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-        assert m.cmos[0x69] == 0xC2
+        assert nv6_valid(m) and m.cmos[0x69] == 0
         original = bytes(m.cmos)
         m.call('chipset_settings_load')
         assert m.record() == baseline and bytes(m.cmos) == original
@@ -695,7 +738,7 @@ def cmos_and_policy():
         custom[7], custom[8], custom[10], custom[23] = 0xAD, 2, 0x0A, 0
         custom[10] = (custom[10] & 0x3F) | 0x80
         m.draft(custom)
-        m.call('chipset_settings_save')
+        m.save_chipset()
         assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
         m.call('chipset_settings_load')
         assert m.record() == custom
@@ -714,7 +757,7 @@ def cmos_and_policy():
         assert tuple(m.chipset[r] for r in (1, 4, 5, 6, 7, 8, 9, 0xB, 0xC, 0x19, 0x24)) == (0x54, 0x52, 0xB7, 0x9D, 0xEF, 0xD6, 0xFB, 0xAD, 0xAA, 0, 0xD8)
         assert tuple(m.chipset[r] for r in range(0x13, 0x19)) == (0x55, 0x55, 0x55, 0x55, 0x55, 0xAA)
         assert not m.fast and not m.cpu.reg_read(x.UC_X86_REG_CR0) & 0x60000000
-        m.cmos[0x6A] ^= 1
+        m.cmos[0x35 if m.cmos[0x34]==6 else 0x6A] ^= 1
         m.call('chipset_settings_load')
         assert m.record() == baseline
         # Independently validate every persisted selector against its UI domain.
@@ -727,7 +770,7 @@ def cmos_and_policy():
             bad = bytearray(baseline)
             bad[index] = value
             m.draft(bad)
-            m.call('chipset_settings_save')
+            m.save_chipset()
             assert m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1, (index, value)
             # Bypass save: a checksum-valid corrupt selector must fail at load too.
             m.cmos[0x69], m.cmos[0x6A] = 0xC2, -(0xC2+sum(bad)) & 255
@@ -741,12 +784,12 @@ def cmos_and_policy():
         m.call('chipset_settings_load')
         assert m.record() == baseline and bytes(m.cmos) == saved, 'Wrong signature must load defaults without writes'
         m.draft(baseline)
-        m.call('chipset_settings_save')
+        m.save_chipset()
         # An interrupted POST must retain saved policy and all devices.
         devices = bytes(m.cmos[0x38:0x69])
         m.cmos[0x36] = 0xA5
         m.call('chipset_memory_prepare', flags=2)
-        assert m.cmos[0x69] == 0xC2 and m.cmos[0x36] == 0
+        assert nv6_valid(m) and m.cmos[0x69] == 0 and m.cmos[0x36] == 0
         assert m.record() == baseline
         assert bytes(m.cmos[0x38:0x69]) == devices
     print('CMOS, selector validation, register masks, early L2-off and recovery: PASS', flush=True)
@@ -768,7 +811,7 @@ def cmos_and_policy():
             policy = bytearray(m.record())
             policy[2], policy[23] = 0xA7, speed | 2
             m.draft(policy)
-            m.call('chipset_settings_save')
+            m.save_chipset()
             m.chipset[5] = turbo
             m.cpu.reg_write(x.UC_X86_REG_SI, 1)
             m.call('chipset_memory_prepare', flags=2)
@@ -780,11 +823,11 @@ def cmos_and_policy():
         custom[0]=0x56
         custom[10] = (custom[10] & 0x3F) | 0x80
         m.draft(custom)
-        m.call('chipset_settings_save')
+        m.save_chipset()
         m.cmos[0x36]=marker
         m.call('chipset_memory_prepare',flags=2)
         assert m.record()==custom and m.chipset[1]==0x56
-        assert m.cmos[0x69]==0xC2
+        assert nv6_valid(m) and m.cmos[0x69]==0
         assert m.cmos[0x36]==(0xDA if marker in (0x5A,0xDA) else 0)
         m.call('chipset_apply',flags=2)
         assert m.chipset[1]==0x56
@@ -795,19 +838,19 @@ def cmos_and_policy():
         custom[0] = 0x56
         custom[10] = (custom[10] & 0x3F) | 0x80
         m.draft(custom)
-        m.call('chipset_settings_save')
+        m.save_chipset()
         assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
         devices = bytes(m.cmos[0x38:0x69])
         m.cmos[0x36] = marker
         m.startup(reset=True, through_visible=True, expected_record=custom)
         assert m.record() == custom and m.chipset[1] == 0x56
-        assert m.cmos[0x69] == 0xC2 and m.cmos[0x36] == 0
+        assert nv6_valid(m) and m.cmos[0x69] == 0 and m.cmos[0x36] == 0
         assert bytes(m.cmos[0x38:0x69]) == devices
         screen = bytes(m.cpu.mem_read(0xB8000, 80 * 50 * 2))[::2]
         assert b'POST RAM test failed' not in screen
         assert b'RAM test failed' not in screen
         assert not getattr(m, 'restarts', 0)
-    print('Ordinary/reset-vector startup after interrupted POST keeps custom C2, hardware, devices and no RAM-failure notice: PASS', flush=True)
+    print('Ordinary/reset-vector startup after interrupted POST keeps custom NV6, hardware, devices and no RAM-failure notice: PASS', flush=True)
     m=Chipset()
     m.cpu.mem_write(m.base+0x78,struct.pack('<H',3072))
     policy=bytearray(m.record())
@@ -827,7 +870,7 @@ def cmos_and_policy():
         policy[9]=0x31 if enabled else 0x30
         policy[4]=0x88 if enabled else 0x80
         m.draft(policy)
-        m.call('chipset_settings_save')
+        m.save_chipset()
         m.call('chipset_settings_load')
         m.cpu.reg_write(x.UC_X86_REG_AX,5)
         m.call('chipset_interleave_policy')
@@ -943,7 +986,8 @@ def ui():
                 assert model.text(3,62,14).strip() == f'Page {page+1}  / {len(layouts[category])}'
                 attrs=bytes(model.cpu.mem_read(0xB8000+row*160+48*2+1,60))[::2]
                 assert attrs == bytes([0x1F])*30, (category,field,attrs)
-                assert model.text(9,2,7) == 'Chipset' and model.text(10,2,4) == 'Exit'
+                assert model.text(9,2,7) == 'Chipset'
+                assert model.text(10,2,13) == 'Plug and Play' and model.text(11,2,4) == 'Exit'
                 if category == 2:
                     for clock_row in (8,11,13):
                         assert model.text(clock_row,49,9) == 'TCLK2 /  '
@@ -981,10 +1025,10 @@ def ui():
     m=Chipset()
     m.cmos[0x36]=0xA5
     m.open(enter+[28]+manual+[0x50]+[0x4B,0x44,28])
-    assert m.cmos[0x69]==0xC2 and m.cmos[0x36]==0xA5
+    assert nv6_valid(m) and m.cmos[0x69]==0 and m.cmos[0x36]==0xA5
     m.warm=True
     m.call('chipset_memory_prepare',flags=2)
-    assert m.record()[0]==0x56 and m.cmos[0x69]==0xC2
+    assert m.record()[0]==0x56 and nv6_valid(m) and m.cmos[0x69]==0
     assert m.cmos[0x36]==0
     # F9/F10 restores the safe policy even when a valid faster record exists.
     m=Chipset()
@@ -993,7 +1037,7 @@ def ui():
     fast[0],fast[1],fast[10]=0x54,0x96,0
     fast[10] = (fast[10] & 0x3F) | 0x80
     m.draft(fast)
-    m.call('chipset_settings_save')
+    m.save_chipset()
     m.open(enter+[0x43,28,0x44,28])
     m.startup()
     assert m.record()==safe and m.chipset[1]==0x96 and m.chipset[0x24]&8
@@ -1005,7 +1049,7 @@ def ui():
     saved=bytes(m.cmos)
     m.startup()
     m.call('publish_disk_cmos',flags=2)
-    assert m.record()[0]==0 and m.chipset[1]==0 and m.cmos[0x69]==0xC2
+    assert m.record()[0]==0 and m.chipset[1]==0 and nv6_valid(m) and m.cmos[0x69]==0
     assert m.chipset[1]==0 and m.record()[0]==0
     assert bytes(m.cmos[0x69:])==saved[0x69:]
     assert bytes(m.cmos[0x33:0x36])==saved[0x33:0x36]
@@ -1026,7 +1070,7 @@ def ui():
         custom[0]=0x56
         custom[10] = (custom[10] & 0x3F) | 0x80
         m.draft(custom)
-        m.call('chipset_settings_save')
+        m.save_chipset()
         saved=bytes(m.cmos[0x69:])
         m.cmos[0x36]=0xA5
         m.cpu.mem_write(0x49E,bytes([state]))
@@ -1037,7 +1081,7 @@ def ui():
         assert m.warm and m.cmos[0x36]==0xA5
         assert bytes(m.cmos[0x69:])==saved
         m.startup()
-        assert m.record()==custom and m.cmos[0x69]==0xC2
+        assert m.record()==custom and nv6_valid(m) and m.cmos[0x69]==0
         assert m.cmos[0x36]==0
         assert m.chipset[1] == 0x56 and 'POST RAM test failed' not in m.console
     print('Ctrl+Alt+Del in open/closed POST preserves saved timings: PASS',flush=True)
@@ -1051,7 +1095,7 @@ def recovery_model():
     policy[10] |= 0x80
     policy[17:19] = bytes((4, 1))  # Valid ISA hole limits active memory to 2MiB.
     m.draft(policy)
-    m.call('chipset_settings_save')
+    m.save_chipset()
     m.call('settings_load')
     m.call('chipset_apply', flags=2)
     m.call('publish_memory_cmos', flags=2)
@@ -1261,7 +1305,7 @@ def ram_test():
     for address in sentinels:
         m.cpu.mem_write(address, b'KEEP')
     protected = bytes(m.cpu.mem_read(m.base, 1024))
-    m.chipset[1], m.cmos[0x69], m.cmos[0x36], m.speaker = 0x96, 0xC2, 0, 0xA4
+    m.chipset[1], m.cmos[0x69], m.cmos[0x36], m.speaker = 0x96, 0, 0, 0xA4
     seen = []
     def progress(cpu, access, address, size, value, unused):
         value = m.text(0, 11, 5)
@@ -1276,7 +1320,7 @@ def ram_test():
     assert all(bytes(m.cpu.mem_read(address, 4)) == b'KEEP' for address in sentinels)
     assert bytes(m.cpu.mem_read(m.base, 1024)) == protected
     assert m.a20 == 0 and m.speaker == 0xA4
-    assert m.cmos[0x69] == 0xC2 and m.cmos[0x36] == 0
+    assert nv6_valid(m) and m.cmos[0x69] == 0 and m.cmos[0x36] == 0
     print('Passing visible RAM ordered progress, all sentinels/full EBDA, A20 and port61 preservation: PASS', flush=True)
 
     for first, second in ((owner, None) for owner in owners):

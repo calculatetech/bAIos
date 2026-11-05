@@ -86,18 +86,24 @@ def early_bus_cases(image):
         for selection in range(4):
             from cache_proof import post_module
             f[4][:]=post_module().nvram()[:128]
-            if packed:f[4][0x33:0x36]=bytes.fromhex('3402CA')
             draft=bytearray(defaults)
             draft[10]=selection<<2
             draft[11]=2|(3<<2)|(1<<5)  # Explicit ISA, keyboard and recovery choices.
-            for i,b in enumerate(draft):d.write(base+state['U_CHIP']+i,1,b)
-            invoke(f,'chipset_settings_save')
-            assert not f[0].reg_read(x.UC_X86_REG_EFLAGS)&1
+            if packed:
+                invoke(f,'setup_defaults')
+                for i,b in enumerate(draft):d.write(base+state['U_CHIP']+i,1,b)
+                invoke(f,'settings_save')
+                assert not f[0].reg_read(x.UC_X86_REG_EFLAGS)&1
+            else:
+                # Keep an independently encoded legacy reader contrast.
+                f[4][0x69]=0x57
+                f[4][0x6A]=(-0x57-sum(draft))&255
+                f[4][0x6B:0x80],f[4][0x33:0x36]=draft[:21],draft[21:]
             saved=bytes(f[4])
             for damage in ('none','checksum','recovery') if selection==3 else ('none',):
                 initial=bytearray(saved)
-                tag=0x71 if packed else 0x69
-                if damage=='checksum':initial[tag+1]^=1
+                tag=0x69
+                if damage=='checksum':initial[0x35 if packed else 0x6A]^=1
                 if damage=='recovery':initial[tag]=0xD2
                 boot=Bus();boot.initial_cmos=bytes(initial)
                 boot.composed=True

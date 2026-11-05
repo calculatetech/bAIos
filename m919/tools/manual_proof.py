@@ -547,6 +547,9 @@ def settings_roundtrip_cases(image):
         _,fixture=mapped(d.modules,expected=16,memory=d,rom_image=image)
         u,_,_,state,cmos,_=fixture
         base=u.reg_read(x.UC_X86_REG_FS)<<4
+        invoke(fixture,'setup_defaults')
+        invoke(fixture,'settings_save')
+        assert not u.reg_read(x.UC_X86_REG_EFLAGS)&1 and cmos[0x33:0x35]==b'N\x06'
         # F9 replaces the draft through the same owner as both real menus.
         d.write(base+state['U_CHIP']+3,1,0x40)
         invoke(fixture,'setup_defaults')
@@ -559,7 +562,7 @@ def settings_roundtrip_cases(image):
             assert d.read(base+state['U_CHIP']+2,2)==b'\x00\x00'
         invoke(fixture,'chipset_settings_save')
         assert not u.reg_read(x.UC_X86_REG_EFLAGS)&1
-        assert cmos[0x69]==0x57
+        assert cmos[0x69]==0 and cmos[0x33:0x35]==b'N\x06'
         for i in range(24):d.write(base+state['C_CHIP']+i,1,0xA5)
         invoke(fixture,'chipset_settings_load')
         assert d.read(base+state['C_CHIP']+2,2)==bytes((0,0x40 if wb else 0))
@@ -924,6 +927,9 @@ def tuning_cases(image,shared=True):
             field_count+=1
     assert field_count==45
     # Old57 prefix and new controls both survive real save/readback/reload.
+    invoke(fixture,'setup_defaults')
+    invoke(fixture,'settings_save')
+    assert not u.reg_read(x.UC_X86_REG_EFLAGS)&1
     for record in (bytes.fromhex('F0010060900300000003')+bytes(14),
                    bytes.fromhex('0001004000000012AA070A520103')+bytes(10),
                    bytes.fromhex('0001004000000012AA070A52010301FCA6B30F01')+bytes(4)):
@@ -932,7 +938,7 @@ def tuning_cases(image,shared=True):
         for i in range(24):d.write(base+state['C_CHIP']+i,1,0)
         invoke(fixture,'chipset_settings_load')
         assert d.read(base+state['C_CHIP'],24)==record
-        assert cmos[0x69]==0x57
+        assert cmos[0x69]==0 and cmos[0x33:0x35]==b'N\x06'
     # The shared disk page sorts display positions without rewriting old codes.
     ide_fields=[(0,[0,1],['Disabled','Enabled']),
                 (7,[0,1,2,3],['Auto','Normal','Large','LBA']),

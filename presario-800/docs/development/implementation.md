@@ -209,13 +209,14 @@ Boot codes are Disabled=0, Floppy=1, Hard Disk=2, CD-ROM=3, and Other=4. Undefin
 Valid schema1-4 records retain their original boot meanings and use Disabled for the fourth target. Schema4 retains its saved theme and display preference. Earlier schemas use the current theme, with schema3 retaining its display preference.
 Only a confirmed save publishes schema5. Theme identities use the current order directly.
 Schema2 still rejects its reserved bit7. Discard leaves the saved display preference unchanged; F9 selects 12 Hour in the draft.
-Additive, versioned records use 40h–5Ch for IDE and 5Dh–68h for devices.
-The chipset record uses signature `C2h` at CMOS 69h, checksum 6Ah, and 24 settings bytes at 6Bh–7Fh and 33h–35h.
+The following extension layouts remain readable legacy formats. Complete verified Save migrates them to the [shared NV6 format](../../../docs/development/firmware.md). Current Saves retain all 24 chipset bytes, IDE geometry and peripheral choices in the compact payload. CMOS 37h still owns cold strap capture and warm strap reuse. The stackless failure producer still publishes recovery D2h directly at 69h, outside the NV6 checksum. PnP state occupies 0300h..031Fh within the existing one-KiB EBDA and does not overlap APM state.
+Legacy additive, versioned records use 40h–5Ch for IDE and 5Dh–68h for devices.
+The legacy chipset record uses signature `C2h` at CMOS 69h, checksum 6Ah, and 24 settings bytes at 6Bh–7Fh and 33h–35h.
 Byte 10 stores Memory Timing in bits 7:6 and DRAM Speed in bits 5:4.
 Timing codes are Normal=0, Compatibility=1, Manual=2, and Fast=3. Speed codes are Unknown=0, 60 ns=1, and 70 ns=2.
 Byte 23 stores the profile clock in bit 1 (25 MHz=0, 33 MHz=1) and CPU Fast/Slow in bit 0.
 Valid `C1h` records load as Manual/70 ns/33 MHz without changing hardware values or saved CMOS bytes.
-Invalid selectors and inconsistent preset timing tuples use ordinary defaults. A verified save publishes `C2h`.
+Invalid selectors and inconsistent preset timing tuples use ordinary defaults. New verified saves publish NV6 rather than `C2h`.
 An absent additive record uses its defaults without changing other valid records. A malformed signed record produces a visible POST warning.
 With a trusted base record and Halt On=No Errors, recoverable clock and extension warnings continue without CMOS writes.
 Other recovery notices retain Enter to save defaults and restart, or Delete to enter Setup. An invalid base record always retains this recovery choice.

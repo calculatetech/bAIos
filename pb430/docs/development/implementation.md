@@ -4,6 +4,8 @@ This developer record preserves the port implementation notes. For operating ins
 
 # Packard Bell PB430
 
+Complete verified Save migrates legacy extensions to the [shared NV6 format](../../../docs/development/firmware.md). It preserves all 24 chipset bytes, two-position IDE geometry and peripheral choices. CMOS 37h remains outside the payload for the existing advanced-timing trial and restore sequence. Recovery 69h remains independent of the payload checksum. Component saves update only their own slice after migration.
+
 Version 0.2.0 uses the shared PIO0–4 service with automatic mode selection and restoration after channel reset. The current port ceiling is4. The generic path retains host strobes and requires an ATA controller that honors IORDY. Faster physical timing remains unqualified. See [the shared ATA contract](../../../shared/README.md).
 
 The user reports a **24% average benchmark improvement** over the stock BIOS. The separate RAM throughput result improved from **13.6 to 17.3 MB/sec**, with effective read/write access times of **242/121 ns**. These are physical observations, not emulator measurements. The complete winning settings and benchmark set are not yet recorded.

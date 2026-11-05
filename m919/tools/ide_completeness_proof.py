@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from shared.tools.ram_proof import Listing, constants
 from shared.tools.cd_fixture import disc
+from shared.tools.checkpoint_proof import NV6_INDICES, nv6_payload, nv6_fixture, selected_bits
 
 
 class Machine:
@@ -608,17 +609,23 @@ def persistence(image):
         m.put(name, value)
     m.call('settings_save')
     assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-    assert m.cmos[0x33:0x36] == bytes.fromhex('3402CA')
-    assert m.cmos[0x40:0x6C] == packed_ide(records)
-    assert m.cmos[0x6C:0x71] == packed_ports and m.cmos[0x71:0x80] == packed_chip
-    golden = bytes(m.cmos)
+    ide_masks=bytes((1,))+bytes((0x3F,3,15,1)+ (255,)*8)*4+b'\x01\x01'
+    nv6_expected=(selected_bits(bytes((1,))+b''.join(records)+extra,ide_masks)+
+                  port_bits.to_bytes(2,'little')+selected_bits(chip,masks)+bytes(13))
+    assert m.cmos[0x33:0x35] == b'N\x06' and nv6_payload(m.cmos)==nv6_expected
+    golden_nv6=bytes(m.cmos)
+    # Independent former packed input remains a legacy loader oracle.
+    golden=bytearray(m.cmos)
+    golden[0x33:0x36]=bytes.fromhex('3402CA')
+    golden[0x40:0x6C]=packed_ide(records)
+    golden[0x6C:0x71],golden[0x71:0x80]=packed_ports,packed_chip
+    golden=bytes(golden)
     publication = list(m.writes)
-    assert publication[0] == (0x38, 0) and publication[-1] == (0x38, ord('B'))
-    marker_at = publication.index((0x33, 0x34))
-    assert marker_at < next(i for i, (address, _) in enumerate(publication) if 0x40 <= address <= 0x7F)
-    for address, tag in ((0x40, ord('I')), (0x6C, ord('P')), (0x71, ord('W'))):
-        assert publication.index((address, tag)) < len(publication)-1
-    rows.append(dict(case='format and owner publication', marker_before_overlap=True, base_signature_last=True))
+    assert publication[0] == (0x38, 0) and publication[-1] == (0x69,0)
+    marker_at=publication.index((0x33,0))
+    assert marker_at < next(i for i,(address,_) in enumerate(publication) if address in NV6_INDICES)
+    assert publication.index((0x38,ord('B'))) < publication.index((0x33,ord('N'))) < len(publication)-1
+    rows.append(dict(case='format and owner publication', marker_before_overlap=True, complete_verified_record_before_recovery_release=True))
     active = bytes((1,))+b''.join(records)+extra
     auto = bytes(4)+struct.pack('<HBBHH', 1024, 16, 63, 0xFFFF, 1024)
     defaults = {'C_IDE': b'\x01'+auto*4+b'\x01\x01',
@@ -630,7 +637,7 @@ def persistence(image):
     assert (m.get('C_HDD'), m.get('C_SLAVE')) == (1, 0)
     rows.append(dict(case='four full policies', independent_bytes=True, no_write_load=True))
     fresh = Machine(image)
-    fresh.cmos[:] = golden
+    fresh.cmos[:] = golden_nv6
     fresh.call('settings_load')
     assert bytes(fresh.cpu.mem_read(base+s['C_IDE'], 51)) == active
     assert bytes(fresh.cpu.mem_read(base+s['C_PORTS'], 8)) == ports
@@ -638,7 +645,7 @@ def persistence(image):
     fresh.writes.clear()
     fresh.call('chipset_record_save', SI=s['C_CHIP'])
     assert not fresh.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-    assert fresh.cmos == golden and all(0x71 <= address <= 0x7F for address, _ in fresh.writes)
+    assert fresh.cmos == golden_nv6 and all(address in set(NV6_INDICES)|{0x0E,0x2E,0x2F,0x33,0x34,0x35} for address,_ in fresh.writes)
     rows.append(dict(case='fresh packed load and standalone save', full_records=True, unrelated_owners_retained=True))
     for policy, bad_record in ((2, bytes((15,))+records[2][1:]),
                                (3, records[3][:6]+b'\0'+records[3][7:])):
@@ -656,7 +663,7 @@ def persistence(image):
     m.writes.clear()
     m.call('settings_save')
     assert m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-    assert m.cmos[0x38] == 0 and m.cmos[0x6C] == 0
+    assert m.cmos[0x38] == 0 and m.cmos[0x33] == 0
     assert (0x38, ord('B')) not in m.writes
     m.failed_write = None
     rows.append(dict(case='packed readback failure', failed_owner_unpublished=True, base_unpublished=True))
@@ -713,11 +720,11 @@ def persistence(image):
     load()
     assert read('C_CHIP', 3)[1:] == b'\x00\x01'
     prior = bytes(m.cmos)
+    m.writes.clear()
     m.call('chipset_record_save', SI=s['C_CHIP'])
-    assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-    assert m.cmos[0x33:0x36] == bytes(3) and m.cmos[0x69] == 0x57
-    assert m.cmos[0x40:0x69] == prior[0x40:0x69]
-    rows.append(dict(case='legacy recovery', standalone_save_keeps_format=True))
+    assert m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
+    assert bytes(m.cmos)==prior and not m.writes
+    rows.append(dict(case='legacy recovery', standalone_save_rejected_without_writes=True))
     for source, recovery in ((legacy, 0x69), (golden, 0x71)):
         m.cmos[:] = source
         m.cmos[recovery] = 0xD2
@@ -725,14 +732,14 @@ def persistence(image):
         m.failed_write = 0x3B
         m.call('settings_save')
         assert m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-        assert m.cmos[0x33:0x36] == bytes.fromhex('3402CA') and m.cmos[0x71] == 0xD2
-        assert m.cmos[0x40:0x6C] == packed_ide(records) and m.cmos[0x6C:0x71] == packed_ports
+        assert m.cmos[0x33]==0 and m.cmos[0x34]==6 and m.cmos[0x69] == 0xD2
+        assert nv6_payload(m.cmos)==nv6_expected
         fresh.cmos[:] = m.cmos
         fresh.call('settings_load')
         assert bytes(fresh.cpu.mem_read(base+s['C_CHIP']+1, 2)) == b'\x00\x01'
         assert fresh.get('C_VALID') == 0
         m.failed_write = None
-        rows.append(dict(case='failed base save retains recovery', source_tag=recovery, destination_tag=0x71))
+        rows.append(dict(case='failed base save retains recovery', source_tag=recovery, destination_tag=0x69))
     modified = list(records)
     modified[3] = modified[3][:8]+struct.pack('<H', 0xD212)+modified[3][10:]
     m.cmos[:] = golden
