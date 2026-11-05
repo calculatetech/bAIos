@@ -293,165 +293,136 @@ settings_save:
     pushad
     push fs
     call load_bios_state
-    call settings_recovery_read
-    movzx di, al            ; Keep prior recovery selection until the whole save succeeds.
-    mov bh, [fs:U_SLAVE]
-    xor bh, 1
-    shl bh, 1
-    mov al, [fs:U_HDD]
-    xor al, 1
-    or bh, al
-    shl bh, 2
-    or bh, [fs:U_HALT]
-    shl bh, 1
-    or bh, [fs:U_SWAP]
-    shl bh, 1
-    or bh, [fs:U_SEEK]
-    shl bh, 1
-    or bh, [fs:U_NUMLOCK]
-    mov al, [fs:U_CLOCK24]
-    shl al, 7
-    or bh, al
-    call settings_logical_types
-    mov bl, ah
-    add bl, 'B' + '8' + 5
-    add bl, bh
-    call settings_theme_boot
-    add bl, ah
-    call settings_second_fourth
-    add bl, ah
-    add bl, [fs:U_BOOT_THIRD]
-    neg bl
-.write:
-    mov ax, 0x0038          ; Invalidate before data; signature published last.
-    call rtc_write
-    call settings_nv6_save_all
+    sub sp,74
+    mov di,sp
+    call settings_nv6_build_all
+    jc .done
+    add di,66
+    call settings_base_pack
+    movzx edi,sp
+    mov ebp,1
+    call settings_commit32
+.done:
     jc .bad
-    call settings_logical_types
-    mov al, 0x10
-    call rtc_write
-    mov ax, ('8' << 8) | 0x39
-    call rtc_write
-    mov ax, 0x053A
-    call rtc_write
-    mov al, 0x3B
-    mov ah, bh
-    call rtc_write
-    mov al, 0x3C
-    call settings_theme_boot
-    call rtc_write
-    mov al, 0x3D
-    mov ah, bl
-    call rtc_write
-    mov al, 0x3E
-    call settings_second_fourth
-    call rtc_write
-    mov al, 0x3F
-    mov ah, [fs:U_BOOT_THIRD]
-    call rtc_write
-    call update_cmos_checksum
-    mov ax, ('B' << 8) | 0x38
-    call rtc_write
-    call settings_logical_types
-    mov al, 0x10
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x38
-    mov ah, 'B'
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x39
-    mov ah, '8'
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x3A
-    mov ah, 5
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x3B
-    mov ah, bh
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x3C
-    call settings_theme_boot
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x3D
-    mov ah, bl
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x3E
-    call settings_second_fourth
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x3F
-    mov ah, [fs:U_BOOT_THIRD]
-    call settings_verify_byte
-    jne .bad
-    call settings_nv6_publish
-    jc .bad
-%ifdef BOARD_SETTINGS_SAVED
-    call BOARD_SETTINGS_SAVED
-    jc .bad
-%endif
-    ; Only the verified whole Save may release a prior Compatibility request.
-    mov ax,0x0069
-    call rtc_write
-    mov ax,0x0069
-    call settings_verify_byte
-    jne .bad
+    lea sp,[di]             ; EDI is restored by the commit core.
+    add sp,74
     pop fs
     popad
     popf
     clc
     ret
 .bad:
-    cmp di, 0xD2
-    jne .restore
-    call settings_recovery_publish ; A later failure must retain Compatibility.
-.restore:
+    lea sp,[di]
+    add sp,74
     pop fs
     popad
     popf
     stc
     ret
 
-; AH=packed theme/first boot. AL retains the caller's CMOS index.
-settings_theme_boot:
-    mov ah, [fs:U_THEME]
-    shl ah, 3
-    or ah, [fs:U_BOOT]
+; SS:DI=8-byte canonical base (CMOS10,39..3F);38 is the fixed 'B'.
+; Both live and draft snapshots use the same encoder and field order.
+settings_base_pack:
+    pushad
+    mov si,settings_base_draft_fields
+    jmp settings_base_encode
+settings_base_active_pack:
+    pushad
+    mov si,settings_base_active_fields
+settings_base_encode:
+    call settings_base_value
+    xor al,1
+    shl al,1
+    mov dl,al
+    call settings_base_value
+    xor al,1
+    or dl,al
+    shl dl,2
+    call settings_base_value
+    or dl,al
+    shl dl,1
+    call settings_base_value
+    or dl,al
+    shl dl,1
+    call settings_base_value
+    or dl,al
+    shl dl,1
+    call settings_base_value
+    or dl,al
+    call settings_base_value
+    shl al,7
+    or dl,al
+    mov [ss:di+3],dl
+    call settings_base_value
+    test dl,4
+    jz .types
+    ror al,4
+.types:
+    mov [ss:di],al
+    mov word [ss:di+1],0x0538
+    call settings_base_value
+    shl al,3
+    mov dh,al
+    call settings_base_value
+    or al,dh
+    mov [ss:di+4],al
+    call settings_base_value
+    shl al,3
+    mov dh,al
+    call settings_base_value
+    or al,dh
+    mov [ss:di+6],al
+    call settings_base_value
+    mov [ss:di+7],al
+    mov al,'B'
+    mov cx,8
+.sum:
+    cmp cx,3
+    je .next
+    add al,[ss:di]
+.next:
+    inc di
+    loop .sum
+    neg al
+    mov [ss:di-3],al
+    popad
     ret
-
-; Schema5 CMOS3E: second in bits0..2, fourth in bits3..5.
-settings_second_fourth:
-    mov ah, [fs:U_BOOT_FOURTH]
-    shl ah, 3
-    or ah, [fs:U_BOOT_SECOND]
+settings_base_value:
+    mov bx,[cs:si]
+    add si,2
+    mov al,[fs:bx]
     ret
-
-; AH=logical CMOS10 types, without changing the physical Setup draft.
-settings_logical_types:
-    mov ah, [fs:U_TYPES]
-    cmp byte [fs:U_SWAP], 0
-    je .done
-    ror ah, 4
-.done:
-    ret
+settings_base_draft_fields:
+    dw U_SLAVE,U_HDD,U_HALT,U_SWAP,U_SEEK,U_NUMLOCK,U_CLOCK24,U_TYPES
+    dw U_THEME,U_BOOT,U_BOOT_FOURTH,U_BOOT_SECOND,U_BOOT_THIRD
+settings_base_active_fields:
+    dw C_SLAVE,C_HDD,C_HALT,C_SWAP,C_SEEK,C_NUMLOCK,C_CLOCK24,C_TYPES
+    dw C_THEME,C_BOOT,C_BOOT_FOURTH,C_BOOT_SECOND,C_BOOT_THIRD
 
 ; ZF reports equality. A persisted byte must not fail on one transient read.
 settings_verify_byte:
     mov [fs:U_SAVE_TRACE], al
     mov [fs:U_SAVE_TRACE + 1], ah
+    call settings_verify_byte_core
+    mov [fs:U_SAVE_TRACE + 2], al
+    ret
+
+; EBP selects the existing Setup trace facade or a selector-safe core.
+settings_verify_buffer_byte:
+    test ebp,ebp
+    jnz settings_verify_byte
+settings_verify_byte_core:
+    push bx
+    mov bl,al
     call rtc_read
-    cmp al, ah
+    cmp al,ah
     je .done
-    mov al, [fs:U_SAVE_TRACE]
+    mov al,bl
     call kbc_delay_2ms
     call rtc_read
-    cmp al, ah
+    cmp al,ah
 .done:
-    mov [fs:U_SAVE_TRACE + 2], al
+    pop bx
     ret
 
 post_success_tone:

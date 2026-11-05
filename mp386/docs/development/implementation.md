@@ -56,6 +56,8 @@ CMOS checksum warnings do not qualify cache. The physical switch, SRAM test and 
 
 Onboard peripheral routing remains controlled by the board switches. Devices displays the supplied SW1/SW3 switch guide. Turn power off before changing a switch. The page does not claim a live SW1 readback because that input mapping is incomplete.
 
+PnP descriptions freeze the actual port 5Fh input after POST. The parallel selector mapping 0/1/2/3 to 3BCh/378h/278h/disabled is source-inferred. The supplied switch chart names LPT1/2/3, the original OEM printer table at 8FB5 lists 3BCh/378h/278h in that order, and 0EA7..0ED4 translates the raw selector to EC values 00h/08h/04h/0Ch. Neither the chart nor the executed printer probe directly proves the selector-to-address wiring. Keep this qualification with the port evidence. The interface does not add software routing or probe attached devices. Changed fixed-resource requests fail without storage writes. An unchanged static request can migrate the complete saved record.
+
 Fast Boot is on the Boot page. Disabled is the default and runs the full RAM sweep. Enabled limits that sweep to memory below 1 MiB. It does not reduce detected capacity. F9 restores all Setup defaults. Save applies changes after restart.
 
 If power loss or a hard reset interrupts a timing trial, the next start uses working timing defaults so Delete can reach Setup. This does not report a RAM failure or consume a RAM retry. The saved timing data remain stored. Discard and canceled or failed Save keep safe timing selection; a fully verified Save releases it. Ctrl+Alt+Del retires an ordinary trial and retries the saved choices. Only an actual failed RAM comparison uses the RAM failure and retry path.

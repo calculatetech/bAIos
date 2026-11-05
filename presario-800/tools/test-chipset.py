@@ -138,14 +138,15 @@ class Chipset(setup.Setup):
 
     def startup(self, reset=False, before_notice=False, entry=None, through_visible=False,
                 halt=False, before_restart=False, through_gate=False, expected_record=None,
-                production_controls=False, through_boot=False, stop_at_notice=False, boot_failure=False):
+                production_controls=False, through_boot=False, stop_at_notice=False, boot_failure=False,
+                through_publication=False):
         # Continue the real entry; only retained video/peripheral mechanics are opaque.
         self.starting = True
         if (reset or entry == 'chipset_late_cache') and not getattr(self, 'reset_ram', False):
             self.cpu.mem_map(0x800000, 24 * 1024 * 1024)
             self.reset_ram = True
         self.cpu.hook_del(self.code_hook)
-        terminal = ('post_notice_wait' if stop_at_notice else 'boot_retry' if boot_failure else 'boot_sector' if through_boot else '.controlled_restart' if before_restart else 'hard_halt' if halt else
+        terminal = ('post_debug_summary' if through_publication else 'post_notice_wait' if stop_at_notice else 'boot_retry' if boot_failure else 'boot_sector' if through_boot else '.controlled_restart' if before_restart else 'hard_halt' if halt else
                     'chipset_post_recovery_notice' if before_notice else
                     'chipset_late_cache' if through_gate else
                     'post_clock_alert' if through_visible else 'chipset_visible_ram_test')

@@ -292,7 +292,7 @@ def ui_checks(s):
     popups=[[screen[row*80+26:row*80+78].strip() for row in range(10,22)
              if screen[row*80+26:row*80+78].strip()] for screen in s.screen]
     assert all(values in popups for values in choices),'PnP choice order/count/identity'
-    failed=Settings(s.port)
+    failed=Settings(s.port,str(s.image.parent.relative_to(ROOT/s.port)))
     failed.cmos[:],failed.nvram[:]=s.snapshot()
     failed.call('settings_load')
     failed.fail=('cmos',0x3B)

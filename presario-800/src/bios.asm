@@ -788,6 +788,7 @@ startup:
 %ifdef EMULATOR_CHIPSET_POST_UI
     call post_ui_capture
 %endif
+    call pnp_publish
     call post_debug_summary
     call presario_post_complete
 %ifdef EMULATOR_SETUP_TEST
@@ -3218,6 +3219,7 @@ emulator_exit:
 presario_shared "firmware/ide-pio.inc"
 %include "peripherals.inc"
 %include "setup.inc"
+presario_shared "firmware/pnp-interface.inc"
 %include "post.inc"
 %include "chipset.inc"
 %include "apm.inc"

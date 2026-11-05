@@ -14,11 +14,25 @@ chipset_defaults:
 
 chipset_settings_load:
     pushad
-    mov di, C_CHIP
-    call chipset_defaults
     call settings_recovery_read
     cmp al,0xD2
-    je .recovery
+    je .safe
+    call chipset_settings_load_raw
+    call settings_recovery_read
+    cmp al,0xD2
+    jne .done
+.safe:
+    mov di,C_CHIP
+    call chipset_safe_defaults
+.done:
+    popad
+    ret
+; Read and validate saved policy even when recovery selects safe live timings.
+; D2 replaced a legacy tag; the original tag is admitted only by its checksum.
+chipset_settings_load_raw:
+    pushad
+    mov di, C_CHIP
+    call chipset_defaults
     call settings_nv6_present
     jne .legacy
     call settings_nv6_chip_load
@@ -26,9 +40,6 @@ chipset_settings_load:
     mov si,C_CHIP
     call chipset_valid
     jc .bad
-    call settings_recovery_read
-    cmp al,0xD2
-    je .recovery
     jmp .done
 .legacy:
 %if BOARD_ATA_DEVICE_COUNT = 4
@@ -36,12 +47,20 @@ chipset_settings_load:
     cmp al,1
     je .packed
     test al,al
-    jnz .bad
+    jz .unpacked
+    call settings_recovery_read
+    cmp al,0xD2
+    jne .bad
+.unpacked:
 %endif
     mov al, 0x69
     call rtc_read
-    cmp al, 0xD2
-    je .recovery
+    xor dh,dh
+    cmp al,0xD2
+    jne .tag
+    mov dh,1
+    mov al,CHIP_RECORD_TAG
+.tag:
     cmp al,0x56
     je .record
     cmp al,CHIP_RECORD_TAG
@@ -60,8 +79,14 @@ chipset_settings_load:
     jb .byte
     mov al, 0x6A
     call rtc_read
-    add bl, al
-    jnz .bad
+    add bl,al
+    jz .checksum
+    test dh,dh
+    jz .bad
+    cmp bl,1
+    jne .bad
+    mov dl,0x56
+.checksum:
     cmp dl,0x56
     jne .validate
     ; The old record's tail is a certificate, not current tuning choices.
@@ -79,7 +104,7 @@ chipset_settings_load:
     jmp .done
 %if BOARD_ATA_DEVICE_COUNT = 4
 .packed:
-    call chipset_packed_load
+    call chipset_packed_load_raw
     jnc .done
 %endif
 .bad:
@@ -87,9 +112,6 @@ chipset_settings_load:
     call chipset_defaults
     mov byte [fs:C_VALID], 0
     jmp .done
-.recovery:
-    mov di,C_CHIP
-    call chipset_safe_defaults
 .done:
     popad
     ret
@@ -108,19 +130,28 @@ chipset_record_save:
 
 %if BOARD_ATA_DEVICE_COUNT = 4
 ; CMOS71..7F: tag/checksum plus13 bytes of mask-selected policy bits.
-chipset_packed_load:
+chipset_packed_load_raw:
     pushad
     sub sp,28
     mov bp,sp
-    mov al,0x71
-    call rtc_read
-    cmp al,0xD2
-    je .recovery
     mov di,bp
     mov al,0x71
     mov cx,15
     call settings_record_read
-    jc .bad
+    jnc .tag
+    cmp byte [ss:bp],0xD2
+    jne .bad
+    mov byte [ss:bp],CHIP_RECORD_TAG
+    mov di,bp
+    mov cx,15
+    xor bl,bl
+.recovered_checksum:
+    add bl,[ss:di]
+    inc di
+    loop .recovered_checksum
+    test bl,bl
+    jnz .bad
+.tag:
     cmp byte [ss:bp],CHIP_RECORD_TAG
     jne .bad
     lea di,[bp+2]
@@ -148,13 +179,6 @@ chipset_packed_load:
     inc di
     cmp di,13
     jb .padding
-    lea sp,[bp+28]
-    popad
-    clc
-    ret
-.recovery:
-    mov di,C_CHIP
-    call chipset_safe_defaults
     lea sp,[bp+28]
     popad
     clc

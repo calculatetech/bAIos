@@ -231,6 +231,7 @@ bits 16
 %ifdef BOARD_LATE_POST_TRACE
     post_code 0x5B
 %endif
+    call pnp_publish
     call post_debug_summary
 %ifdef BOARD_LATE_POST_TRACE
     post_code 0x5C
@@ -2078,6 +2079,7 @@ emulator_exit:
 %include "firmware/ide.inc"
 %include "firmware/peripherals.inc"
 %include "firmware/setup.inc"
+%include "firmware/pnp-interface.inc"
 %include "firmware/post.inc"
 %include "hardware/chipset-core.inc"
 %ifdef BOARD_APM_SOURCE

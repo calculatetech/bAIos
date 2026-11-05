@@ -22,6 +22,10 @@ The board has serial mouse connections and no PS/2 mouse connector. `platform.au
 
 ## Source boundary
 
+The onboard PnP descriptions follow the existing UART and parallel-port selectors. Parallel addresses 378h and 278h use coordinated C1.08/C3.30 values 1/00h and 0/20h, with IRQ7 and IRQ5 respectively. `ports_apply` establishes the complete tuple and preserves other C3 fields. The source is the original AMI node 90A4, encoder BD98 and writer BDE2..BE2B, corroborated by the independent am8887 resource table and writer. This establishes the complete sequence, not the meaning of an isolated C3 bit. The existing rejected 3BCh choice stays unavailable.
+
+SPP owns three low ports. EPP owns eight low ports. ECP owns three low ports and three ports at base+400h, plus the selected DMA1 or DMA3. High ports use the general I/O descriptor because the fixed-location descriptor has only ten address bits. ECP uses PNP0401 and byte-count slave DMA capabilities. SPP and EPP use PNP0400. These are standard interface descriptions, not separate physical IRQ or ECP transfer qualification.
+
 The shared cache lifecycle expands startup preparation, after-RAM qualification and final activation at the existing safe sites. The complete `warm_reset` routine remains the reset owner. Version0.15.0 replaces the normal startup data workload with two complementary address-derived dword passes across detected cache capacity. It retains direct-SRAM geometry probing, the complete Phoenix WT/fill/WB initialization transaction and the existing copy-back endpoint check. Two bounded same-index address pairs replace the previous capacity-sized tag sweeps. Witnesses stay below both installed RAM and the selected mode's cacheable limit. Extra RAM outside that limit does not disable the cacheable subset.
 
 The loader accepts a checksummed legacy56h record and keeps its first ten saved timing/cache choices. Its retired fourteen-byte certificate becomes current defaults for the newer tuning fields. Certificate contents cannot bypass qualification. Invalid legacy checksums still select the existing defaults path. New saves retain the current format.

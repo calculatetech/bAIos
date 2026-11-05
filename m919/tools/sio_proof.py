@@ -122,7 +122,7 @@ def collection(image=None):
         assert list(struct.unpack('<3H',bda[8:]))==expected_lpt+[0]*(3-len(expected_lpt)),(name,bda.hex())
         assert (equipment>>9)&7==len(expected_uart) and equipment>>14==len(expected_lpt)
         transaction=transactions(fixture,hardware,expected_uart,expected_lpt)
-        assert hardware.sio[0xC3]==0x5A and hardware.sio[0xC4]==0xA5
+        assert hardware.sio[0xC3]==({0:0x5A,2:0x4A,3:0x6A}[ports[3]]) and hardware.sio[0xC4]==0xA5
         assert hardware.sio_writes[:3]==[(0xC2,0xDF),(0xC0,0x0F),(0xC1,0x8F)]
         assert (hardware.sio[0xC2]&~0xA1)==(0x7E&~0xA1) and hardware.sio[0xC2]&0xA1==0x81
         assert not set(hardware.kbc_commands)&{0xA8,0xA9,0xD4}
@@ -136,8 +136,12 @@ def routing(image=None):
     else:
         hardware=SIO();row,fixture=compose(hardware);hardware.finish(fixture)
     u,d,listing,state,cmos,step=fixture;base=0x9E000;rows=[]
-    for ports,low0,owned1 in (((1,2,1,2,0,1,0,1),15,0x8F),((3,4,1,3,1,0,0,1),14,0x41),
-                            ((0,0,1,0,2,0,0,1),0,0xC1),((1,2,1,2,2,1,0,1),15,0xCF)):
+    cases=[((1,2,1,2,0,1,0,1),15,0x8F),((3,4,1,3,1,0,0,1),14,0x41),
+           ((0,0,1,0,2,0,0,1),0,0xC1),((1,2,1,2,2,1,0,1),15,0xCF)]
+    cases += [((1,2,1,lpt,mode,1,0,1),7|(8 if lpt else 0),
+               7|(8 if lpt==2 else 0)|(0x80,0x40,0xC0)[mode])
+              for lpt in (0,2,3) for mode in range(3)]
+    for ports,low0,owned1 in cases:
         for policy in (0,1,2,3):
             d.write(base+state['C_CHIP']+22,1,policy)
             for i,b in enumerate(ports):d.write(base+state['C_PORTS']+i,1,b)
@@ -145,7 +149,9 @@ def routing(image=None):
             u.reg_write(x.UC_X86_REG_FS,base>>4);u.reg_write(x.UC_X86_REG_CS,0xF000)
             invoke(fixture,'init_peripherals')
             assert hardware.sio[0xC0]==0xD0|low0 and hardware.sio[0xC1]==0x30|owned1,(ports,hardware.sio)
-            assert hardware.sio[0xC3]==((0x1A|((policy&2)<<5)) if ports[3] and ports[4]==2 else 0x5A)
+            route={0:0x5A,2:0x4A,3:0x6A}[ports[3]]
+            expected=(route&0xBF)|((policy&2)<<5) if ports[3] and ports[4]==2 else route
+            assert hardware.sio[0xC3]==expected
             assert hardware.sio[0xC4]==0xA5 and not hardware.sio_open
             expected_uart=[0x3F8,0x2F8] if ports[0]==1 else [0x3E8,0x2E8] if ports[0]==3 else []
             expected_lpt=[0x378] if ports[3]==2 else [0x278] if ports[3]==3 else []

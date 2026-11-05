@@ -238,7 +238,7 @@ def game_port_cases(image):
                 assert not d.sio[0xC0]&0x20
                 assert d.read(base+state['C_CHIP']+22,1)==bytes((requested,))
                 assert d.sio[0xC0]&0xD0==incoming&0xD0
-                assert not d.sio_open and d.sio_index==0xC1
+                assert not d.sio_open and d.sio_index==(0xC3 if d.read(base+state['C_PORTS']+3,1)[0] else 0xC1)
                 rows.append(dict(caller=owner,enabled=bool(requested),incoming=incoming,result=d.sio[0xC0],unrelated_preserved=True,locked=True))
     return rows
 
@@ -256,9 +256,10 @@ def ecp_dma_cases(image):
                 d.write(base+state['C_PORTS']+4,1,mode)
                 d.sio_writes.clear();invoke(f,'ide_apply_controller')
                 active=lpt!=0 and mode==2
-                expected=(incoming&0xBF)|(requested*0x40) if active else incoming
+                route=(incoming&0xCF)|({2:0,3:0x20}[lpt]) if lpt else incoming
+                expected=(route&0xBF)|(requested*0x40) if active else route
                 assert d.sio[0xC3]==expected and d.sio[0xC4]==0xA5
-                assert sum(reg==0xC3 for reg,v in d.sio_writes)==int(active)
+                assert sum(reg==0xC3 for reg,v in d.sio_writes)==int(lpt!=0)
                 assert d.read(base+state['C_CHIP']+22,1)==bytes((requested*2,))
                 assert not d.sio_open
                 rows.append(dict(channel=1 if requested else 3,incoming=incoming,lpt=lpt,mode=mode,active=active,C3=expected,C4_preserved=True))
@@ -879,7 +880,7 @@ def t4_policy_cases(image):
                     fresh.sio[0xC0]=255;fresh.sio[0xC3]=0xA5
                     fresh.call(caller)
                     assert not fresh.sio[0xC0]&0x20
-                    assert fresh.sio[0xC3]==((0xA5&0xBF)|((draft[22]&2)<<5))
+                    assert fresh.sio[0xC3]==((0xA5&0x8F)|({2:0,3:0x20}[ports[3]])|((draft[22]&2)<<5))
                     assert fresh.sio[0xC4]==0xA5 and not fresh.sio_open
                 assert bytes(fresh.cpu.mem_read(fresh.base+0x60,24))==draft,'Opaque game compatibility bit changed'
             rows.append(dict(initial_compatibility_bits=initial,action=action,Game_absent=True,

@@ -75,7 +75,7 @@ chipset_timing_saved:
     mov ax,0x0036
     call rtc_write
     mov ax,0x0036
-    call settings_verify_byte
+    call settings_verify_buffer_byte
     pop ax
     jne .bad
     clc

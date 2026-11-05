@@ -21,9 +21,15 @@ init_superio:
     ret
 acc_sio_baseline db 0xBE,7,0xD0,0xDB,4,0xD2,0xFB,0xF4,2,0xFE,0xF8,3,0xBF,0,0xDE,0xDC,0,0xFF,0xDD,1,0xBE,0xFF
 ports_record_valid:
+    push esi
+    movzx esi,si
+    call ports_record_valid32
+    pop esi
+    ret
+ports_record_valid32:
     ; IRQ3/4 have one source selector each, even for different same-IRQ bases.
-    mov al,[fs:si]
-    mov ah,[fs:si+1]
+    mov al,[fs:esi]
+    mov ah,[fs:esi+1]
     test al,al
     jz .good
     test ah,ah

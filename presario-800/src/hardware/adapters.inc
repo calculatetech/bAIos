@@ -164,6 +164,7 @@ board_floppy_result:
 board_floppy_dor:
     ret
 ports_record_valid:
+ports_record_valid32:
 ports_ui_candidate:
     clc
     ret

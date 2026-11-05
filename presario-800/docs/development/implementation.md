@@ -105,6 +105,8 @@ Floppy services support 360 KB, 720 KB, 1.2 MB, 1.44 MB, and 2.88 MB media. They
 Devices setup selects the onboard serial address, parallel address and direction mode, and PS/2 mouse.
 Serial choices are Disabled, 3F8h / IRQ4, 2F8h / IRQ3, 3E8h / IRQ4, and 2E8h / IRQ3. There is no second address-pair control.
 Defaults are serial 3F8h / IRQ4 and parallel 378h in Printer mode.
+
+The PnP inventory excludes the filtered second onboard UART. Parallel descriptions use the fixed platform IRQ7 for every selected base. The FDC37C661 data sheet defines one PINTR output without an address-dependent IRQ mux. Changing the port address does not imply IRQ5. This is the configured platform mapping, not a separate physical interrupt test.
 Drives setup contains Floppy Controller. The floppy controller and PS/2 mouse default to Enabled.
 The board has one serial connector. The unconnected UART B stays Disabled, and ISA serial discovery stays Enabled. Neither has a setup control.
 Old valid device records load with those fixed policies and the standard 3E8h/2E8h pair. The next Save stores them without changing the CMOS schema.

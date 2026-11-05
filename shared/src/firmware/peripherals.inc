@@ -16,21 +16,27 @@ ports_defaults:
     ret
 
 ports_valid:
+    push esi
+    movzx esi,si
+    call ports_valid32
+    pop esi
+    ret
+ports_valid32:
     pushad
-    xor bx, bx
+    xor ebx,ebx
 .enum:
-    mov al, [fs:si+bx]
+    mov al, [fs:esi+ebx]
     cmp al, [cs:ports_limits+bx]
     ja .bad
     inc bx
     cmp bx, 8
     jb .enum
-    call ports_record_valid
+    call ports_record_valid32
     jc .bad
-    mov al, [fs:si]
+    mov al, [fs:esi]
     test al, al
     jz .good
-    cmp al, [fs:si+1]
+    cmp al, [fs:esi+1]
     je .bad
 .good:
     popad

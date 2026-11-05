@@ -154,11 +154,27 @@ chipset_region_extent:
 
 chipset_settings_load:
     pushad
-    mov di, C_CHIP
-    call chipset_defaults
     call settings_recovery_read
     cmp al,0xD2
-    je .recovery
+    je .safe
+    call chipset_settings_load_raw
+    call settings_recovery_read
+    cmp al,0xD2
+    jne .done
+.safe:
+    mov di,C_CHIP
+    call chipset_defaults
+    mov byte [fs:C_CHIP],0xA6
+    mov byte [fs:C_CHIP+10],0x68
+.done:
+    popad
+    ret
+; Read and validate saved policy even when recovery selects safe live timings.
+; D2 replaced a legacy tag; the original tag is admitted only by its checksum.
+chipset_settings_load_raw:
+    pushad
+    mov di, C_CHIP
+    call chipset_defaults
     call settings_nv6_present
     jne .legacy
     call settings_nv6_chip_load
@@ -166,15 +182,16 @@ chipset_settings_load:
     mov si,C_CHIP
     call chipset_valid
     jc .bad
-    call settings_recovery_read
-    cmp al,0xD2
-    je .recovery
     jmp .done
 .legacy:
     mov al, 0x69
     call rtc_read
-    cmp al, 0xD2
-    je .recovery
+    xor dh,dh
+    cmp al,0xD2
+    jne .tag
+    mov dh,1
+    mov al,0xC2
+.tag:
     cmp al, 0xC1
     je .record
     cmp al, 0xC2
@@ -193,8 +210,14 @@ chipset_settings_load:
     jb .byte
     mov al, 0x6A
     call rtc_read
-    add bl, al
-    jnz .bad
+    add bl,al
+    jz .checksum
+    test dh,dh
+    jz .bad
+    cmp bl,1
+    jne .bad
+    mov dl,0xC1
+.checksum:
     cmp dl, 0xC1
     jne .validate
     ; Verify the legacy masks before adding metadata. Never write CMOS here.
@@ -213,9 +236,6 @@ chipset_settings_load:
     call chipset_defaults
     mov byte [fs:C_VALID], 0
     jmp .done
-.recovery:
-    mov byte [fs:C_CHIP], 0xA6
-    mov byte [fs:C_CHIP+10], 0x68 ; Compatibility, 70 ns, conservative XCTL.
 .done:
     popad
     ret

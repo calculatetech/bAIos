@@ -2,9 +2,17 @@
 ; FS:SI=unpacked bytes, CS:BX=masks, CX=unpacked length, SS:DI=packed bytes.
 settings_pack:
     pushad
+    movzx esi,si
+    movzx edi,di
+    call settings_pack32
+    popad
+    ret
+; Selector-safe buffer core. FS:ESI logical bytes, SS:EDI packed bytes.
+settings_pack32:
+    pushad
     mov dl,1
 .byte:
-    mov al,[fs:si]
+    mov al,[fs:esi]
     mov ah,[cs:bx]
     mov dh,1
 .bit:
@@ -12,16 +20,16 @@ settings_pack:
     jz .next_bit
     test al,dh
     jz .advance
-    or [ss:di],dl
+    or [ss:edi],dl
 .advance:
     shl dl,1
     jnz .next_bit
-    inc di
+    inc edi
     mov dl,1
 .next_bit:
     shl dh,1
     jnz .bit
-    inc si
+    inc esi
     inc bx
     loop .byte
     popad
@@ -29,26 +37,33 @@ settings_pack:
 
 settings_unpack:
     pushad
+    movzx esi,si
+    movzx edi,di
+    call settings_unpack32
+    popad
+    ret
+settings_unpack32:
+    pushad
     mov dl,1
 .byte:
-    mov byte [fs:si],0
+    mov byte [fs:esi],0
     mov ah,[cs:bx]
     mov dh,1
 .bit:
     test ah,dh
     jz .next_bit
-    test [ss:di],dl
+    test [ss:edi],dl
     jz .advance
-    or [fs:si],dh
+    or [fs:esi],dh
 .advance:
     shl dl,1
     jnz .next_bit
-    inc di
+    inc edi
     mov dl,1
 .next_bit:
     shl dh,1
     jnz .bit
-    inc si
+    inc esi
     inc bx
     loop .byte
     popad
@@ -102,15 +117,21 @@ nv6_at_indices db 0x11,0x13,0x2D
 
 ; SS:DI=66-byte payload. No writes, including on old or invalid records.
 settings_nv6_read:
+    push edi
+    movzx edi,di
+    call settings_nv6_read32
+    pop edi
+    ret
+settings_nv6_read32:
     pushad
     call settings_nv6_present
     jne .bad
-    xor bx,bx
+    xor ebx,ebx
     mov dl,'N'+6
 .byte:
     call settings_nv6_index
     call rtc_read
-    mov [ss:di+bx],al
+    mov [ss:edi+ebx],al
     add dl,al
     inc bx
     cmp bx,66
@@ -120,21 +141,21 @@ settings_nv6_read:
     add dl,al
     jnz .bad
     ; Reject padding in each independently patchable slice and the unused tail.
-    test byte [ss:di+NV6_PORT-1],(0xFF << (NV6_IDE_BITS % 8)) & 0xFF
+    test byte [ss:edi+NV6_PORT-1],(0xFF << (NV6_IDE_BITS % 8)) & 0xFF
     jnz .bad
-    test byte [ss:di+NV6_CHIP-1],0xC0
+    test byte [ss:edi+NV6_CHIP-1],0xC0
     jnz .bad
 %if BOARD_ATA_DEVICE_COUNT = 4
-    test byte [ss:di+NV6_PNP-1],0xE0
+    test byte [ss:edi+NV6_PNP-1],0xE0
     jnz .bad
 %endif
-    test byte [ss:di+NV6_USED-1],0xC0
+    test byte [ss:edi+NV6_USED-1],0xC0
     jnz .bad
     mov bx,NV6_USED
 .tail:
     cmp bx,66
     jae .good
-    cmp byte [ss:di+bx],0
+    cmp byte [ss:edi+ebx],0
     jne .bad
     inc bx
     jmp .tail
@@ -151,26 +172,35 @@ settings_nv6_read:
 ; Full Save publishes separately, after the base record also verifies.
 settings_nv6_write:
     pushad
+    movzx edi,di
+    xor ebp,ebp
+    inc bp
+    call settings_nv6_write32
+    popad
+    ret
+; EBP=0 uses no EBDA state; EBP=1 retains the Setup verification trace.
+settings_nv6_write32:
+    pushad
     mov ax,0x0033
     call rtc_write
     mov ax,0x0033
-    call settings_verify_byte
+    call settings_verify_buffer_byte
     jne .bad
     mov ax,0x0634
     call rtc_write
     mov ax,0x0634
-    call settings_verify_byte
+    call settings_verify_buffer_byte
     jne .bad
-    xor bx,bx
+    xor ebx,ebx
     mov dl,'N'+6
 .byte:
     call settings_nv6_index
-    mov ah,[ss:di+bx]
+    mov ah,[ss:edi+ebx]
     add dl,ah
     call rtc_write
     call settings_nv6_index
-    mov ah,[ss:di+bx]
-    call settings_verify_byte
+    mov ah,[ss:edi+ebx]
+    call settings_verify_buffer_byte
     jne .bad
     inc bx
     cmp bx,66
@@ -180,7 +210,7 @@ settings_nv6_write:
     mov ah,dl
     call rtc_write
     mov al,0x35
-    call settings_verify_byte
+    call settings_verify_buffer_byte
     jne .bad
     call update_cmos_checksum ; Payload includes three ordinary AT bytes.
     popad
@@ -192,12 +222,89 @@ settings_nv6_write:
     stc
     ret
 settings_nv6_publish:
+    push ebp
+    mov ebp,1
+    call settings_nv6_publish32
+    pop ebp
+    ret
+settings_nv6_publish32:
     mov ax,0x4E33
     call rtc_write
     mov ax,0x4E33
-    call settings_verify_byte
+    call settings_verify_buffer_byte
     jne settings_nv6_bad
     clc
+    ret
+
+; One complete publication owner for Setup and public next-boot mutation.
+; SS:EDI=66-byte payload followed by canonical base8. EBP=Setup trace flag.
+; No EBDA or caller draft is accessed when EBP=0. Buffers use full offsets.
+settings_commit32:
+    pushad
+    call settings_recovery_read
+    movzx esi,al
+    mov ax,0x0038
+    call rtc_write
+    mov ax,0xD269
+    call rtc_write
+    mov ax,0xD269
+    call settings_verify_buffer_byte
+    jne .bad
+    call settings_nv6_write32
+    jc .bad
+    xor ebx,ebx
+.base:
+    call settings_base_index
+    mov ah,[ss:edi+ebx+66]
+    call rtc_write
+    call settings_base_index
+    mov ah,[ss:edi+ebx+66]
+    call settings_verify_buffer_byte
+    jne .bad
+    inc bx
+    cmp bx,8
+    jb .base
+    call update_cmos_checksum
+    mov ax,0x4238
+    call rtc_write
+    mov ax,0x4238
+    call settings_verify_buffer_byte
+    jne .bad
+    call settings_nv6_publish32
+    jc .bad
+    test ebp,ebp
+    jz .retain_recovery
+%ifdef BOARD_SETTINGS_SAVED
+    call BOARD_SETTINGS_SAVED
+    jc .bad
+%endif
+    mov ax,0x0069
+    jmp .recovery
+.retain_recovery:
+    mov ax,si
+    mov ah,al
+    mov al,0x69
+.recovery:
+    push ax
+    call rtc_write
+    pop ax
+    call settings_verify_buffer_byte
+    jne .bad
+    popad
+    clc
+    ret
+.bad:
+    call update_cmos_checksum
+    popad
+    stc
+    ret
+settings_base_index:
+    mov ax,bx
+    add al,0x38
+    test bx,bx
+    jnz .done
+    mov al,0x10
+.done:
     ret
 
 ; Component descriptor: payload offset, byte length, logical length, mask address.
@@ -298,7 +405,8 @@ settings_nv6_pack_component:
     popad
     ret
 
-settings_nv6_save_all:
+; SS:DI receives the complete validated Setup payload, without publication.
+settings_nv6_build_all:
     pushad
     mov si,U_IDE
     call ide_settings_valid
@@ -322,9 +430,7 @@ settings_nv6_save_all:
     mov si,U_PNP
     call pnp_settings_valid
     jc .bad
-    sub sp,66
-    mov bp,sp
-    mov di,bp
+    mov bp,di
     mov cx,66
 .zero:
     mov byte [ss:di],0
@@ -343,18 +449,7 @@ settings_nv6_save_all:
     mov si,U_PNP
     call settings_nv6_pack_component
     mov di,bp
-    ; Hold Compatibility until the base and extension and board completion pass.
-    mov ax,0xD269
-    call rtc_write
-    mov ax,0xD269
-    call settings_verify_byte
-    jne .write_failed
-    call settings_nv6_write
-    jmp .written
-.write_failed:
-    stc
-.written:
-    lea sp,[bp+66]
+    clc
     popad
     ret
 .bad:

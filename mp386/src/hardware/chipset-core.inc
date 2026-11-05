@@ -48,11 +48,25 @@ chipset_valid:
 
 chipset_settings_load:
     pushad
-    mov di,C_CHIP
-    call chipset_defaults
     call settings_recovery_read
     cmp al,0xD2
     je .safe
+    call chipset_settings_load_raw
+    call settings_recovery_read
+    cmp al,0xD2
+    jne .done
+.safe:
+    mov di,C_CHIP
+    call chipset_defaults
+.done:
+    popad
+    ret
+; Read and validate saved policy even when recovery selects safe live timings.
+; D2 replaced a legacy tag; the original tag is admitted only by its checksum.
+chipset_settings_load_raw:
+    pushad
+    mov di,C_CHIP
+    call chipset_defaults
     call settings_nv6_present
     jne .legacy
     call settings_nv6_chip_load
@@ -60,13 +74,14 @@ chipset_settings_load:
     mov si,C_CHIP
     call chipset_valid
     jc .bad
-    call settings_recovery_read
-    cmp al,0xD2
-    je .safe
     jmp .done
 .legacy:
     mov al,0x69
     call rtc_read
+    cmp al,0xD2
+    jne .tag
+    mov al,0xD3
+.tag:
     cmp al,0xD3
     jne .done
     mov bl,al
@@ -91,9 +106,6 @@ chipset_settings_load:
     mov di,C_CHIP
     call chipset_defaults
     mov byte [fs:C_VALID],0
-.safe:
-    mov di,C_CHIP
-    call chipset_defaults
 .done:
     popad
     ret
@@ -180,7 +192,7 @@ chipset_timing_saved:
     mov ax,0x0036
     call rtc_write
     mov ax,0x0036
-    call settings_verify_byte
+    call settings_verify_buffer_byte
     jne .bad
     pop ax
     clc
