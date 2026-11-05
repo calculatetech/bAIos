@@ -120,7 +120,7 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     ready=code+listing.symbol('.ram_ready','startup')
     finish=code+listing.symbol('init_pic_pit')
     begin_state=cfg['platform']['state_seg']<<4
-    stack_ops=[];excluded_writes=[];instructions={};far_return=[False];far_return_enabled=[False]
+    stack_ops=[];excluded_writes=[];instructions={};far_return=[False];far_return_enabled=[False];instruction_count=[0]
 
     def read(uc,access,address,size,value,user):
         if address<0x10200000 and not 0xA0000<=address<0x100000:
@@ -169,6 +169,7 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
         if memory is not None:memory.outgoing(uc,port,size,value)
 
     def step(uc,address,size,user):
+        if far_return_enabled[0]:instruction_count[0]+=1
         if far_return_enabled[0] and bytes(uc.mem_read(address,1))==b'\xcb':
             # Unicorn retains the old IP on this nested E/F real-mode return.
             # Model only the CPU RETF; the query and both firmware callers run.
@@ -208,13 +209,14 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     if memory is not None and getattr(memory,'composed',False):memory.prepare(u)
     def execute(entry,end,count):
         far_return_enabled[0]=True
+        instruction_count[0]=0
         try:
-            for _ in range(32):
+            while instruction_count[0]<count:
                 far_return[0]=False
-                u.emu_start(entry,end,count=count)
+                u.emu_start(entry,end,count=count-instruction_count[0])
                 if not far_return[0]:break
                 entry=(u.reg_read(x.UC_X86_REG_CS)<<4)+u.reg_read(x.UC_X86_REG_IP)
-            else:raise AssertionError('Unbounded far returns in fixture')
+            else:raise AssertionError('Instruction budget exhausted across real far returns')
         finally:far_return_enabled[0]=False
     step.execute=execute
     execute(code+listing.symbol('startup'),code+0xFFFF,5000000+(memory.capacity*24 if memory is not None else 0))

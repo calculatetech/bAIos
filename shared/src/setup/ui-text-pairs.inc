@@ -888,6 +888,20 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_boot_speed 1.nolist
+%ifidn %1,'Boot CPU Speed'
+    %xdefine UI_STRING_BYTES 1,66,111,111,133,67,80,85,32,83,112,195,100,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_burst 1.nolist
+%ifidn %1,'L2 Read Burst'
+    %xdefine UI_STRING_BYTES 1,76,50,32,82,101,97,132,66,210,166,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_burst_help1 1.nolist
 %ifidn %1,'Clock cycles for each word in a cache burst.'
     %xdefine UI_STRING_BYTES 1,67,199,143,121,99,139,129,173,101,226,32,119,140,132,138,32,97,143,226,128,98,210,166,46,0
@@ -895,9 +909,23 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_bus_lock 1.nolist
+%ifidn %1,'PCI Lock Method'
+    %xdefine UI_STRING_BYTES 1,80,67,73,32,76,111,175,32,77,101,131,111,100,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_bus_lock_help1 1.nolist
 %ifidn %1,'Locks the bus or the resource during access.'
     %xdefine UI_STRING_BYTES 1,76,111,175,129,137,98,117,129,148,137,204,178,114,99,128,100,210,211,160,196,115,144,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_cache 1.nolist
+%ifidn %1,'CPU and Cache'
+    %xdefine UI_STRING_BYTES 1,67,80,85,32,198,67,160,183,0
 %else
     ui_encode %1
 %endif
@@ -923,6 +951,13 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_copyback 1.nolist
+%ifidn %1,'DRAM Burst Writes'
+    %xdefine UI_STRING_BYTES 1,68,189,66,210,224,87,149,135,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_copyback_help1 1.nolist
 %ifidn %1,'Allows consecutive cache writes back to memory.'
     %xdefine UI_STRING_BYTES 1,65,108,162,119,129,99,146,142,99,117,167,169,99,226,128,119,149,135,129,98,160,107,32,176,223,121,46,0
@@ -933,6 +968,27 @@
 %macro UI_TEXT_CACHE_chip_cyrix_help 1.nolist
 %ifidn %1,'Other processors keep their own cache protocol.'
     %xdefine UI_STRING_BYTES 1,79,131,191,112,193,196,115,115,140,129,107,195,112,32,131,101,105,130,111,119,110,143,226,128,112,193,116,111,99,111,108,46,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_cyrix_linear 1.nolist
+%ifidn %1,'Cyrix Linear Burst'
+    %xdefine UI_STRING_BYTES 1,67,121,149,120,32,76,138,101,97,130,66,210,166,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_cyrix_lsser 1.nolist
+%ifidn %1,'Cyrix Load/Store Tuning'
+    %xdefine UI_STRING_BYTES 1,67,121,149,120,32,76,111,216,47,83,116,140,128,84,117,110,157,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_deturbo 1.nolist
+%ifidn %1,'Deturbo Speed'
+    %xdefine UI_STRING_BYTES 1,252,116,210,98,156,83,112,195,100,0
 %else
     ui_encode %1
 %endif
@@ -951,9 +1007,23 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_devsel 1.nolist
+%ifidn %1,'PCI Device Response'
+    %xdefine UI_STRING_BYTES 1,80,67,73,32,252,220,99,128,82,101,115,112,146,142,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_devsel_help1 1.nolist
 %ifidn %1,'Selects how quickly the bridge claims a transfer.'
     %xdefine UI_STRING_BYTES 1,208,240,159,165,119,32,113,117,105,175,108,163,137,98,149,100,103,128,99,108,202,109,129,179,116,114,234,102,172,46,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_early 1.nolist
+%ifidn %1,'Early Cache Write'
+    %xdefine UI_STRING_BYTES 1,69,134,108,163,67,226,128,87,149,135,0
 %else
     ui_encode %1
 %endif
@@ -972,9 +1042,23 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_edo_burst 1.nolist
+%ifidn %1,'EDO Read Burst'
+    %xdefine UI_STRING_BYTES 1,69,68,79,32,82,101,97,132,66,210,166,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_edo_burst_help1 1.nolist
 %ifidn %1,'Read timing used when EDO mode is active.'
     %xdefine UI_STRING_BYTES 1,82,101,97,132,167,109,211,117,142,132,246,164,32,69,68,79,32,245,100,128,150,160,167,118,243,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_ide_trigger 1.nolist
+%ifidn %1,'PCI IDE IRQ Trigger'
+    %xdefine UI_STRING_BYTES 1,80,67,73,32,73,68,69,32,73,82,81,32,84,149,103,103,172,0
 %else
     ui_encode %1
 %endif
@@ -993,6 +1077,41 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_io_recovery 1.nolist
+%ifidn %1,'ISA I/O Recovery'
+    %xdefine UI_STRING_BYTES 1,73,83,238,73,47,79,32,82,101,99,111,118,172,121,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_irq_1 1.nolist
+%ifidn %1,'INTA Interrupt'
+    %xdefine UI_STRING_BYTES 1,73,78,84,238,73,110,135,114,114,201,116,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_irq_2 1.nolist
+%ifidn %1,'INTB Interrupt'
+    %xdefine UI_STRING_BYTES 1,73,78,84,66,32,73,110,135,114,114,201,116,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_irq_3 1.nolist
+%ifidn %1,'INTC Interrupt'
+    %xdefine UI_STRING_BYTES 1,73,78,84,67,32,73,110,135,114,114,201,116,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_irq_4 1.nolist
+%ifidn %1,'INTD Interrupt'
+    %xdefine UI_STRING_BYTES 1,73,78,84,68,32,73,110,135,114,114,201,116,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_irq_help1 1.nolist
 %ifidn %1,'Assigns an interrupt to this PCI routing link.'
     %xdefine UI_STRING_BYTES 1,65,115,115,105,103,110,129,136,32,138,135,114,114,201,133,176,233,80,67,73,32,114,178,116,211,108,138,107,46,0
@@ -1007,9 +1126,30 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_irqs 1.nolist
+%ifidn %1,'PCI Interrupts'
+    %xdefine UI_STRING_BYTES 1,80,67,73,32,73,110,135,114,114,201,116,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_isa_clock 1.nolist
+%ifidn %1,'ISA Clock Divider'
+    %xdefine UI_STRING_BYTES 1,73,83,238,67,199,32,68,105,220,154,114,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_isa_help1 1.nolist
 %ifidn %1,'Divides the PCI clock to produce the ISA clock.'
     %xdefine UI_STRING_BYTES 1,68,105,220,100,151,137,80,67,73,143,199,32,176,112,193,100,117,99,128,137,73,83,65,143,199,46,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_kbc_clock 1.nolist
+%ifidn %1,'Keyboard Clock'
+    %xdefine UI_STRING_BYTES 1,75,101,121,230,67,199,0
 %else
     ui_encode %1
 %endif
@@ -1028,6 +1168,13 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_l1 1.nolist
+%ifidn %1,'Internal CPU Cache'
+    %xdefine UI_STRING_BYTES 1,73,110,135,114,110,217,67,80,85,32,67,160,183,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_l1_help1 1.nolist
 %ifidn %1,'Enables the cache inside the processor.'
     %xdefine UI_STRING_BYTES 1,181,161,129,137,99,226,128,138,115,105,100,128,137,112,193,196,115,115,140,46,0
@@ -1038,6 +1185,13 @@
 %macro UI_TEXT_CACHE_chip_l1_help2 1.nolist
 %ifidn %1,'Enabled is recommended.'
     %xdefine UI_STRING_BYTES 1,181,188,150,141,99,111,109,109,164,154,182,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_l2 1.nolist
+%ifidn %1,'External Cache'
+    %xdefine UI_STRING_BYTES 1,69,120,135,114,110,217,67,160,183,0
 %else
     ui_encode %1
 %endif
@@ -1056,6 +1210,13 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_ldev 1.nolist
+%ifidn %1,'Local Device Sampling'
+    %xdefine UI_STRING_BYTES 1,76,111,99,217,252,220,99,128,83,97,109,112,108,157,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_ldev_help1 1.nolist
 %ifidn %1,'Selects when a local device response is sampled.'
     %xdefine UI_STRING_BYTES 1,208,240,159,246,164,32,179,162,99,217,154,220,99,128,204,112,146,152,150,115,97,109,112,139,182,0
@@ -1070,9 +1231,23 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_local_bus 1.nolist
+%ifidn %1,'Local Bus'
+    %xdefine UI_STRING_BYTES 1,76,111,99,217,66,117,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_lsser_help1 1.nolist
 %ifidn %1,'Uses the AMI load/store setting on a Cyrix 5x86.'
     %xdefine UI_STRING_BYTES 1,85,142,129,137,65,77,73,32,162,216,47,166,140,128,221,116,211,146,32,179,67,121,149,120,32,53,120,56,54,46,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_mapping 1.nolist
+%ifidn %1,'Device Number Mapping'
+    %xdefine UI_STRING_BYTES 1,252,220,99,128,78,117,109,98,191,77,239,112,157,0
 %else
     ui_encode %1
 %endif
@@ -1091,9 +1266,23 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_mem_lock 1.nolist
+%ifidn %1,'DRAM Resource Lock'
+    %xdefine UI_STRING_BYTES 1,68,189,82,101,115,178,114,99,128,76,111,175,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_mem_lock_help1 1.nolist
 %ifidn %1,'Selects the memory resource locking option.'
     %xdefine UI_STRING_BYTES 1,208,240,159,137,223,163,204,178,114,99,128,199,211,229,167,146,46,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_memory 1.nolist
+%ifidn %1,'Memory'
+    %xdefine UI_STRING_BYTES 1,77,101,200,121,0
 %else
     ui_encode %1
 %endif
@@ -1121,6 +1310,13 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_palette 1.nolist
+%ifidn %1,'VGA Palette Snoop'
+    %xdefine UI_STRING_BYTES 1,86,71,238,80,97,139,116,116,128,83,110,111,229,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_palette_help1 1.nolist
 %ifidn %1,'Lets a second graphics device follow palette writes.'
     %xdefine UI_STRING_BYTES 1,76,101,159,179,142,99,146,132,103,114,239,104,105,99,129,154,220,99,128,102,111,108,162,119,32,112,97,139,116,116,128,119,149,135,144,0
@@ -1131,6 +1327,13 @@
 %macro UI_TEXT_CACHE_chip_palette_help2 1.nolist
 %ifidn %1,'Leave disabled for a single graphics card.'
     %xdefine UI_STRING_BYTES 1,76,101,97,169,180,188,173,179,115,157,192,103,114,239,104,105,99,129,99,134,182,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_parity 1.nolist
+%ifidn %1,'Memory Parity'
+    %xdefine UI_STRING_BYTES 1,77,101,200,163,80,134,105,225,0
 %else
     ui_encode %1
 %endif
@@ -1149,9 +1352,23 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_park 1.nolist
+%ifidn %1,'PCI Bus Parking'
+    %xdefine UI_STRING_BYTES 1,80,67,73,32,66,117,129,80,134,107,157,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_park_help1 1.nolist
 %ifidn %1,'Lets a PCI master retain the bus while idle.'
     %xdefine UI_STRING_BYTES 1,76,101,159,179,80,67,73,32,109,97,177,130,141,116,97,138,184,98,117,129,246,105,192,105,100,139,46,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_pci_burst 1.nolist
+%ifidn %1,'CPU Burst Writes'
+    %xdefine UI_STRING_BYTES 1,67,80,85,32,66,210,224,87,149,135,115,0
 %else
     ui_encode %1
 %endif
@@ -1170,9 +1387,23 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_pci_clock 1.nolist
+%ifidn %1,'PCI Clock Ratio'
+    %xdefine UI_STRING_BYTES 1,80,67,73,32,67,199,32,82,97,167,111,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_pci_clock_help1 1.nolist
 %ifidn %1,'Selects the PCI clock relative to the CPU bus.'
     %xdefine UI_STRING_BYTES 1,208,240,159,137,80,67,73,143,199,32,141,108,97,167,169,176,137,67,80,85,32,98,117,144,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_pci_parity 1.nolist
+%ifidn %1,'PCI Parity Check'
+    %xdefine UI_STRING_BYTES 1,80,67,73,32,80,134,105,116,163,67,183,175,0
 %else
     ui_encode %1
 %endif
@@ -1191,9 +1422,23 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_pci_posted 1.nolist
+%ifidn %1,'PCI Posted Writes'
+    %xdefine UI_STRING_BYTES 1,80,67,73,32,80,111,177,132,87,149,135,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_pci_posted_help1 1.nolist
 %ifidn %1,'Buffers PCI memory writes through the bridge.'
     %xdefine UI_STRING_BYTES 1,66,117,102,102,172,129,80,67,73,32,223,163,119,149,135,129,131,114,178,103,104,184,98,149,100,103,243,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_policy 1.nolist
+%ifidn %1,'External Cache Policy'
+    %xdefine UI_STRING_BYTES 1,69,120,135,114,110,217,67,226,128,80,111,232,99,121,0
 %else
     ui_encode %1
 %endif
@@ -1212,6 +1457,13 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_posted 1.nolist
+%ifidn %1,'CPU Posted Write Waits'
+    %xdefine UI_STRING_BYTES 1,67,80,85,32,80,111,177,132,87,149,116,128,87,202,116,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_posted_help1 1.nolist
 %ifidn %1,'Wait states for CPU writes sent to PCI devices.'
     %xdefine UI_STRING_BYTES 1,87,202,133,166,97,135,129,173,67,80,85,32,119,149,135,129,142,110,133,176,80,67,73,32,154,220,196,144,0
@@ -1226,6 +1478,13 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_preempt 1.nolist
+%ifidn %1,'PCI Master Preemption'
+    %xdefine UI_STRING_BYTES 1,80,67,73,32,77,97,177,130,80,141,101,109,112,167,146,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_preempt_help1 1.nolist
 %ifidn %1,'Allows a waiting master to request the PCI bus.'
     %xdefine UI_STRING_BYTES 1,65,108,162,119,129,179,119,202,116,211,109,97,177,130,176,141,113,117,101,224,137,80,67,73,32,98,117,144,0
@@ -1233,9 +1492,23 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_read 1.nolist
+%ifidn %1,'DRAM Read Waits'
+    %xdefine UI_STRING_BYTES 1,68,189,82,101,97,132,87,202,116,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_read_help1 1.nolist
 %ifidn %1,'Adds time for memory to return data.'
     %xdefine UI_STRING_BYTES 1,65,100,194,167,109,128,173,223,163,176,141,116,210,219,100,231,97,46,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_refresh 1.nolist
+%ifidn %1,'DRAM Refresh'
+    %xdefine UI_STRING_BYTES 1,68,189,82,101,102,204,104,0
 %else
     ui_encode %1
 %endif
@@ -1250,6 +1523,13 @@
 %macro UI_TEXT_CACHE_chip_refresh_help2 1.nolist
 %ifidn %1,'Normal is recommended.'
     %xdefine UI_STRING_BYTES 1,78,140,109,217,150,141,99,111,109,109,164,154,182,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_rom 1.nolist
+%ifidn %1,'ROM Shadow and Cache'
+    %xdefine UI_STRING_BYTES 1,82,79,170,83,104,216,111,119,32,198,67,160,183,0
 %else
     ui_encode %1
 %endif
@@ -1300,6 +1580,13 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_turbo 1.nolist
+%ifidn %1,'Turbo Switch'
+    %xdefine UI_STRING_BYTES 1,84,210,98,156,83,119,105,116,242,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_turbo_help1 1.nolist
 %ifidn %1,'Allows the board turbo switch to select speed.'
     %xdefine UI_STRING_BYTES 1,65,108,162,119,129,137,230,116,210,98,156,115,119,105,116,242,32,176,142,240,133,115,112,195,182,0
@@ -1314,6 +1601,13 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_chip_type 1.nolist
+%ifidn %1,'Memory Type'
+    %xdefine UI_STRING_BYTES 1,77,101,200,163,84,121,112,101,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_chip_type_help1 1.nolist
 %ifidn %1,'Select FPM or EDO to match the installed memory.'
     %xdefine UI_STRING_BYTES 1,208,240,133,70,80,170,148,69,68,79,32,176,109,231,242,184,138,166,145,139,132,223,121,46,0
@@ -1324,6 +1618,13 @@
 %macro UI_TEXT_CACHE_chip_type_help2 1.nolist
 %ifidn %1,'FPM is the conservative starting choice.'
     %xdefine UI_STRING_BYTES 1,70,80,170,150,137,99,146,142,114,118,97,167,169,215,222,143,165,105,196,46,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_video_cache 1.nolist
+%ifidn %1,'Video BIOS Cacheable'
+    %xdefine UI_STRING_BYTES 1,86,105,154,156,248,32,67,160,183,161,0
 %else
     ui_encode %1
 %endif
@@ -1345,6 +1646,13 @@
 %macro UI_TEXT_CACHE_chip_wait_help 1.nolist
 %ifidn %1,'Use the slowest timing until stability is proven.'
     %xdefine UI_STRING_BYTES 1,85,152,137,115,162,119,101,224,167,109,211,117,110,167,108,32,166,147,105,232,116,163,150,112,193,118,164,46,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_chip_write 1.nolist
+%ifidn %1,'DRAM Write Waits'
+    %xdefine UI_STRING_BYTES 1,68,189,87,149,116,128,87,202,116,115,0
 %else
     ui_encode %1
 %endif
@@ -1657,6 +1965,27 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_pnp_clear 1.nolist
+%ifidn %1,'Clear ESCD on Reset'
+    %xdefine UI_STRING_BYTES 1,67,139,97,130,69,83,67,68,32,146,32,82,101,221,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_pnp_config 1.nolist
+%ifidn %1,'Configuration'
+    %xdefine UI_STRING_BYTES 1,67,146,102,105,103,210,97,167,146,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_pnp_dmas 1.nolist
+%ifidn %1,'DMA Reservations'
+    %xdefine UI_STRING_BYTES 1,68,77,238,82,101,142,114,118,97,167,146,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_pnp_help1 1.nolist
 %ifidn %1,'Reserve resources used by manual cards.'
     %xdefine UI_STRING_BYTES 1,82,101,142,114,169,204,178,114,99,151,117,142,132,98,163,109,136,117,145,143,134,100,144,0
@@ -1678,6 +2007,90 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_pnp_io1 1.nolist
+%ifidn %1,'Window 1 Base'
+    %xdefine UI_STRING_BYTES 1,87,138,100,111,119,32,49,32,66,97,142,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_pnp_io2 1.nolist
+%ifidn %1,'Window 2 Base'
+    %xdefine UI_STRING_BYTES 1,87,138,100,111,119,32,50,32,66,97,142,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_pnp_len1 1.nolist
+%ifidn %1,'Window 1 Length'
+    %xdefine UI_STRING_BYTES 1,87,138,100,111,119,32,49,32,76,164,103,131,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_pnp_len2 1.nolist
+%ifidn %1,'Window 2 Length'
+    %xdefine UI_STRING_BYTES 1,87,138,100,111,119,32,50,32,76,164,103,131,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_pnp_memory 1.nolist
+%ifidn %1,'Upper Memory'
+    %xdefine UI_STRING_BYTES 1,85,112,112,191,77,101,200,121,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_pnp_menu 1.nolist
+%ifidn %1,'Plug and Play'
+    %xdefine UI_STRING_BYTES 1,80,108,117,103,32,198,80,108,97,121,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_pnp_title 1.nolist
+%ifidn %1,'bAIos Setup > Plug and Play'
+    %xdefine UI_STRING_BYTES 1,98,65,73,111,129,208,116,201,32,62,32,80,108,117,103,32,198,80,108,97,121,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_boot_fourth 1.nolist
+%ifidn %1,'Fourth Boot Device'
+    %xdefine UI_STRING_BYTES 1,70,178,114,131,32,66,111,111,133,252,220,196,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_boot_order 1.nolist
+%ifidn %1,'First Boot Device'
+    %xdefine UI_STRING_BYTES 1,70,105,114,224,66,111,111,133,252,220,196,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_boot_second 1.nolist
+%ifidn %1,'Second Boot Device'
+    %xdefine UI_STRING_BYTES 1,208,99,146,132,66,111,111,133,252,220,196,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_boot_third 1.nolist
+%ifidn %1,'Third Boot Device'
+    %xdefine UI_STRING_BYTES 1,84,104,105,114,132,66,111,111,133,252,220,196,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_boot_title 1.nolist
+%ifidn %1,'bAIos Setup > Boot'
+    %xdefine UI_STRING_BYTES 1,98,65,73,111,129,208,116,201,32,62,32,66,111,111,116,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_u_chip_help1 1.nolist
 %ifidn %1,'Smaller waits are faster. Too fast can corrupt data.'
     %xdefine UI_STRING_BYTES 1,83,109,145,139,130,119,202,159,134,128,247,153,84,111,156,155,224,254,143,140,114,201,133,100,231,97,46,0
@@ -1694,9 +2107,72 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_u_chip_title 1.nolist
+%ifidn %1,'bAIos Setup > Chipset'
+    %xdefine UI_STRING_BYTES 1,98,65,73,111,129,208,116,201,32,62,32,67,104,105,112,221,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_u_choices_keys 1.nolist
 %ifidn %1,'Arrows Select   Enter Apply   Esc Cancel'
     %xdefine UI_STRING_BYTES 1,65,114,193,119,129,208,240,133,186,181,203,65,112,112,108,163,186,69,115,99,32,67,136,196,108,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_clock_format 1.nolist
+%ifidn %1,'Time Format'
+    %xdefine UI_STRING_BYTES 1,84,105,109,128,70,140,109,231,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_date 1.nolist
+%ifidn %1,'System Date'
+    %xdefine UI_STRING_BYTES 1,83,121,177,109,32,68,97,135,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_defaults_confirm 1.nolist
+%ifidn %1,'Load defaults? Enter/Y = Yes   Esc/N = Cancel'
+    %xdefine UI_STRING_BYTES 1,76,111,97,132,154,218,116,115,63,32,181,135,114,47,89,32,61,32,89,151,186,69,115,99,47,78,32,61,32,67,136,196,108,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_devices 1.nolist
+%ifidn %1,'Devices'
+    %xdefine UI_STRING_BYTES 1,252,220,196,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_devices_title 1.nolist
+%ifidn %1,'bAIos Setup > Devices'
+    %xdefine UI_STRING_BYTES 1,98,65,73,111,129,208,116,201,32,62,32,252,220,196,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_discard 1.nolist
+%ifidn %1,'Discard and Exit'
+    %xdefine UI_STRING_BYTES 1,227,99,185,198,69,120,105,116,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_discard_confirm 1.nolist
+%ifidn %1,'Discard settings? Enter/Y = Yes   Esc/N = Cancel'
+    %xdefine UI_STRING_BYTES 1,227,99,185,236,115,63,32,181,135,114,47,89,32,61,32,89,151,186,69,115,99,47,78,32,61,32,67,136,196,108,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_drives_title 1.nolist
+%ifidn %1,'bAIos Setup > Drives'
+    %xdefine UI_STRING_BYTES 1,98,65,73,111,129,208,116,201,32,62,32,68,149,118,101,115,0
 %else
     ui_encode %1
 %endif
@@ -1722,9 +2198,51 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_u_exit 1.nolist
+%ifidn %1,'Exit Setup'
+    %xdefine UI_STRING_BYTES 1,69,120,105,133,208,116,201,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_exit_title 1.nolist
+%ifidn %1,'bAIos Setup > Exit Setup'
+    %xdefine UI_STRING_BYTES 1,98,65,73,111,129,208,116,201,32,62,32,69,120,105,133,208,116,201,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_fast_boot 1.nolist
+%ifidn %1,'Fast Boot'
+    %xdefine UI_STRING_BYTES 1,70,97,224,66,111,111,116,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_fdc 1.nolist
+%ifidn %1,'Floppy Controller'
+    %xdefine UI_STRING_BYTES 1,70,162,112,112,163,67,146,116,193,108,139,114,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_u_footer 1.nolist
 %ifidn %1,'F1 Help   F4/F5 Theme   F9 Defaults   F10 Save'
     %xdefine UI_STRING_BYTES 1,70,49,32,72,101,108,112,186,32,70,52,47,70,53,32,84,183,109,128,186,70,57,32,252,218,159,186,70,49,48,32,83,253,101,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_halt 1.nolist
+%ifidn %1,'Halt On'
+    %xdefine UI_STRING_BYTES 1,72,145,133,79,110,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_hdd_policy 1.nolist
+%ifidn %1,'Primary IDE Master'
+    %xdefine UI_STRING_BYTES 1,80,149,109,134,163,73,68,69,32,77,97,177,114,0
 %else
     ui_encode %1
 %endif
@@ -2251,9 +2769,186 @@
     ui_encode %1
 %endif
 %endmacro
+%macro UI_TEXT_CACHE_u_ide_block 1.nolist
+%ifidn %1,'Block Mode'
+    %xdefine UI_STRING_BYTES 1,66,199,32,77,111,154,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_ide_controller 1.nolist
+%ifidn %1,'Onboard IDE Controller'
+    %xdefine UI_STRING_BYTES 1,79,110,230,73,68,69,32,67,146,116,193,108,139,114,0
+%elifidn %1,'Primary IDE Controller'
+    %xdefine UI_STRING_BYTES 1,80,149,109,134,163,73,68,69,32,67,146,116,193,108,139,114,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_ide_cyl 1.nolist
+%ifidn %1,'Cylinders'
+    %xdefine UI_STRING_BYTES 1,67,121,108,138,154,114,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_ide_edd 1.nolist
+%ifidn %1,'INT13 Extensions'
+    %xdefine UI_STRING_BYTES 1,73,78,84,49,51,32,69,120,135,110,115,105,146,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_ide_enabled 1.nolist
+%ifidn %1,'Device'
+    %xdefine UI_STRING_BYTES 1,252,220,196,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_ide_landing 1.nolist
+%ifidn %1,'Landing Zone'
+    %xdefine UI_STRING_BYTES 1,76,136,100,211,90,146,101,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_ide_number_prompt 1.nolist
+%ifidn %1,'Enter value'
+    %xdefine UI_STRING_BYTES 1,181,203,118,145,117,101,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_ide_precomp 1.nolist
+%ifidn %1,'Write Precompensation'
+    %xdefine UI_STRING_BYTES 1,87,149,116,128,80,141,99,111,109,112,164,115,97,167,146,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_ide_sectors 1.nolist
+%ifidn %1,'Sectors per Track'
+    %xdefine UI_STRING_BYTES 1,208,99,116,140,129,112,191,84,114,160,107,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_ide_translation 1.nolist
+%ifidn %1,'Translation'
+    %xdefine UI_STRING_BYTES 1,84,114,234,108,97,167,146,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_ide_type 1.nolist
+%ifidn %1,'Disk Type'
+    %xdefine UI_STRING_BYTES 1,227,107,32,84,121,112,101,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_ide_type_columns 1.nolist
+%ifidn %1,'Type            Cyls    Heads   Sectors'
+    %xdefine UI_STRING_BYTES 1,84,121,112,128,186,186,186,186,186,32,67,121,108,129,186,32,72,101,97,194,186,208,99,116,140,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_numlock 1.nolist
+%ifidn %1,'Boot Num Lock'
+    %xdefine UI_STRING_BYTES 1,66,111,111,133,78,117,109,32,76,111,175,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_save 1.nolist
+%ifidn %1,'Save and Exit'
+    %xdefine UI_STRING_BYTES 1,83,97,169,198,69,120,105,116,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_save_confirm 1.nolist
+%ifidn %1,'Save and restart? Enter/Y = Yes   Esc/N = Cancel'
+    %xdefine UI_STRING_BYTES 1,83,97,169,198,141,215,116,63,32,181,135,114,47,89,32,61,32,89,151,186,69,115,99,47,78,32,61,32,67,136,196,108,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_save_trace 1.nolist
+%ifidn %1,'CMOS reg/expected/read:'
+    %xdefine UI_STRING_BYTES 1,67,77,228,32,141,103,47,101,120,112,101,99,135,100,47,141,216,58,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_seek 1.nolist
+%ifidn %1,'Floppy Seek'
+    %xdefine UI_STRING_BYTES 1,70,162,112,112,163,83,195,107,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_slave_policy 1.nolist
+%ifidn %1,'Primary IDE Slave'
+    %xdefine UI_STRING_BYTES 1,80,149,109,134,163,73,68,69,32,83,108,253,101,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_standard 1.nolist
+%ifidn %1,'Standard Setup'
+    %xdefine UI_STRING_BYTES 1,83,116,136,100,185,208,116,201,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_standard_title 1.nolist
+%ifidn %1,'bAIos Setup > Standard Setup'
+    %xdefine UI_STRING_BYTES 1,98,65,73,111,129,208,116,201,32,62,32,83,116,136,100,185,208,116,201,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_swap 1.nolist
+%ifidn %1,'Swap Floppy Drives'
+    %xdefine UI_STRING_BYTES 1,83,119,239,32,70,162,112,112,163,68,149,118,101,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_time 1.nolist
+%ifidn %1,'System Time'
+    %xdefine UI_STRING_BYTES 1,83,121,177,109,32,84,105,168,0
+%else
+    ui_encode %1
+%endif
+%endmacro
 %macro UI_TEXT_CACHE_u_time_footer 1.nolist
 %ifidn %1,'A/P AM/PM   F1 Help   F4/F5 Theme'
     %xdefine UI_STRING_BYTES 1,65,47,80,32,65,77,47,80,170,186,70,49,32,72,101,108,112,186,32,70,52,47,70,53,32,84,183,168,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_title 1.nolist
+%ifidn %1,'bAIos Setup'
+    %xdefine UI_STRING_BYTES 1,98,65,73,111,129,208,116,201,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_total 1.nolist
+%ifidn %1,'Total Memory'
+    %xdefine UI_STRING_BYTES 1,84,111,116,217,77,101,200,121,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+%macro UI_TEXT_CACHE_u_version 1.nolist
+%ifidn %1,'Version:'
+    %xdefine UI_STRING_BYTES 1,86,172,115,105,146,58,0
 %else
     ui_encode %1
 %endif

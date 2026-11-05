@@ -599,6 +599,7 @@ startup:
     call init_superio
     call init_at_prerequisites
     post_code 0x50
+    call pnp_early
 
     ; This retained component owns the Cirrus video initialization and INT 10h.
     call VGA_SEGMENT:VGA_ENTRY
@@ -788,7 +789,7 @@ startup:
 %ifdef EMULATOR_CHIPSET_POST_UI
     call post_ui_capture
 %endif
-    call pnp_publish
+    call pnp_publish_finish
     call post_debug_summary
     call presario_post_complete
 %ifdef EMULATOR_SETUP_TEST
@@ -3220,6 +3221,10 @@ presario_shared "firmware/ide-pio.inc"
 %include "peripherals.inc"
 %include "setup.inc"
 presario_shared "firmware/pnp-interface.inc"
+presario_shared "firmware/pnp-entry.inc"
+presario_shared "firmware/pnp-storage-callbacks.inc"
+presario_shared "firmware/pnp-post.inc"
+%include "hardware/pnp-module.inc"
 %include "post.inc"
 %include "chipset.inc"
 %include "apm.inc"
@@ -3311,4 +3316,13 @@ reset_vector:
 bios_date      db BIOS_DATE_PREFIX, BIOS_DATE_YEAR
 times 0xFFFE - ($ - $$) db 0xFF
 db 0xFC                       ; AT model, matching INT15/C0.
+db 0
+
+; Newly owned private POST bank; the builder packs it into lower-ROM C000h.
+section post_payload start=0x10000 vstart=0
+%define CFG_ROM_CODE_SEGMENT 0xF000
+%define PNP_EXTERNAL_JOURNAL
+presario_shared "firmware/pnp-module.inc"
+%undef PNP_EXTERNAL_JOURNAL
+times 0x3FFF-($-$$) db 0xFF
 db 0

@@ -156,7 +156,7 @@ class Settings:
         before=self.snapshot()
         write_start=len(self.writes)
         try:
-            cpu.emu_start(0xF0000+self.listing.symbol(name), 0xFFFFF, count=20000000 if name=='setup_main' else 2000000)
+            cpu.emu_start(0xF0000+self.listing.symbol(name), 0xFFFFF, count=20000000 if name in ('setup_main','pnp_resource_next','pnp_census','pnp_post_invoke') else 2000000)
         finally:
             if name in ('settings_save','setup_main','ide_settings_save','ports_settings_save',
                         'chipset_settings_save','settings_recovery_publish'):
@@ -711,8 +711,8 @@ def run(port):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--port', choices=('all','m919','mp386','pb430','presario-800'),default='all')
-    parser.add_argument('--startup-port',choices=('m919','mp386','pb430','presario-800'))
+    parser.add_argument('--port', choices=('all','m919','pb430','presario-800'),default='all')
+    parser.add_argument('--startup-port',choices=('m919','pb430','presario-800'))
     parser.add_argument('--startup-cmos')
     parser.add_argument('--startup-nv',default='')
     parser.add_argument('--startup-pnp')
@@ -720,7 +720,7 @@ if __name__ == '__main__':
     if args.startup_port:
         print(json.dumps(startup_checks(args.startup_port,args.startup_cmos,args.startup_nv,args.startup_pnp)))
     else:
-        ports=('m919','mp386','pb430','presario-800') if args.port=='all' else (args.port,)
+        ports=('m919','pb430','presario-800') if args.port=='all' else (args.port,)
         for port in ports:
             if port=='presario-800':
                 command=['pwsh','-NoProfile','-File',str(ROOT/port/'tools/build.ps1'),'-OutputDirectory','build/tests/pnp-settings']

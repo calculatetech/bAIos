@@ -233,9 +233,14 @@ pnp_apm:
     mov word [es:edi],0
     jmp pnp_success
 pnp_isa:
+    mov gs,[ss:ebp+46]
     mov es,[ss:ebp+44]
     movzx edi,word [ss:ebp+42]
     mov dword [es:edi],1
+    mov al,[gs:PNP_ISA]
+    mov [es:edi+1],al
+    mov ax,[gs:PNP_ISA+1]
+    mov [es:edi+2],ax
     mov word [es:edi+4],0
     jmp pnp_success
 pnp_get:

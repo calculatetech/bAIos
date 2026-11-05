@@ -98,6 +98,7 @@ function Invoke-Nasm([string]$Arguments, [string]$Description) {
     if ($process.ExitCode) { throw "$Description failed with exit code $($process.ExitCode)." }
 }
 $includePath = (Join-Path $root "src").TrimEnd('\') + '/'
+$sharedIncludePath = (Join-Path (Split-Path -Parent $root) "shared/src").TrimEnd('\') + '/'
 $biosSource = Join-Path $root "src/bios.asm"
 $testSource = Join-Path $root "tests/boot-test.asm"
 $keyboardSource = Join-Path $root "tests/keyboard-test.asm"
@@ -109,7 +110,7 @@ if ($Vga141) { $diagnosticDefine += ' -D VGA_BIOS_141' }
 $listing = Join-Path $out 'baios-presario800-system.lst'
 $testInclude = (Join-Path $root 'tests').TrimEnd('\') + '/'
 $testArguments = "-D EXPECTED_MEMORY_KIB=$TestMemoryKiB -I `"$testInclude`""
-Invoke-Nasm "$diagnosticDefine -f bin -I `"$includePath`" -l `"$listing`" -o `"$system`" `"$biosSource`"" "NASM"
+Invoke-Nasm "$diagnosticDefine -f bin -I `"$includePath`" -I `"$sharedIncludePath`" -l `"$listing`" -o `"$system`" `"$biosSource`"" "NASM"
 Invoke-Nasm "$testArguments -f bin -o `"$bootTest`" `"$testSource`"" "Boot-test assembly"
 Invoke-Nasm "$testArguments -D FAULT_TEST -f bin -o `"$faultTest`" `"$testSource`"" "Fault-test assembly"
 Invoke-Nasm "$testArguments -f bin -o `"$keyboardTest`" `"$keyboardSource`"" "Keyboard-test assembly"
@@ -138,7 +139,19 @@ $hardwareState = Join-Path $diagnostics 'HWSTATE.COM'
 $hardwareSource = Join-Path $root 'diagnostics/hw-state.asm'
 Invoke-Nasm "-f bin -o `"$hardwareState`" `"$hardwareSource`"" "Read-only hardware snapshot assembly"
 
-$systemBytes = [IO.File]::ReadAllBytes($system)
+$assembledBytes = [IO.File]::ReadAllBytes($system)
+if ($assembledBytes.Length -ne 81920) { throw "System plus private POST bank is not 81920 bytes." }
+[byte[]]$systemBytes = $assembledBytes[0..65535]
+[byte[]]$postPayloadBytes = $assembledBytes[65536..81919]
+if ([Text.Encoding]::ASCII.GetString($postPayloadBytes, 0, 8) -ne "BAIPNP2`0") { throw 'Private POST owner identity is invalid.' }
+$postPayloadLength = [BitConverter]::ToUInt16($postPayloadBytes, 8)
+$postPayloadEntry = [BitConverter]::ToUInt16($postPayloadBytes, 10)
+if ($postPayloadLength -lt 15 -or $postPayloadLength -ge 16384 -or ($postPayloadLength -band 1) -or
+    $postPayloadEntry -lt 12 -or $postPayloadEntry -ge $postPayloadLength) { throw 'Private POST owner extent/entry is invalid.' }
+for ($i = $postPayloadLength; $i -lt 16383; $i++) { if ($postPayloadBytes[$i] -ne 255) { throw 'Private POST padding extent changed.' } }
+$postPayloadSum = 0
+for ($i = 0; $i -lt 16383; $i++) { $postPayloadSum = ($postPayloadSum + $postPayloadBytes[$i]) -band 255 }
+$postPayloadBytes[16383] = (-$postPayloadSum) -band 255
 $listingLines = [IO.File]::ReadAllLines($listing)
 $endLine = [Array]::FindIndex($listingLines, [Predicate[string]] { param($line) $line.TrimEnd().EndsWith('rom_code_end:') })
 if ($endLine -lt 0) { throw 'ROM used-space marker was not found.' }
@@ -158,10 +171,14 @@ $systemBytes[65535] = (0x100 - $sum) -band 0xFF
 
 $referenceBytes = [IO.File]::ReadAllBytes($reference)
 if ($referenceBytes.Length -ne 131072) { throw "Reference ROM is not 128 KiB." }
+for ($i = 0xC000; $i -lt 0x10000; $i++) { if ($referenceBytes[$i] -ne 255) { throw 'Selected reference private POST range is not entirely FF.' } }
 $physicalBytes = [byte[]]::new(131072)
 [Array]::Copy($referenceBytes, 0, $physicalBytes, 0, 65536)
 if ($Vga141) { [Array]::Copy($vgaBytes, 0, $physicalBytes, 0, 32768) }
+[Array]::Copy($postPayloadBytes, 0, $physicalBytes, 0xC000, 16384)
 [Array]::Copy($systemBytes, 0, $physicalBytes, 65536, 65536)
+for ($i = 0x8000; $i -lt 0xC000; $i++) { if ($physicalBytes[$i] -ne $referenceBytes[$i]) { throw 'Retained OEM prefix changed.' } }
+if ($Vga141) { for ($i = 0; $i -lt 32768; $i++) { if ($physicalBytes[$i] -ne $vgaBytes[$i]) { throw 'Selected VGA prefix changed.' } } }
 [IO.File]::WriteAllBytes($physical, $physicalBytes)
 if ($release) { [IO.File]::WriteAllBytes((Join-Path $out 'baios-presario800.bin'), $physicalBytes) }
 
@@ -196,6 +213,8 @@ if ($release) {
     CodeUsedBytes = $usedBytes
     CodeFreeBeforeF065 = 0xF065 - $usedBytes
     CodeFreeAfterF070 = 0xFFF0 - $cpuEnd
+    PostPayloadBytes = $postPayloadLength
+    PostPayloadBankBytes = 16384
     SystemFreeBytes = (0xF065 - $usedBytes) + (0xFFF0 - $cpuEnd)
     SystemSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $system).Hash
     PhysicalSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $physical).Hash

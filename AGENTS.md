@@ -99,6 +99,8 @@ Do not hardcode assumed values for hardware configuration that can change. Detec
 
 Run Python with `-B`. Stop task-owned emulators when their consumer finishes. Keep a visible preview while the user is reviewing it. Port roadmaps own port work; the central roadmap owns repository-wide work.
 
+Retry transient model-capacity failures with the same worker; do not abandon authorized work solely because of a capacity response.
+
 ## Public source boundary
 
 Do not commit vendor ROMs, complete disassemblies, manuals, operating-system media, personal configuration, or local paths. Keep these inputs outside Git. Run `python -B tools/check-public-source.py` before publishing. The public repository must never receive private development branches or tags.

@@ -13,7 +13,7 @@ Status legend:
 
 ## Active
 
-- **BAIOS-012: Add Plug and Play support.** Identify supported expansion devices, assign resources without conflicts, and provide the standard BIOS interface to operating systems. Share the common logic and keep controller-specific operations in board adapters. Include ISA Plug and Play, PCI resource coordination, saved manual reservations, BIOS/OS configuration policy and Clear ESCD. Prioritize this work ahead of the remaining CPU tuning and retain the 64 KB system-ROM layouts.
+- **BAIOS-012: Add Plug and Play support.** Identify supported expansion devices, assign resources without conflicts, and provide the standard BIOS interface to operating systems. Share the common logic and keep controller-specific operations in board adapters. Include ISA Plug and Play, PCI resource coordination, saved manual reservations, BIOS/OS configuration policy and Clear ESCD. Adopt PnP on 486-class chipsets, including hybrid 386/486 chipsets, and newer systems. MP386 remains outside PnP support and keeps its ordinary settings and hardware behavior. Prioritize this work ahead of the remaining CPU tuning and retain the 64 KB system-ROM layouts.
 
 ## Planned next
 

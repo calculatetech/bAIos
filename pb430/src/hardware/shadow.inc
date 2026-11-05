@@ -279,7 +279,9 @@ shadow_optional_window:
     post_code_early 0xDC
     jmp hard_halt
 
-initialize_video:
+; Select and map bytes only. ISA boot resources are solved after this owner;
+; executing the selected provider remains initialize_video's responsibility.
+board_video_prepare:
     post_code 0x3C
     pushf
     cli
@@ -355,6 +357,29 @@ initialize_video:
     test bl,bl
     jnz .failed
     post_code 0x3F ; The complete declared provider header and checksum passed.
+    pop es
+    pop ds
+    popad
+    popf
+    clc
+    ret
+.failed:
+    pb_stage 0xE5
+    pop es
+    pop ds
+    popad
+    popf
+    stc
+    ret
+
+initialize_video:
+    call board_video_prepare
+    jc .prepare_failed
+    pushf
+    cli
+    pushad
+    push ds
+    push es
     mov al,2
     call acc_read
     or al,0x20
@@ -410,5 +435,8 @@ initialize_video:
     pop ds
     popad
     popf
+    stc
+    ret
+.prepare_failed:
     stc
     ret

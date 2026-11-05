@@ -4,6 +4,14 @@ This developer record preserves the port implementation notes. For operating ins
 
 # Packard Bell PB430
 
+## Plug and Play POST storage
+
+The selected VGA remains byte-identical at physical 00000h..07FFFh. Physical 08000h..0FFFFh replaces builder-synthesized FF with a declared-length private PnP POST module, padding and a checksum footer. Existing ACC E000 mapping copies the module into the bounded POST arena before use and restores the mapping. Payload identity, extent, entry and checksum are checked before execution. The public PnP interface stays in F000 and fixed F065h remains intact. The system image stays 64 KiB and the physical image stays 128 KiB.
+
+Non-executing VGA selection and staging establish fixed C000 ownership after ISA census and before assignment. Actual VGA initialization stays at its existing POST site. Both the onboard E000 source and an external C000 provider use this path. The journal allocator excludes physical 20000h..3FFFFh, which the existing video and ROM-shadow owners use as scratch. That skipped memory counts against temporary capacity. Automated checks follow Setup, reset, shadow, RAM and device owners through release. They do not qualify electrical stability.
+
+## Existing implementation
+
 Complete verified Save migrates legacy extensions to the [shared NV6 format](../../../docs/development/firmware.md). It preserves all 24 chipset bytes, two-position IDE geometry and peripheral choices. CMOS 37h remains outside the payload for the existing advanced-timing trial and restore sequence. Recovery 69h remains independent of the payload checksum. Component saves update only their own slice after migration.
 
 Version 0.2.0 uses the shared PIO0–4 service with automatic mode selection and restoration after channel reset. The current port ceiling is4. The generic path retains host strobes and requires an ATA controller that honors IORDY. Faster physical timing remains unqualified. See [the shared ATA contract](../../../shared/README.md).
@@ -43,7 +51,7 @@ powershell -NoProfile -File pb430/tools/build.ps1
 python -B pb430/tools/test-port.py --case all
 ```
 
-The build writes `pb430/build/baios-pb430.bin` (131072 bytes) and `baios-pb430-system.bin` (65536 bytes). The physical image uses the accepted Presario 60 MHz Cirrus video BIOS, followed by 32 KiB of FF and the new F000 system ROM. The builder checks the input hashes, retained bytes, reset target and zero-sum system checksum.
+The build writes `pb430/build/baios-pb430.bin` (131072 bytes) and `baios-pb430-system.bin` (65536 bytes). The physical image uses the accepted Presario 60 MHz Cirrus video BIOS, followed by the 32 KiB private POST bank and the F000 system ROM. The builder checks the input hashes, retained bytes, private-bank identity and checksum, reset target and zero-sum system checksum.
 
 An experimental early interleave image is available with `python -B pb430/tools/build.py --interleave`, under `pb430/build/interleave/`. It requires the detected four4MiB-bank layout and tests the mode before building live firmware state. It preserves the accepted VGA and cache sequence. See [interleave experiment and POST codes](../hardware-evidence.md#early-interleave-experiment). The normal build remains unchanged.
 

@@ -252,6 +252,7 @@ settings_load:
     call ide_settings_load
     call ports_settings_load
     call chipset_settings_load
+%ifdef BOARD_PNP_SUPPORT
     mov di,C_PNP
     call pnp_defaults
     call settings_nv6_present
@@ -266,6 +267,7 @@ settings_load:
     call pnp_defaults
     mov byte [fs:C_VALID],0
 .pnp_done:
+%endif
     pop fs
     popad
     ret
@@ -663,8 +665,10 @@ setup_defaults:
     call ports_defaults
     mov di, U_CHIP
     call chipset_defaults
+%ifdef BOARD_PNP_SUPPORT
     mov di,U_PNP
     call pnp_defaults
+%endif
     ret
 
 post_numlock_apply:
@@ -944,11 +948,13 @@ setup_main:
     mov di, U_CHIP
     mov cx, CHIP_SIZE
     call ide_copy_bytes
+%ifdef BOARD_PNP_SUPPORT
     mov si,C_PNP
     mov di,U_PNP
     mov cx,PNP_SIZE
     call ide_copy_bytes
     mov byte [fs:U_PNP_SCREEN],0
+%endif
     mov byte [fs:U_CHIP_SCREEN], 0
     mov byte [fs:U_IDE_DEVICE], 0xFF
     call setup_video_mode
@@ -1031,11 +1037,13 @@ setup_main:
     jb .start_edit
     jmp .choices
 .non_clock_enter:
+%ifdef BOARD_PNP_SUPPORT
     cmp byte [fs:U_PAGE],6
     jne .non_pnp_enter
     call pnp_ui_select
     jmp .redraw
 .non_pnp_enter:
+%endif
     cmp byte [fs:U_PAGE], 4
     je .exit_action
     cmp byte [fs:U_PAGE], 1
@@ -1104,7 +1112,11 @@ setup_main:
     cmp byte [fs:U_FOCUS], 0
     jne .field
     movzx bx,byte [fs:U_PAGE]
+%ifdef BOARD_PNP_SUPPORT
     mov al,[cs:pnp_sidebar_up+bx]
+%else
+    mov al,[cs:setup_sidebar_up+bx]
+%endif
     jmp .sidebar_selected
 .sidebar_selected:
     mov [fs:U_PAGE], al
@@ -1114,7 +1126,11 @@ setup_main:
     cmp byte [fs:U_FOCUS], 0
     jne .field
     movzx bx,byte [fs:U_PAGE]
+%ifdef BOARD_PNP_SUPPORT
     mov al,[cs:pnp_sidebar_down+bx]
+%else
+    mov al,[cs:setup_sidebar_down+bx]
+%endif
     jmp .sidebar_selected
 .field:
     mov bl, 1
@@ -1147,12 +1163,14 @@ setup_main:
     ja .field_limit
     mov bl, IDE_FIELD_COUNT-1
 .field_limit:
+%ifdef BOARD_PNP_SUPPORT
     cmp byte [fs:U_PAGE],6
     jne .field_count_ready
     call pnp_ui_count
     mov bl,cl
     dec bl
 .field_count_ready:
+%endif
     mov cl, [fs:U_FIELD]
     cmp ah, 0x48
     jne .field_down
@@ -1195,6 +1213,7 @@ setup_main:
     call setup_change
     jmp .redraw
 .escape:
+%ifdef BOARD_PNP_SUPPORT
     cmp byte [fs:U_PAGE],6
     jne .non_pnp_escape
     cmp byte [fs:U_PNP_SCREEN],0
@@ -1205,6 +1224,7 @@ setup_main:
     mov byte [fs:U_PNP_SCREEN],0
     jmp .redraw
 .non_pnp_escape:
+%endif
     cmp byte [fs:U_PAGE], 5
     jne .non_chip_escape
 %ifndef BOARD_SETUP_READONLY_PAGES
@@ -1813,8 +1833,10 @@ setup_restore_text:
 
 ; AH selects Left/Right. Non-clock edits stay in the draft, not active state.
 setup_change:
+%ifdef BOARD_PNP_SUPPORT
     cmp byte [fs:U_PAGE],6
     je pnp_ui_change
+%endif
     cmp byte [fs:U_PAGE], 0
     jne .non_clock
     xor byte [fs:U_CLOCK24], 1
@@ -1906,8 +1928,10 @@ setup_change:
     ret
 
 setup_enum_store:
+%ifdef BOARD_PNP_SUPPORT
     cmp byte [fs:U_PAGE],6
     je pnp_ui_commit
+%endif
     pushf
     pushad
     cmp byte [fs:U_PAGE],1
@@ -2043,8 +2067,10 @@ setup_ide_controller_store:
 
 ; Enter opens the complete enum. Arrows still offer the normal quick change.
 setup_choices:
+%ifdef BOARD_PNP_SUPPORT
     cmp byte [fs:U_PAGE],6
     je pnp_ui_choices
+%endif
     cmp byte [fs:U_PAGE], 5
     je chipset_ui_choices
     cmp byte [fs:U_PAGE], 3
@@ -2527,10 +2553,18 @@ setup_draw:
     ui_text 7, 2, u_boot, 0x07
     ui_text 8, 2, u_devices, 0x07
     ui_text 9, 2, u_chip_menu, 0x07
+%ifdef BOARD_PNP_SUPPORT
     ui_text 10,2,pnp_menu,0x07
     ui_text 11, 2, u_exit, 0x07
+%else
+    ui_text 10, 2, u_exit, 0x07
+%endif
     movzx bx,byte [fs:U_PAGE]
+%ifdef BOARD_PNP_SUPPORT
     movzx ax,byte [cs:pnp_sidebar_rows+bx]
+%else
+    movzx ax,byte [cs:setup_sidebar_rows+bx]
+%endif
     imul di, ax, 160
     add di, 2 * 2
     mov bx, ax
@@ -2549,9 +2583,11 @@ setup_draw:
     mov si, u_exit
     cmp byte [fs:U_PAGE], 4
     je .sidebar
+%ifdef BOARD_PNP_SUPPORT
     mov si,pnp_menu
     cmp byte [fs:U_PAGE],6
     je .sidebar
+%endif
     mov si, u_chip_menu
 .sidebar:
     mov bh, 0x1F
@@ -2595,11 +2631,13 @@ setup_draw:
     call chipset_ui_draw
     jmp .done
 .ordinary_page:
+%ifdef BOARD_PNP_SUPPORT
     cmp byte [fs:U_PAGE],6
     jne .non_pnp_page
     call pnp_ui_draw
     jmp .done
 .non_pnp_page:
+%endif
     cmp byte [fs:U_PAGE], 1
     je .drives
     cmp byte [fs:U_PAGE], 2
@@ -2859,6 +2897,7 @@ setup_field_highlight:
     mov cx, UI_VALUE_WIDTH + 2
     jmp .paint
 .ordinary_highlight:
+%ifdef BOARD_PNP_SUPPORT
     cmp byte [fs:U_PAGE],6
     jne .non_pnp_highlight
     movzx di,cl
@@ -2868,6 +2907,7 @@ setup_field_highlight:
     mov cx,UI_VALUE_WIDTH+2
     jmp .paint
 .non_pnp_highlight:
+%endif
     movzx bx, cl
     mov si, u_clock_rows
     cmp byte [fs:U_PAGE], 0
@@ -3036,11 +3076,13 @@ setup_help:
     call chipset_ui_help
     jmp .wait
 .ordinary_help:
+%ifdef BOARD_PNP_SUPPORT
     cmp byte [fs:U_PAGE],6
     jne .non_pnp_help
     call pnp_ui_help
     jmp .wait
 .non_pnp_help:
+%endif
     mov di, 17 * 160 + 23 * 2
     mov dx, 6
     mov ax, 0x1E20
@@ -3538,7 +3580,8 @@ setup_confirm:
     clc
     ret
 
-u_title db 'bAIos Setup',0
+u_title:
+    ui_string 'bAIos Setup', u_title
 u_summary db 'bAIos',0
 u_cpu_unknown db 'CPU family/model/speed: Unknown',0
 u_fpu db 'Numeric processor',0
@@ -3569,31 +3612,42 @@ u_cmos_recover db 'Enter/D: Load defaults and continue.  Delete: Setup.',13,10,0
 u_platform db BOARD_DISPLAY_NAME,0
 u_build db 'ROM build:',0
 u_menu db 'SETUP MENU',0
-u_standard db 'Standard Setup',0
+u_standard:
+    ui_string 'Standard Setup', u_standard
 u_drives db 'Drives',0
 u_boot db 'Boot',0
-u_exit db 'Exit Setup',0
-u_standard_title db 'bAIos Setup > Standard Setup',0
-u_drives_title db 'bAIos Setup > Drives',0
-u_boot_title db 'bAIos Setup > Boot',0
-u_exit_title db 'bAIos Setup > Exit Setup',0
+u_exit:
+    ui_string 'Exit Setup', u_exit
+u_standard_title:
+    ui_string 'bAIos Setup > Standard Setup', u_standard_title
+u_drives_title:
+    ui_string 'bAIos Setup > Drives', u_drives_title
+u_boot_title:
+    ui_string 'bAIos Setup > Boot', u_boot_title
+u_exit_title:
+    ui_string 'bAIos Setup > Exit Setup', u_exit_title
 u_footer:
     ui_string 'F1 Help   F4/F5 Theme   F9 Defaults   F10 Save', u_footer
 u_edit_footer:
     ui_string 'F1 Help   F4/F5 Theme', u_edit_footer
 u_time_footer:
     ui_string 'A/P AM/PM   F1 Help   F4/F5 Theme', u_time_footer
-u_version db 'Version:',0
-u_clock_format db 'Time Format',0
+u_version:
+    ui_string 'Version:', u_version
+u_clock_format:
+    ui_string 'Time Format', u_clock_format
 u_clock_formats dw u_clock12,u_clock24
 u_clock12 db '12 Hour',0
 u_clock24 db '24 Hour',0
 u_choices db 'SELECT VALUE',0
 u_choices_keys:
     ui_string 'Arrows Select   Enter Apply   Esc Cancel', u_choices_keys
-u_date db 'System Date',0
-u_time db 'System Time',0
-u_total db 'Total Memory',0
+u_date:
+    ui_string 'System Date', u_date
+u_time:
+    ui_string 'System Time', u_time
+u_total:
+    ui_string 'Total Memory', u_total
 u_base db 'Base Memory',0
 u_extended db 'Extended Memory',0
 u_mb db 'MB',0
@@ -3602,26 +3656,42 @@ u_slash db '/',0
 u_invalid db 'Invalid date or time.',0
 u_drive_a db 'Floppy Drive A',0
 u_drive_b db 'Floppy Drive B',0
-u_hdd_policy db 'Primary IDE Master',0
-u_slave_policy db 'Primary IDE Slave',0
+u_hdd_policy:
+    ui_string 'Primary IDE Master', u_hdd_policy
+u_slave_policy:
+    ui_string 'Primary IDE Slave', u_slave_policy
 u_geometry db 'BIOS C / H / S',0
 u_absent db 'Not detected',0
-u_boot_order db 'First Boot Device',0
-u_boot_second db 'Second Boot Device',0
-u_boot_third db 'Third Boot Device',0
-u_boot_fourth db 'Fourth Boot Device',0
-u_numlock db 'Boot Num Lock',0
-u_swap db 'Swap Floppy Drives',0
-u_halt db 'Halt On',0
+u_boot_order:
+    ui_string 'First Boot Device', u_boot_order
+u_boot_second:
+    ui_string 'Second Boot Device', u_boot_second
+u_boot_third:
+    ui_string 'Third Boot Device', u_boot_third
+u_boot_fourth:
+    ui_string 'Fourth Boot Device', u_boot_fourth
+u_numlock:
+    ui_string 'Boot Num Lock', u_numlock
+u_swap:
+    ui_string 'Swap Floppy Drives', u_swap
+u_halt:
+    ui_string 'Halt On', u_halt
 u_keyboard_absent db 'WARNING: Keyboard not detected.',13,10,0
-u_seek db 'Floppy Seek',0
-u_save db 'Save and Exit',0
-u_discard db 'Discard and Exit',0
+u_seek:
+    ui_string 'Floppy Seek', u_seek
+u_save:
+    ui_string 'Save and Exit', u_save
+u_discard:
+    ui_string 'Discard and Exit', u_discard
 u_save_error db 'CMOS verification failed. Settings not applied.',0
-u_save_trace db 'CMOS reg/expected/read:',0
-u_save_confirm db 'Save and restart? Enter/Y = Yes   Esc/N = Cancel',0
-u_discard_confirm db 'Discard settings? Enter/Y = Yes   Esc/N = Cancel',0
-u_defaults_confirm db 'Load defaults? Enter/Y = Yes   Esc/N = Cancel',0
+u_save_trace:
+    ui_string 'CMOS reg/expected/read:', u_save_trace
+u_save_confirm:
+    ui_string 'Save and restart? Enter/Y = Yes   Esc/N = Cancel', u_save_confirm
+u_discard_confirm:
+    ui_string 'Discard settings? Enter/Y = Yes   Esc/N = Cancel', u_discard_confirm
+u_defaults_confirm:
+    ui_string 'Load defaults? Enter/Y = Yes   Esc/N = Cancel', u_defaults_confirm
 u_seek_error_a db 'Floppy A seek error.',13,10,0
 u_seek_error_b db 'Floppy B seek error.',13,10,0
 u_post_continue db 'Press any key to continue or Delete for Setup.',13,10,0
@@ -3680,7 +3750,8 @@ IDE_PIO_HELP_TOPIC equ ($-u_help_topics)/6
 %ifdef BOARD_FAST_BOOT_SETTING
 FAST_BOOT_HELP_TOPIC equ ($-u_help_topics)/6
     dw u_fast_boot,u_help_fast1,u_help_fast2
-u_fast_boot db 'Fast Boot',0
+u_fast_boot:
+    ui_string 'Fast Boot', u_fast_boot
 u_help_fast1:
     ui_string 'Skip the startup RAM test above 1 MB.', u_help_fast1
 u_help_fast2:
@@ -4428,10 +4499,12 @@ ide_ui_number:
     mov di, [cs:u_ide_number_offsets + bp]
     add bx, di
     jmp setup_number_editor
+%ifdef BOARD_PNP_SUPPORT
 pnp_ui_number:
     pushad
     call pnp_ui_parameters
     mov bp,10
+%endif
 setup_number_editor:
     mov byte [fs:U_POSITION], 0
     mov byte [fs:U_BUFFER], 0
@@ -4513,6 +4586,7 @@ setup_number_editor:
     test eax, eax
     jz .bad
 .store:
+%ifdef BOARD_PNP_SUPPORT
     cmp byte [fs:U_PAGE],6
     jne .ide_store
     mov dx,[fs:bx]
@@ -4523,6 +4597,7 @@ setup_number_editor:
     mov [fs:bx],dx
     jmp .bad
 .ide_store:
+%endif
     cmp bp, 2
     je .byte_store
     cmp bp, 4
@@ -4567,30 +4642,43 @@ u_ide_both_channels db 'Both Channels',0
 u_ide_primary_only db 'Primary Only',0
 %endif
 %if BOARD_ATA_DEVICE_COUNT = 4
-u_ide_controller db 'Onboard IDE Controller',0
+u_ide_controller:
+    ui_string 'Onboard IDE Controller', u_ide_controller
 %else
-u_ide_controller db 'Primary IDE Controller',0
+u_ide_controller:
+    ui_string 'Primary IDE Controller', u_ide_controller
 %endif
 u_ide_disk_group db 'DISK CONFIGURATION',0
 u_ide_transfer_group db 'TRANSFER OPTIONS',0
-u_ide_enabled db 'Device',0
-u_ide_type db 'Disk Type',0
+u_ide_enabled:
+    ui_string 'Device', u_ide_enabled
+u_ide_type:
+    ui_string 'Disk Type', u_ide_type
 u_ide_none db 'None',0
-u_ide_translation db 'Translation',0
-u_ide_block db 'Block Mode',0
-u_ide_cyl db 'Cylinders',0
+u_ide_translation:
+    ui_string 'Translation', u_ide_translation
+u_ide_block:
+    ui_string 'Block Mode', u_ide_block
+u_ide_cyl:
+    ui_string 'Cylinders', u_ide_cyl
 u_ide_heads db 'Heads',0
-u_ide_sectors db 'Sectors per Track',0
-u_ide_precomp db 'Write Precompensation',0
-u_ide_landing db 'Landing Zone',0
-u_ide_edd db 'INT13 Extensions',0
+u_ide_sectors:
+    ui_string 'Sectors per Track', u_ide_sectors
+u_ide_precomp:
+    ui_string 'Write Precompensation', u_ide_precomp
+u_ide_landing:
+    ui_string 'Landing Zone', u_ide_landing
+u_ide_edd:
+    ui_string 'INT13 Extensions', u_ide_edd
 u_ide_user db 'User (48)',0
 u_ide_type_prefix db 'Type ',0
 u_ide_type_menu db 'PHOENIX DISK TYPE',0
-u_ide_type_columns db 'Type            Cyls    Heads   Sectors',0
+u_ide_type_columns:
+    ui_string 'Type            Cyls    Heads   Sectors', u_ide_type_columns
 u_ide_reserved db 'Reserved',0
 u_ide_page_keys db 'PgUp/PgDn Page',0
-u_ide_number_prompt db 'Enter value',0
+u_ide_number_prompt:
+    ui_string 'Enter value', u_ide_number_prompt
 u_ide_invalid db 'Invalid value.',0
 u_ide_normal db 'Normal',0
 u_ide_large db 'Large',0
@@ -4777,14 +4865,17 @@ ports_ui_draw:
     popad
     ret
 
-u_devices db 'Devices',0
-u_devices_title db 'bAIos Setup > Devices',0
+u_devices:
+    ui_string 'Devices', u_devices
+u_devices_title:
+    ui_string 'bAIos Setup > Devices', u_devices_title
 u_uart_a db 'Serial Port A',0
 u_uart_b db 'Serial Port B',0
 u_uart_pair db 'COM3 / COM4 Addresses',0
 u_parallel db 'Parallel Port',0
 u_parallel_mode db 'Parallel Port Mode',0
-u_fdc db 'Floppy Controller',0
+u_fdc:
+    ui_string 'Floppy Controller', u_fdc
 u_mouse db 'PS/2 Mouse',0
 u_isa db 'ISA Serial Discovery',0
 u_ports_rows db BOARD_PORTS_ROWS
@@ -4895,6 +4986,7 @@ u_ide_policy4 db 'Secondary IDE Slave',0
     dw u_hdd_policy,u_slave_policy
 %endif
 
+%ifdef BOARD_PNP_SUPPORT
 %macro pnp_ui_navigation 0
 ; The shared Setup draft owns every reservation. No probing or allocation here.
 pnp_ui_count:
@@ -4935,4 +5027,10 @@ pnp_sidebar_rows db 5,6,7,8,11,9,10
 %else
 %include "firmware/setup-pnp.inc"
 %endif
+%endif
+%endif
+%ifndef BOARD_PNP_SUPPORT
+setup_sidebar_up db 0,0,1,2,5,3
+setup_sidebar_down db 1,2,3,5,4,4
+setup_sidebar_rows db 5,6,7,8,10,9
 %endif

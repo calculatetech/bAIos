@@ -1,5 +1,6 @@
 """Build the existing modular BIOS and extract its independently checked system ROM."""
 import json
+import struct
 import hashlib
 import argparse
 from pathlib import Path
@@ -28,6 +29,18 @@ def selected_vga(clock=60):
     return raw
 
 
+def validate_post_payload(raw):
+    payload=raw[0x8000:0x10000]
+    assert len(payload)==0x8000 and payload[:8]==b'BAIPNP2\0','Private POST owner identity'
+    length,entry=struct.unpack_from('<HH',payload,8)
+    assert 15<=length<0x8000 and 12<=entry<length,'Private POST owner extent/entry'
+    assert payload[entry:entry+3]==bytes.fromhex('FFD3CB'),'Private real-mode dispatch entry'
+    assert payload[length:-1]==b'\xFF'*(0x7FFF-length),'Private POST owner padding extent'
+    assert sum(payload)&255==0,'Private POST owner bank checksum'
+    return {'offset':0x8000,'length':length,'entry':entry,
+            'sha256':hashlib.sha256(payload[:length]).hexdigest()}
+
+
 def validate(image, vga60=True, *, vga_clock=60):
     for name,expected in SOURCE_HASHES.items():
         assert hashlib.sha256((PORT/'reference'/name).read_bytes()).hexdigest()==expected,('Reference input changed',name)
@@ -38,7 +51,7 @@ def validate(image, vga60=True, *, vga_clock=60):
         assert raw[0x1F065:0x1F070]==bytes.fromhex('80fc1d7305ea972800c0cf'),'VGA installer compatibility entry'
     assert len(retained)==32768 and retained[:3]==bytes.fromhex('55aa40') and sum(retained)%256==0,'VGA size/header/checksum'
     assert raw[:32768]==retained,'Selected VGA changed'
-    assert raw[32768:65536]==bytes([255])*32768,'Unused retained image region changed'
+    result['post_payload']=validate_post_payload(raw)
     assert len(raw[65536:])==65536 and sum(raw[65536:])%256==0,'System ROM checksum/size'
     result['programmer_checksum_sum32']=f'{sum(raw)&0xFFFFFFFF:08X}'
     return result
@@ -49,7 +62,8 @@ def run(output='build', defines=(), vga60=True, *, vga_clock=60):
     image = Path(result['path'])
     raw = image.read_bytes()
     retained = (PORT / 'reference/pb430-m27c1001.bin').read_bytes()[:32768]
-    assert raw[:32768] == retained and raw[32768:65536] == bytes([255])*32768
+    assert raw[:32768] == retained
+    validate_post_payload(raw)
     system = raw[65536:]
     assert len(system) == 65536 and sum(system) % 256 == 0
     if vga60:

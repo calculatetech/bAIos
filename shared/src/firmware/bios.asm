@@ -231,7 +231,9 @@ bits 16
 %ifdef BOARD_LATE_POST_TRACE
     post_code 0x5B
 %endif
-    call pnp_publish
+%ifdef BOARD_PNP_SUPPORT
+    call pnp_publish_finish
+%endif
     call post_debug_summary
 %ifdef BOARD_LATE_POST_TRACE
     post_code 0x5C
@@ -2079,7 +2081,17 @@ emulator_exit:
 %include "firmware/ide.inc"
 %include "firmware/peripherals.inc"
 %include "firmware/setup.inc"
+%ifdef BOARD_PNP_SUPPORT
 %include "firmware/pnp-interface.inc"
+%include "firmware/pnp-entry.inc"
+%include "firmware/pnp-storage-callbacks.inc"
+%ifdef M919_BOARD_DEFINITION
+%include "firmware/pnp-bridge.inc"
+%elifdef PB430_PORT
+%include "firmware/pnp-post.inc"
+%include "hardware/pnp-module.inc"
+%endif
+%endif
 %include "firmware/post.inc"
 %include "hardware/chipset-core.inc"
 %ifdef BOARD_APM_SOURCE

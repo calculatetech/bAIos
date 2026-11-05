@@ -157,11 +157,21 @@ pci_allocate_bars:
     jc .bad_memory
     not edx
     and ecx,edx
+.memory_candidate:
     mov edx,ecx
     add edx,esi
     jc .bad_memory
     cmp edx,CFG_PLATFORM_PCI_MEMORY_END
     ja .bad_memory
+%ifdef M919_BOARD_DEFINITION
+    mov al,1
+    call pnp_pci_candidate
+    jnc .memory_free
+    add ecx,esi
+    jc .bad_memory
+    jmp .memory_candidate
+.memory_free:
+%endif
     mov [fs:M_PCI_MMIO],edx
     mov eax,[ss:di+8]
     and eax,15
@@ -189,11 +199,21 @@ pci_allocate_bars:
     jc .bad_io
     not edx
     and ecx,edx
+.io_candidate:
     mov edx,ecx
     add edx,esi
     jc .bad_io
     cmp edx,0x10000
     ja .bad_io
+%ifdef M919_BOARD_DEFINITION
+    mov al,2
+    call pnp_pci_candidate
+    jnc .io_free
+    add ecx,esi
+    jc .bad_io
+    jmp .io_candidate
+.io_free:
+%endif
     mov [fs:M_PCI_IO],edx
     or ecx,1
     or byte [ss:di+2],1

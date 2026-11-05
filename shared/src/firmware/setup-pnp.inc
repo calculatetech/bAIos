@@ -199,22 +199,32 @@ pnp_ui_help:
     ui_text 19,25,pnp_help2,0x1E
     ui_text 20,25,pnp_help3,0x1E
     ret
-pnp_title db 'bAIos Setup > Plug and Play',0
-pnp_menu db 'Plug and Play',0
+pnp_title:
+    ui_string 'bAIos Setup > Plug and Play', pnp_title
+pnp_menu:
+    ui_string 'Plug and Play', pnp_menu
 pnp_open db 'Open',0
 pnp_main_labels dw pnp_irqs,pnp_irqs_high,pnp_dmas,pnp_windows,pnp_memory,pnp_config,pnp_clear
 pnp_irqs db 'IRQ 0-7',0
 pnp_irqs_high db 'IRQ 8-15',0
-pnp_dmas db 'DMA Reservations',0
+pnp_dmas:
+    ui_string 'DMA Reservations', pnp_dmas
 pnp_windows db 'I/O Windows',0
-pnp_memory db 'Upper Memory',0
-pnp_config db 'Configuration',0
-pnp_clear db 'Clear ESCD on Reset',0
+pnp_memory:
+    ui_string 'Upper Memory', pnp_memory
+pnp_config:
+    ui_string 'Configuration', pnp_config
+pnp_clear:
+    ui_string 'Clear ESCD on Reset', pnp_clear
 pnp_io_labels dw pnp_io1,pnp_len1,pnp_io2,pnp_len2
-pnp_io1 db 'Window 1 Base',0
-pnp_len1 db 'Window 1 Length',0
-pnp_io2 db 'Window 2 Base',0
-pnp_len2 db 'Window 2 Length',0
+pnp_io1:
+    ui_string 'Window 1 Base', pnp_io1
+pnp_len1:
+    ui_string 'Window 1 Length', pnp_len1
+pnp_io2:
+    ui_string 'Window 2 Base', pnp_io2
+pnp_len2:
+    ui_string 'Window 2 Length', pnp_len2
 pnp_policy_values dw pnp_bios,pnp_os
 pnp_bios db 'BIOS (Default)',0
 pnp_os db 'Operating System',0

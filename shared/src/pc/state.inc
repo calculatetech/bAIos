@@ -1,3 +1,5 @@
+%ifndef PC_STATE_INCLUDED
+%define PC_STATE_INCLUDED
 %include "setup/defaults.inc"
 %ifndef BOARD_ATA_DEVICE_COUNT
 %define BOARD_ATA_DEVICE_COUNT 2
@@ -194,3 +196,5 @@
     movzx %1,word [fs:S_INSTALLED_KIB]
 %endif
 %endmacro
+
+%endif

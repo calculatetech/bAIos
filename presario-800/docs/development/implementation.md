@@ -21,6 +21,14 @@ The physically validated bus07 reference is `reference/baios-presario800-vga141-
 
 ## Current scope
 
+### Plug and Play POST storage
+
+The builder owns only physical 0C000h..0FFFFh after checking that the selected reference contains FF throughout that range. Selected VGA 00000h..07FFFh and OEM 08000h..0BFFFh stay byte-identical, including the 5857-byte FF suffix. The payload header, even length, extent and whole-bank SUM8 are checked. Its checksum byte stays inside the newly owned bank. The public PnP interface stays in F000. The system image stays 64 KiB and the physical image stays 128 KiB.
+
+After AT prerequisites and before video, the real INT15/AH87 owner copies the complete 16 KiB bank from high alias FFFEC000h into reserved POST memory. Capacity accounting charges the whole copied bank. The source qualification uses 86Box commit 242614ca8e082c457f226ca01d37e2329e82dbcc, specifically `src/machine/m_at_socket1.c`, `src/mem/rom.c` and `src/chipset/vl82c480.c`. Their D824 mapping mirrors the selected 128 KiB image into the upper half of the 256 KiB mapping at FFFC0000h. Low ROMSET shadow selection does not change this high alias. This is source/model qualification, not physical electrical confirmation.
+
+### Existing implementation
+
 The BIOS initializes the VLSI chipset, retained Cirrus VGA ROM, primary ATA disks, keyboard, PS/2 mouse, floppy controller, and legacy serial/parallel ports.
 RAM detection handles bank 0 as onboard 4 MiB or 8 MiB with the slot-1 module. Banks 1–3 accept 4, 8, 16, or 32 MiB modules.
 Physical slots 1, 2, 3, and 4 connect to banks 0, 2, 1, and 3. Slot 1 is the outermost slot.

@@ -1,14 +1,6 @@
 ; Legacy ISA ROM initialization and non-returning bootstrap continuation.
 ; Unused first-record gap3D..50, before chipset60; never floppy80/mouseB0.
-%define R_SCANNED 0x3D
-%define R_NEXT    0x3E
-%define R_ENTRY   0x40               ; offset,segment
-%define R_SS      0x44
-%define R_SP      0x46
-%define B_CURSOR  0x48               ; Next saved selection,0..4.
-%define B_ACTIVE  0x49
-%define B_DRIVE   0x4A
-%define B_ROM19   0x4C               ; Installed option-ROM bootstrap chain.
+%include "pc/rom-state.inc"
 
 option_rom_discovery:
     pushf
@@ -87,36 +79,8 @@ option_rom_discovery:
     mov word [fs:R_ENTRY], 3
     mov [fs:R_ENTRY+2], dx
     call post_ui_rom
-    pushf
-    pushad
-    push ds
-    push es
-    push fs
-    push gs
-    mov [fs:R_SS], ss
-    mov [fs:R_SP], sp
-    mov ds, dx
-    xor ax, ax
-    mov es, ax                     ; ES:DI is not a PnP installation pointer.
-    xor di, di
-    cld
-    sti
-    call far [fs:R_ENTRY]
-    ; A returning legacy image can leave arbitrary segments/IF/DF/stack.
-    ; Resolve the current EBDA inline before touching its saved BIOS frame.
-    cli
-    xor ax, ax
-    mov fs, ax
-    mov fs, [fs:0x040E]
-    mov ss, [fs:R_SS]
-    mov sp, [fs:R_SP]
-    pop gs
-    pop fs
-    pop es
-    pop ds
-    popad
-    popf
-    cld
+    xor ax,ax
+    call boot_external_call
     call load_bios_state
     mov dx, [fs:R_NEXT]
     jmp .scan
@@ -332,4 +296,48 @@ msg_boot_retry db 'Press any key to retry',13,10,0
 %ifdef BOARD_BOOT_RETRY_TEST_SOURCE
 %include BOARD_BOOT_RETRY_TEST_SOURCE
 %endif
+%endif
+
+; Same returning external-call owner for legacy initialization and early static
+; reports. AL=0 prepares legacy ES:DI=0, AL=1 retains the caller buffer.
+boot_external_call:
+    pushf
+    pushad
+    push ds
+    push es
+    push fs
+    push gs
+    mov [fs:R_SS], ss
+    mov [fs:R_SP], sp
+    mov ds, dx
+    test al,al
+    jnz .prepared
+    xor ax, ax
+    mov es, ax                     ; ES:DI is not a PnP installation pointer.
+    xor di, di
+.prepared:
+    cld
+    sti
+    call far [fs:R_ENTRY]
+    ; A returning legacy image can leave arbitrary segments/IF/DF/stack.
+    ; Resolve the current EBDA inline before touching its saved BIOS frame.
+    cli
+    xor ax, ax
+    mov fs, ax
+    mov fs, [fs:0x040E]
+    mov ss, [fs:R_SS]
+    mov sp, [fs:R_SP]
+    pop gs
+    pop fs
+    pop es
+    pop ds
+    popad
+    popf
+    cld
+    ret
+
+%ifdef BOARD_PNP_SUPPORT
+pnp_rom_callback:
+    call boot_external_call
+    retf
 %endif

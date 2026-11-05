@@ -312,7 +312,9 @@ nv6_descriptors:
     dw 0,NV6_PORT,IDE_SETTINGS_SIZE,nv6_ide_masks
     dw NV6_PORT,2,8,ports_packed_masks
     dw NV6_CHIP,(NV6_CHIP_BITS+7)/8,CHIP_SIZE,NV6_CHIP_MASK
+%ifdef BOARD_PNP_SUPPORT
     dw NV6_PNP,13,PNP_SIZE,nv6_pnp_masks
+%endif
 nv6_ide_masks:
     db 1
 %rep BOARD_ATA_DEVICE_COUNT
@@ -325,8 +327,10 @@ nv6_ide_masks:
 %if BOARD_ATA_DEVICE_COUNT = 2
 nv6_full_masks: times CHIP_SIZE db 0xFF
 %endif
+%ifdef BOARD_PNP_SUPPORT
 nv6_pnp_masks: times 12 db 0xFF
     db 15,1,1
+%endif
 
 settings_nv6_ide_load:
     mov si,C_IDE
@@ -340,9 +344,11 @@ settings_nv6_chip_load:
     mov si,C_CHIP
     mov dx,16
     jmp settings_nv6_component_load
+%ifdef BOARD_PNP_SUPPORT
 settings_nv6_pnp_load:
     mov si,C_PNP
     mov dx,24
+%endif
 settings_nv6_component_load:
     pushad
     sub sp,66
@@ -427,15 +433,24 @@ settings_nv6_build_all:
 %endif
     call chipset_valid
     jc .bad
+%ifdef BOARD_PNP_SUPPORT
     mov si,U_PNP
     call pnp_settings_valid
     jc .bad
+%endif
     mov bp,di
+%ifndef BOARD_PNP_SUPPORT
+    ; Preserve inert compatibility bytes from previously produced NV6 records.
+    ; Ordinary settings keep the accepted codec; this board adopts no PnP state.
+    call settings_nv6_read
+    jnc .ordinary
+%endif
     mov cx,66
 .zero:
     mov byte [ss:di],0
     inc di
     loop .zero
+.ordinary:
     xor dx,dx
     mov si,U_IDE
     call settings_nv6_pack_component
@@ -445,9 +460,11 @@ settings_nv6_build_all:
     mov dx,16
     mov si,U_CHIP
     call settings_nv6_pack_component
+%ifdef BOARD_PNP_SUPPORT
     mov dx,24
     mov si,U_PNP
     call settings_nv6_pack_component
+%endif
     mov di,bp
     clc
     popad
@@ -457,6 +474,7 @@ settings_nv6_build_all:
     stc
     ret
 
+%ifdef BOARD_PNP_SUPPORT
 pnp_defaults:
     pushad
     mov cx,PNP_SIZE
@@ -494,3 +512,4 @@ pnp_settings_valid:
     popad
     stc
     ret
+%endif

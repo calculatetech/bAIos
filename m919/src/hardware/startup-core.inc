@@ -162,7 +162,7 @@ board_smm_startup:
     in al,dx
     or al,0x08
     out dx,al
-    call pci_initialize
+    call pnp_pci_initialize
     call initialize_video
     jc video_failed
     xor ax,ax

@@ -2323,7 +2323,7 @@ def schema2_fixture(model, types=0x40, flags=0x13, order=(1, 2, 0)):
     model.cmos[0x38:0x40] = record
 
 
-def production_post_model(kinds=None, peripherals=False):
+def production_post_model(kinds=None, peripherals=False, isa_bus=None):
     # Opaque external devices only. The changed production POST owners execute.
     chipset = importlib.import_module('test-chipset')
     class ProductionPost(chipset.Chipset, legacy.Disk):
@@ -2331,6 +2331,13 @@ def production_post_model(kinds=None, peripherals=False):
             self.peripheral_device = None
             self.disk_device = None
             super().__init__()
+            physical=rtc.BUILD/'baios-presario800-vga60.bin'
+            if physical.exists():
+                raw=physical.read_bytes()
+                if raw[0xC000:0xC008]==b'BAIPNP2\0':
+                    # D824's actual256KiB CPU-top mapping repeats the128KiB image.
+                    self.cpu.mem_map(0xFFFC0000,0x40000)
+                    self.cpu.mem_write(0xFFFC0000,raw+raw)
             self.device_present = True
             self.controller_present = True
             self.kbc_write = None
@@ -2364,6 +2371,9 @@ def production_post_model(kinds=None, peripherals=False):
                 return
             super().interrupt(cpu, vector, unused)
         def port_in(self, cpu, port, size, unused):
+            if isa_bus is not None:
+                value=isa_bus.input(port,size)
+                if value is not None:return value
             if port == 0x64:
                 return 4 | int(bool(self.pending))
             if port == 0x60:
@@ -2383,6 +2393,7 @@ def production_post_model(kinds=None, peripherals=False):
                 return self.rtc_read_filter(self.index, value)
             return value
         def port_out(self, cpu, port, size, value, unused):
+            if isa_bus is not None and isa_bus.output(port,size,value):return
             if port == 0x3F5 and not self.fdc_command and value == 0x4A:
                 if not self.boot_reads or self.boot_reads[-1] != 'Floppy': self.boot_reads.append('Floppy')
             if port == 0x64:

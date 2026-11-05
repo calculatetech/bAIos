@@ -357,6 +357,7 @@ startup:
     pb_stage 0x43
     call init_at_prerequisites
     pb_stage 0x50
+    call pnp_early
     call initialize_video
     jc video_failed
     pb_stage 0x60

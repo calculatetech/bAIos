@@ -1,4 +1,7 @@
+%ifndef PB430_BOARD_DEFINITION
+%define PB430_BOARD_DEFINITION
 %define PB430_PORT 1
+%define BOARD_PNP_SUPPORT
 %define BOARD_PNP_SETUP_LATE 1
 %ifndef BOARD_ATA_PIO_MAX
 %define BOARD_ATA_PIO_MAX 4
@@ -173,4 +176,6 @@
 
 %ifdef PB430_BOOT_RETRY_PROOF
 %define BOARD_BOOT_RETRY_TEST_SOURCE "../tests/core-boot-retry.inc"
+%endif
+
 %endif

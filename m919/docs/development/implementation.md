@@ -22,6 +22,12 @@ The board has serial mouse connections and no PS/2 mouse connector. `platform.au
 
 ## Source boundary
 
+### Plug and Play POST storage
+
+The private PnP POST module starts at physical 01600h in the existing E000 bank, after the complete generated APM/SMM prefix. The previous generated prefix ends at 015FAh. Its header and declared extent are checked before use. Physical 00000h..015FFh stays byte-identical to the reviewed prefix, including its generated callbacks. The owned payload and padding end before the existing checksum footer at 0FFFFh. The public PnP interface remains in F000. The system image stays 64 KiB and the physical image stays 128 KiB.
+
+The existing board callback establishes fixed PCI VGA ROM decode before ISA assignment. Relocatable PCI BAR allocation follows required ISA assignment. The late PCI IRQ and ELCR writer preserves allocated ISA IRQ ownership and edge signaling. These are source and automated firmware-path checks. They do not qualify electrical stability.
+
 The onboard PnP descriptions follow the existing UART and parallel-port selectors. Parallel addresses 378h and 278h use coordinated C1.08/C3.30 values 1/00h and 0/20h, with IRQ7 and IRQ5 respectively. `ports_apply` establishes the complete tuple and preserves other C3 fields. The source is the original AMI node 90A4, encoder BD98 and writer BDE2..BE2B, corroborated by the independent am8887 resource table and writer. This establishes the complete sequence, not the meaning of an isolated C3 bit. The existing rejected 3BCh choice stays unavailable.
 
 SPP owns three low ports. EPP owns eight low ports. ECP owns three low ports and three ports at base+400h, plus the selected DMA1 or DMA3. High ports use the general I/O descriptor because the fixed-location descriptor has only ten address bits. ECP uses PNP0401 and byte-count slave DMA capabilities. SPP and EPP use PNP0400. These are standard interface descriptions, not separate physical IRQ or ECP transfer qualification.

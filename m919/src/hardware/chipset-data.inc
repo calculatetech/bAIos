@@ -106,68 +106,84 @@ chipset_default db 0,DEFAULT_CACHE_ENABLED,1-DEFAULT_CACHE_ENABLED,(DEFAULT_CACH
 chipset_masks db 0xF0,1,1,0x70,0x90,3,1,0xFF,0xFF,7,0x0F,0x7F,1,0x0F,1,0xFC,0xFF,0xFF,0x0F,1,0xFF,1,3,0x1F
     times CHIP_SIZE-CHIP_OPTION_BYTES db 0xFF
 u_chip_menu db 'Chipset',0
-u_chip_title db 'bAIos Setup > Chipset',0
+u_chip_title:
+    ui_string 'bAIos Setup > Chipset', u_chip_title
 u_chip_open db 'Open',0x1A,0
 u_chip_help dw u_chip_menu,chip_read_help1,chip_wait_help
-chip_memory db 'Memory',0
-chip_cache db 'CPU and Cache',0
+chip_memory:
+    ui_string 'Memory', chip_memory
+chip_cache:
+    ui_string 'CPU and Cache', chip_cache
 chip_bus db 'PCI Bus',0
 chip_isa_bus db 'ISA Bus',0
-chip_read db 'DRAM Read Waits',0
+chip_read:
+    ui_string 'DRAM Read Waits', chip_read
 chip_read_help1:
     ui_string 'Adds time for memory to return data.', chip_read_help1
-chip_write db 'DRAM Write Waits',0
+chip_write:
+    ui_string 'DRAM Write Waits', chip_write
 chip_write_help1:
     ui_string 'Adds time for memory to store data.', chip_write_help1
 chip_wait_help:
     ui_string 'Use the slowest timing until stability is proven.', chip_wait_help
-chip_type db 'Memory Type',0
+chip_type:
+    ui_string 'Memory Type', chip_type
 chip_type_help1:
     ui_string 'Select FPM or EDO to match the installed memory.', chip_type_help1
 chip_type_help2:
     ui_string 'FPM is the conservative starting choice.', chip_type_help2
-chip_edo_burst db 'EDO Read Burst',0
+chip_edo_burst:
+    ui_string 'EDO Read Burst', chip_edo_burst
 chip_edo_burst_help1:
     ui_string 'Read timing used when EDO mode is active.', chip_edo_burst_help1
-chip_refresh db 'DRAM Refresh',0
+chip_refresh:
+    ui_string 'DRAM Refresh', chip_refresh
 chip_refresh_help1:
     ui_string 'Select how often memory is refreshed.', chip_refresh_help1
 chip_refresh_help2:
     ui_string 'Normal is recommended.', chip_refresh_help2
-chip_parity db 'Memory Parity',0
+chip_parity:
+    ui_string 'Memory Parity', chip_parity
 chip_parity_help1:
     ui_string 'Reports errors when parity memory is installed.', chip_parity_help1
 chip_parity_help2:
     ui_string 'Leave disabled for non-parity SIMMs.', chip_parity_help2
-chip_l1 db 'Internal CPU Cache',0
+chip_l1:
+    ui_string 'Internal CPU Cache', chip_l1
 chip_l1_help1:
     ui_string 'Enables the cache inside the processor.', chip_l1_help1
 chip_l1_help2:
     ui_string 'Enabled is recommended.', chip_l1_help2
-chip_l2 db 'External Cache',0
+chip_l2:
+    ui_string 'External Cache', chip_l2
 chip_l2_help1:
     ui_string 'Enables the detected external cache.', chip_l2_help1
 chip_l2_help2:
     ui_string 'Enabled is recommended after its check passes.', chip_l2_help2
-chip_policy db 'External Cache Policy',0
+chip_policy:
+    ui_string 'External Cache Policy', chip_policy
 chip_policy_help1:
     ui_string 'Select write-through or write-back operation.', chip_policy_help1
 chip_policy_help2:
     ui_string 'Write-back is the normal default.', chip_policy_help2
-chip_burst db 'L2 Read Burst',0
+chip_burst:
+    ui_string 'L2 Read Burst', chip_burst
 chip_burst_help1:
     ui_string 'Clock cycles for each word in a cache burst.', chip_burst_help1
-chip_early db 'Early Cache Write',0
+chip_early:
+    ui_string 'Early Cache Write', chip_early
 chip_early_help1:
     ui_string 'Selects the early cache write timing control.', chip_early_help1
 chip_early_help2:
     ui_string 'Leave disabled during initial testing.', chip_early_help2
-chip_posted db 'CPU Posted Write Waits',0
+chip_posted:
+    ui_string 'CPU Posted Write Waits', chip_posted
 chip_posted_help1:
     ui_string 'Wait states for CPU writes sent to PCI devices.', chip_posted_help1
 chip_posted_help2:
     ui_string '0 is faster; 1 is the conservative starting choice.', chip_posted_help2
-chip_pci_burst db 'CPU Burst Writes',0
+chip_pci_burst:
+    ui_string 'CPU Burst Writes', chip_pci_burst
 chip_pci_burst_help1:
     ui_string 'Groups consecutive writes to PCI devices.', chip_pci_burst_help1
 chip_pci_burst_help2:
@@ -206,59 +222,74 @@ chip_page_slash db ' / ',0
 chip_page_keys:
     ui_string 'PgUp/PgDn Page   F1 Help   F4/F5 Theme   F9 Defaults   F10 Save', chip_page_keys
 chipset_group_titles dw chip_cache,chip_bus,chip_irqs,chip_local_bus,chip_isa_bus,chip_memory,chip_rom
-chip_copyback db 'DRAM Burst Writes',0
+chip_copyback:
+    ui_string 'DRAM Burst Writes', chip_copyback
 chip_copyback_help1:
     ui_string 'Allows consecutive cache writes back to memory.', chip_copyback_help1
-chip_mem_lock db 'DRAM Resource Lock',0
+chip_mem_lock:
+    ui_string 'DRAM Resource Lock', chip_mem_lock
 chip_mem_lock_help1:
     ui_string 'Selects the memory resource locking option.', chip_mem_lock_help1
-chip_ldev db 'Local Device Sampling',0
+chip_ldev:
+    ui_string 'Local Device Sampling', chip_ldev
 chip_ldev_help1:
     ui_string 'Selects when a local device response is sampled.', chip_ldev_help1
-chip_turbo db 'Turbo Switch',0
+chip_turbo:
+    ui_string 'Turbo Switch', chip_turbo
 chip_turbo_help1:
     ui_string 'Allows the board turbo switch to select speed.', chip_turbo_help1
 chip_turbo_help2:
     ui_string 'Leave enabled for the normal board behavior.', chip_turbo_help2
-chip_deturbo db 'Deturbo Speed',0
+chip_deturbo:
+    ui_string 'Deturbo Speed', chip_deturbo
 chip_deturbo_help1:
     ui_string 'Speed ratio used when the board is in slow mode.', chip_deturbo_help1
 chip_deturbo_help2:
     ui_string 'This does not change the normal CPU bus speed.', chip_deturbo_help2
-chip_pci_posted db 'PCI Posted Writes',0
+chip_pci_posted:
+    ui_string 'PCI Posted Writes', chip_pci_posted
 chip_pci_posted_help1:
     ui_string 'Buffers PCI memory writes through the bridge.', chip_pci_posted_help1
-chip_devsel db 'PCI Device Response',0
+chip_devsel:
+    ui_string 'PCI Device Response', chip_devsel
 chip_devsel_help1:
     ui_string 'Selects how quickly the bridge claims a transfer.', chip_devsel_help1
-chip_bus_lock db 'PCI Lock Method',0
+chip_bus_lock:
+    ui_string 'PCI Lock Method', chip_bus_lock
 chip_bus_lock_help1:
     ui_string 'Locks the bus or the resource during access.', chip_bus_lock_help1
-chip_park db 'PCI Bus Parking',0
+chip_park:
+    ui_string 'PCI Bus Parking', chip_park
 chip_park_help1:
     ui_string 'Lets a PCI master retain the bus while idle.', chip_park_help1
-chip_preempt db 'PCI Master Preemption',0
+chip_preempt:
+    ui_string 'PCI Master Preemption', chip_preempt
 chip_preempt_help1:
     ui_string 'Allows a waiting master to request the PCI bus.', chip_preempt_help1
-chip_pci_parity db 'PCI Parity Check',0
+chip_pci_parity:
+    ui_string 'PCI Parity Check', chip_pci_parity
 chip_pci_parity_help1:
     ui_string 'Selects parity checking for PCI transfers.', chip_pci_parity_help1
 chip_pci_parity_help2:
     ui_string 'Keep the hardware choice unless testing parity.', chip_pci_parity_help2
-chip_pci_clock db 'PCI Clock Ratio',0
+chip_pci_clock:
+    ui_string 'PCI Clock Ratio', chip_pci_clock
 chip_pci_clock_help1:
     ui_string 'Selects the PCI clock relative to the CPU bus.', chip_pci_clock_help1
-chip_isa_clock db 'ISA Clock Divider',0
+chip_isa_clock:
+    ui_string 'ISA Clock Divider', chip_isa_clock
 chip_isa_help1:
     ui_string 'Divides the PCI clock to produce the ISA clock.', chip_isa_help1
 chip_clock_help:
     ui_string 'Ratios use bus clocks, not the CPU multiplier.', chip_clock_help
-chip_io_recovery db 'ISA I/O Recovery',0
+chip_io_recovery:
+    ui_string 'ISA I/O Recovery', chip_io_recovery
 chip_io_help1:
     ui_string 'Adds ISA bus clocks between I/O transfers.', chip_io_help1
 chip_io_help2:
     ui_string '12 BCLK is the conservative starting choice.', chip_io_help2
-chip_kbc_clock db 'Keyboard Clock',0
+chip_kbc_clock:
+    ui_string 'Keyboard Clock', chip_kbc_clock
 chip_kbc_help1:
     ui_string 'Selects the keyboard controller clock source.', chip_kbc_help1
 chip_keep_help:
@@ -302,10 +333,14 @@ chip_io_4 db '4 BCLK',0
 chip_io_8 db '8 BCLK',0
 chip_io_12 db '12 BCLK',0
 
-chip_irqs db 'PCI Interrupts',0
-chip_local_bus db 'Local Bus',0
-chip_rom db 'ROM Shadow and Cache',0
-chip_boot_speed db 'Boot CPU Speed',0
+chip_irqs:
+    ui_string 'PCI Interrupts', chip_irqs
+chip_local_bus:
+    ui_string 'Local Bus', chip_local_bus
+chip_rom:
+    ui_string 'ROM Shadow and Cache', chip_rom
+chip_boot_speed:
+    ui_string 'Boot CPU Speed', chip_boot_speed
 chip_speed_help1:
     ui_string 'Starts the board in normal or slow speed mode.', chip_speed_help1
 chip_speed_help2:
@@ -313,25 +348,30 @@ chip_speed_help2:
 chip_boot_speed_values dw chip_high,chip_low
 chip_high db 'High',0
 chip_low db 'Low',0
-chip_cyrix_linear db 'Cyrix Linear Burst',0
+chip_cyrix_linear:
+    ui_string 'Cyrix Linear Burst', chip_cyrix_linear
 chip_linear_help1:
     ui_string 'Enables linear cache bursts on a Cyrix 5x86.', chip_linear_help1
-chip_cyrix_lsser db 'Cyrix Load/Store Tuning',0
+chip_cyrix_lsser:
+    ui_string 'Cyrix Load/Store Tuning', chip_cyrix_lsser
 chip_lsser_help1:
     ui_string 'Uses the AMI load/store setting on a Cyrix 5x86.', chip_lsser_help1
 chip_cyrix_help:
     ui_string 'Other processors keep their own cache protocol.', chip_cyrix_help
-chip_mapping db 'Device Number Mapping',0
+chip_mapping:
+    ui_string 'Device Number Mapping', chip_mapping
 chip_mapping_help1:
     ui_string 'Selects the alternate device-number mapping.', chip_mapping_help1
 chip_mapping_help2:
     ui_string 'Leave disabled unless an expansion device needs it.', chip_mapping_help2
-chip_palette db 'VGA Palette Snoop',0
+chip_palette:
+    ui_string 'VGA Palette Snoop', chip_palette
 chip_palette_help1:
     ui_string 'Lets a second graphics device follow palette writes.', chip_palette_help1
 chip_palette_help2:
     ui_string 'Leave disabled for a single graphics card.', chip_palette_help2
-chip_video_cache db 'Video BIOS Cacheable',0
+chip_video_cache:
+    ui_string 'Video BIOS Cacheable', chip_video_cache
 chip_video_cache_help1:
     ui_string 'Allows the copied video BIOS to use external cache.', chip_video_cache_help1
 chip_video_cache_help2:
@@ -356,11 +396,16 @@ chip_trigger_help1:
     ui_string 'Trigger mode for PCI IDE cards using IRQ 14 or 15.', chip_trigger_help1
 chip_trigger_help2:
     ui_string 'Edge is recommended for legacy IDE operation.', chip_trigger_help2
-chip_irq_1 db 'INTA Interrupt',0
-chip_irq_2 db 'INTB Interrupt',0
-chip_irq_3 db 'INTC Interrupt',0
-chip_irq_4 db 'INTD Interrupt',0
-chip_ide_trigger db 'PCI IDE IRQ Trigger',0
+chip_irq_1:
+    ui_string 'INTA Interrupt', chip_irq_1
+chip_irq_2:
+    ui_string 'INTB Interrupt', chip_irq_2
+chip_irq_3:
+    ui_string 'INTC Interrupt', chip_irq_3
+chip_irq_4:
+    ui_string 'INTD Interrupt', chip_irq_4
+chip_ide_trigger:
+    ui_string 'PCI IDE IRQ Trigger', chip_ide_trigger
 chip_trigger_values dw chip_edge,chip_level
 chip_level db 'Level',0
 chip_edge db 'Edge',0

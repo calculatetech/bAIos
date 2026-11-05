@@ -45,7 +45,10 @@ board_pci_device:
     cmp si,0x0300
     jne .ide
     cmp word [fs:M_VGA_BDF],0xFFFF
+    je .selected_vga
+    cmp [fs:M_VGA_BDF],bx
     jne .done
+.selected_vga:
     mov [fs:M_VGA_BDF],bx
     mov eax,ebx
     shl eax,8

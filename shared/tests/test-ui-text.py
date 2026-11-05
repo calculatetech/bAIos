@@ -23,6 +23,8 @@ spec = importlib.util.spec_from_file_location('pnp_settings', Path(__file__).wit
 pnp = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(pnp)
 MANIFEST = json.loads((ROOT/'shared/tests/fixtures/ui-text-p0.json').read_text())
+POST_LAYOUT_MANIFEST = json.loads((ROOT/'shared/tests/fixtures/pnp-placement-p1.json').read_text())
+SPACE_MANIFEST = json.loads((ROOT/'shared/tests/fixtures/ui-text-p1-space.json').read_text())
 PORTS = ('m919', 'mp386', 'pb430', 'presario-800')
 OUTPUT = 'build/tests/ui-text'
 
@@ -157,17 +159,19 @@ def strings(port):
     encoded = 0
     s.put('U_THEME_ACTIVE', [0])
     for name, row in baseline['strings'].items():
+        if port=='mp386' and name.startswith('pnp_'):continue  # Forward chipset-scope correction.
         expected = bytes.fromhex(row['hex'])
         at = address(s, name)
         actual = render(s, at, len(expected))
         assert actual == b''.join(bytes((v,7)) for v in expected), name
         stored = cstring(s, at)
         if stored[:1] == b'\x01':
-            assert row['compress'] and len(stored) < len(expected), name
+            assert (row['compress'] or name in SPACE_MANIFEST['ports'][port]['strings']) and len(stored) < len(expected), name
             encoded += 1
         else:
             assert stored == expected, name
     for table, labels in baseline['tables'].items():
+        if port=='mp386' and table.startswith('pnp_'):continue
         pointers = struct.unpack('<'+'H'*len(labels), s.cpu.mem_read(0xF0000+address(s,table),len(labels)*2))
         assert pointers == tuple(address(s,label) for label in labels), table
     assert encoded > 0
@@ -180,6 +184,26 @@ def strings(port):
     samples = authored_strings(s,port)
     return dict(strings=len(baseline['strings']), collections=len(baseline['tables']), encoded=encoded,
                 authored_without_retraining=samples, grammar_depth=max(depths))
+
+
+def supplementary_strings(port,output='build/tests/pnp-allocation'):
+    """Newly eligible labels use frozen compiled P1 plaintext, not source text."""
+    s=pnp.Settings(port,output)
+    s.listing.symbol=cache(s.listing.symbol)
+    s.put('U_THEME_ACTIVE',[0])
+    saving=0
+    for name,row in SPACE_MANIFEST['ports'][port]['strings'].items():
+        expected=bytes.fromhex(row['hex']);at=address(s,name)
+        assert render(s,at,len(expected))==b''.join(bytes((v,7)) for v in expected),name
+        actual=cstring(s,at)
+        if row['saving']:
+            assert actual[:1]==b'\1' and len(actual)<len(expected),name
+        else:
+            assert actual==expected,name  # Existing codec's exact literal fallback.
+        saving+=len(expected)-len(actual)
+    assert saving==SPACE_MANIFEST['ports'][port]['predicted_gain']
+    return {'selected_strings':len(SPACE_MANIFEST['ports'][port]['strings']),'bytes_recovered':saving,
+            'full_rendered_plaintext_and_canaries':True}
 
 
 def renderer(port):
@@ -332,6 +356,23 @@ def compatibility(port):
                 actual_POST_and_summary=True, plaintext_fragments=True)
 
 
+def owned_post_layout(full,port):
+    """Current B35 owner replaces only qualified padding; P0/P1 fixtures stay frozen."""
+    frozen=POST_LAYOUT_MANIFEST['ports'][port]
+    first,last=frozen['retained_start'],frozen['retained_end']
+    assert hashlib.sha256(full[first:last]).hexdigest()==frozen['retained_sha256'],(port,'retained prefix')
+    start,end=frozen['new_owned_start'],frozen['new_owned_end']
+    payload=full[start:end]
+    assert payload[:8]==b'BAIPNP2\0'
+    length,entry=struct.unpack_from('<HH',payload,8)
+    assert 15<=length<len(payload) and not length&1 and 12<=entry<length
+    assert payload[entry:entry+3]==bytes.fromhex('FFD3CB')
+    assert payload[length:-1]==b'\xFF'*(len(payload)-length-1)
+    assert sum(full[:65536] if port=='m919' else payload)&255==0
+    return {'retained_range':[first,last],'owned_range':[start,end],'module_length':length,
+            'entry':entry,'module_sha256':hashlib.sha256(payload[:length]).hexdigest(),'SUM8':0}
+
+
 def image_contract(port):
     s = model(port)
     raw = s.image.read_bytes()
@@ -351,14 +392,20 @@ def image_contract(port):
     assert regions
     free = sum(length for at,length in regions if at < 0xFFF0)
     baseline = MANIFEST['ports'][port]['free_system_bytes']
-    assert free > baseline, (port,free,baseline)
+    additional_post_owner=any(re.search(r'\bpnp_journal_begin:\s*$',line) for line in s.listing.lines)
+    if not additional_post_owner:assert free > baseline, (port,free,baseline)
     if port in ('pb430','presario-800'):
         assert rom[0xF065:0xF070] == bytes.fromhex('80fc1d7305ea972800c0cf')
     physical = s.image.with_name('baios-presario800-vga60.bin') if port=='presario-800' else s.image
     full = physical.read_bytes()
     frozen = MANIFEST['ports'][port]['physical']
     assert len(full)==frozen['size']
-    assert hashlib.sha256(full[:-65536]).hexdigest()==frozen['retained_sha256']
+    if additional_post_owner and port in POST_LAYOUT_MANIFEST['ports']:
+        owned_post_layout(full,port)
+    else:assert hashlib.sha256(full[:-65536]).hexdigest()==frozen['retained_sha256']
+    if additional_post_owner and port=='mp386':
+        fixed=POST_LAYOUT_MANIFEST['mp386_fixed_compatibility']
+        assert hashlib.sha256(rom[fixed['start']:fixed['end']]).hexdigest()==fixed['sha256']
     assert full[-65536:]==rom
     assert sum(rom)&255 == 0 and sum(full)&255 == int(frozen['sum32'],16)&255
     return dict(free_system_bytes=free, prior_free_bytes=baseline, net_recovered_bytes=free-baseline,

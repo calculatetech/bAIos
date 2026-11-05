@@ -31,7 +31,8 @@ def configure(image):
 
 
 class ACC(setup.Setup):
-    def __init__(self,image,payload=None,font_offset=None,video_vector=(0x100,0xC000),external_video=False):
+    def __init__(self,image,payload=None,font_offset=None,video_vector=(0x100,0xC000),external_video=False,isa_bus=None):
+        self.isa_bus=isa_bus
         self.listing=configure(image)
         self.provider_font_offset=font_offset if font_offset is not None else Path(image).read_bytes()[:32768].find((PORT/'reference/pb430-m27c1001.bin').read_bytes()[28169:32265])
         self.provider_vector=video_vector
@@ -48,10 +49,11 @@ class ACC(setup.Setup):
         self.stop_address=0xF0000+rtc.symbol('init_fpu')
         self.cpu.mem_map(0x200000,62*1024*1024)
         raw=Path(image).read_bytes();self.cpu.mem_write(0xE0000,raw)
+        self.physical_rom=raw
         self.cpu.mem_write(0xC0000,raw[:32768])
         self.vga_input=raw[:32768]
         self.external_video=external_video
-        self.cpu.hook_add(UC_HOOK_MEM_READ,self.video_read,begin=0xC0000,end=0xE7FFF)
+        self.cpu.hook_add(UC_HOOK_MEM_READ,self.video_read,begin=0xC0000,end=0xEFFFF)
         self.cpu.mem_write(0x40,struct.pack('<HH',0x100,0xC000))
         self.cpu.mem_write(self.base+0xD0,struct.pack('<H',15360))
         self.cpu.mem_write(self.base+0xD8,struct.pack('<II',15360,15360))
@@ -72,6 +74,8 @@ class ACC(setup.Setup):
             cpu.mem_write(address,bytes([255])*size)
         elif 0xE0000<=address<0xE8000 and not self.registers[2]&8:
             cpu.mem_write(address,self.vga_input[address-0xE0000:address-0xE0000+size])
+        elif 0xE8000<=address<0xF0000 and not self.registers[2]&8:
+            cpu.mem_write(address,self.physical_rom[address-0xE0000:address-0xE0000+size])
 
     def uart_mapping(self):
         r=self.registers; result={}
@@ -86,6 +90,9 @@ class ACC(setup.Setup):
         return {3:(de>>6)&3,4:(de>>4)&3}
 
     def port_in(self,cpu,port,size,unused):
+        if getattr(self,'isa_bus',None) is not None:
+            value=self.isa_bus.input(port,size)
+            if value is not None:return value
         if port in (0x3F4,0x3F5,0x3F7) and self.registers[0xFB]&2:return 255
         if port==0x71 and self.index==0xD and self.power_low:
             super().port_in(cpu,port,size,unused);return 0
@@ -107,6 +114,7 @@ class ACC(setup.Setup):
         return super().port_in(cpu,port,size,unused)
 
     def port_out(self,cpu,port,size,value,unused):
+        if getattr(self,'isa_bus',None) is not None and self.isa_bus.output(port,size,value):return
         if port==0x8F:
             assert size==1 and value==0,('refresh page register',size,value)
             return
