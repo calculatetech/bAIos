@@ -26,7 +26,8 @@ class ROMHardware(Hardware):
             u.mem_write(0xC8000,self.isa)
             u.mem_write(0xD0000,bytes(self.dbase))
         else:self.dbase[:512]=u.mem_read(0xD0000,512)
-        folder=PORT/'build/hardware-tests/pci-rom';folder.mkdir(parents=True,exist_ok=True)
+        folder=(self.rom_image.parent/'runtime-fixtures/pci-rom' if hasattr(self,'rom_image') else
+                PORT/'build/hardware-tests/pci-rom');folder.mkdir(parents=True,exist_ok=True)
         source=folder/'controller.asm';image=source.with_suffix('.bin')
         source.write_text('''bits 16
 org 0

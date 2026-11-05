@@ -29,3 +29,15 @@ pnp_node_callback:
     call pnp_build_node
     pop fs
     retf
+pnp_ports_apply_callback:
+    call ports_apply
+    retf
+pnp_uart_base_callback:
+    call ports_uart_base
+    retf
+pnp_parallel_base_callback:
+    mov ax,[cs:ports_parallel+bx]
+    retf
+pnp_serial_initialize_callback:
+    call serial_initialize
+    retf

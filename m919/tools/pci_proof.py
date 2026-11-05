@@ -73,12 +73,13 @@ class Hardware(POSTHardware):
     def prepare(self,u):
         super().prepare(u)
         self.machine=u
-        listing=Listing(PORT/'build/hardware-tests/geometry/baios-m919.lst')
+        listing=Listing(getattr(self,'rom_image',PORT/'build/hardware-tests/geometry/baios-m919.bin').with_suffix('.lst'))
         self.cache_entry=0xF0000+listing.symbol('cache_initialize')
         self.ata_entry=0xF0000+listing.symbol('ata_detect_primary')
         self.ide_entry=0xF0000+listing.symbol('ide_apply_controller')
         self.vga_bdf=next(bdf for bdf,device in self.pci.endpoints.items() if device.read(8,4)>>16==0x0300)
-        folder=PORT/'build/hardware-tests/pci-providers';folder.mkdir(parents=True,exist_ok=True)
+        folder=(self.rom_image.parent/'runtime-fixtures/pci-providers' if hasattr(self,'rom_image') else
+                PORT/'build/hardware-tests/pci-providers');folder.mkdir(parents=True,exist_ok=True)
         source=folder/f'vga{self.vga_kib}.asm';image=source.with_suffix('.bin')
         end=self.vga_kib*1024;self.near_end=end-32
         source.write_text(f'''bits 16

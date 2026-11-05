@@ -46,11 +46,6 @@ pnp_finish:
     test eax,eax
     jz .release
     call pnp_pointer
-    cmp byte [gs:si+PNP_ROOT_STATUS],0
-    jne .publication
-    cmp byte [fs:C_PNP+PNP_CLEAR],0
-    je .publication
-    call settings_nv6_retire
 .publication:
     mov ax,0x40
     mov es,ax
@@ -58,13 +53,14 @@ pnp_finish:
     mov [es:PNP_ISA],al
     mov ax,[gs:si+PNP_ROOT_READ_PORT]
     mov [es:PNP_ISA+1],ax
+    cmp byte [gs:si+PNP_ROOT_STATUS],0
+    jne .release
+    call pnp_pack_runtime
+    jmp .done
 .release:
-    mov dword [fs:PNP_MODULE_POINTER],0
-%ifdef PNP_EXTERNAL_JOURNAL
-    call CFG_ROM_CODE_SEGMENT:pnp_release_callback
-%else
-    call pnp_journal_release
-%endif
+    mov dword [fs:PNP_RUNTIME],0
+    stc
+.done:
     pop gs
     pop es
     popad

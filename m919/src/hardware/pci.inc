@@ -228,7 +228,9 @@ initialize_video:
     jne .provider
     xor ax,ax
 .provider:
-    call option_rom_enter
+    mov dx,0xC000
+    mov cl,2
+    call pnp_rom_enter
     xor ax,ax
     mov ds,ax
     mov es,ax
@@ -347,7 +349,20 @@ board_vga_shadow:
     popf
     ret
 %include "pc/option-rom.inc"
-%include "pc/pci-rom.inc"
+; Only POST deployment/scan code moves; public PCI services and all physical
+; shadow/register owners remain resident with their existing contracts.
+pci_option_roms:
+    push bx
+    mov bx,pnp_pci_option_roms
+    call pnp_post_invoke
+    pop bx
+    ret
+pci_rom_skip:
+    push bx
+    mov bx,pnp_pci_rom_skip
+    call pnp_post_invoke
+    pop bx
+    ret
 ; Optional PCI ROM copying uses the described HB54/55 regional shadow controls.
 board_pci_rom_writable:
     pushf

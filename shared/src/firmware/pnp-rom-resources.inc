@@ -35,6 +35,10 @@ pnp_rom_resources:
     cmp ax,0xE000           ; Complete generated APM/SMM/private E0 owner.
     jae .done
 %endif
+%ifdef PB430_PORT
+    cmp ax,0xE000           ; Retained staging/private bank, not an option slot.
+    jae .done
+%endif
     mov dx,ax
     add dx,0x80
     mov [ss:bp+P_O_NEXT],dx
@@ -76,30 +80,11 @@ pnp_rom_resources:
     jc .failed
     jmp .next               ; The extent pass never recalls a static vector.
 .static_headers:
-    mov ax,[ds:0x1A]
-    mov [ss:bp+P_O_SLOW],ax
-    mov [ss:bp+P_O_FAST],ax
-    test ax,ax
+    mov ecx,[ss:bp+P_O_LENGTH]
+    call pnp_rom_chain
+    jc .invalid
+    test si,si
     jz .next
-.cycle:
-    mov si,[ss:bp+P_O_FAST]
-    call .header
-    jc .invalid
-    test ax,ax
-    jz .validated
-    mov si,ax
-    call .header
-    jc .invalid
-    mov [ss:bp+P_O_FAST],ax
-    test ax,ax
-    jz .validated
-    mov si,[ss:bp+P_O_SLOW]
-    call .header
-    jc .invalid
-    mov [ss:bp+P_O_SLOW],ax
-    cmp ax,[ss:bp+P_O_FAST]
-    je .invalid
-    jmp .cycle
 .validated:
     mov si,[ds:0x1A]
 .vector:
@@ -271,6 +256,34 @@ pnp_rom_header:
     jne .bad
     cmp byte [ds:esi+5],2
     jb .bad
+    ; Every nonnull callable/string pointer is ROM-relative and must remain
+    ; inside the validated complete image. Unknown generic headers still link.
+    push si
+    add si,0x0E
+    mov cx,2
+.string:
+    movzx ebx,word [ds:si]
+    test bx,bx
+    jz .string_next
+.string_byte:
+    cmp ebx,[ss:bp+10]
+    jae .bad_string
+    cmp byte [ds:ebx],0
+    je .string_next
+    inc ebx
+    jmp .string_byte
+.string_next:
+    add si,2
+    loop .string
+    add si,4
+    mov cx,3
+.pointer:
+    movzx ebx,word [ds:si]
+    cmp ebx,[ss:bp+10]
+    jae .bad_string
+    add si,2
+    loop .pointer
+    pop si
     mov dx,[ds:esi+0x1E]
     movzx ebx,dx
     cmp ebx,[ss:bp+10]
@@ -284,12 +297,75 @@ pnp_rom_header:
     pop ebx
     clc
     ret
+.bad_string:
+    pop si
 .bad:
     pop bp
     pop edi
     pop esi
     pop ecx
     pop ebx
+    stc
+    ret
+
+; DS=validated outer ROM, ECX=its exact byte extent. Validate the complete
+; generic chain before exposing any PnP metadata. SI=first header or0 (legacy).
+; Floyd traversal has no header-count cutoff and cannot hide later headers.
+pnp_rom_chain:
+    push ax
+    push bx
+    push dx
+    push di
+    mov si,[ds:0x1A]
+    test si,si
+    jz .good
+    mov di,si
+    mov bx,si
+    call pnp_rom_header
+    jnc .walk
+    ; The old ISA header reserved1Ah. Garbage there is not a PnP declaration.
+    movzx edx,si
+    add edx,4
+    cmp edx,ecx
+    ja .legacy
+    cmp dword [ds:si],0x506E5024
+    je .bad
+.legacy:
+    xor si,si
+    jmp .good
+.walk:
+    mov si,bx
+    call pnp_rom_header
+    jc .bad
+    test ax,ax
+    jz .complete
+    mov si,ax
+    call pnp_rom_header
+    jc .bad
+    mov bx,ax
+    test ax,ax
+    jz .complete
+    mov si,di
+    call pnp_rom_header
+    jc .bad
+    mov di,ax
+    cmp ax,bx
+    je .bad
+    jmp .walk
+.complete:
+    mov si,[ds:0x1A]
+.good:
+    pop di
+    pop dx
+    pop bx
+    pop ax
+    clc
+    ret
+.bad:
+    pop di
+    pop dx
+    pop bx
+    pop ax
     stc
     ret
 pnp_rom_resources_code_end:

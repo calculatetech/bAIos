@@ -37,6 +37,8 @@ Cache keeps frequently used data near the processor. Write-through also writes d
 
 IDE Auto mode selects a transfer mode supported by the drive and its controller. A higher PIO number means a shorter transfer cycle. The BIOS supports PIO0 through PIO4, subject to the controller and drive limits. Transfer width and block mode are separate settings.
 
+The [Plug and Play guide](docs/plug-and-play.md) explains automatic card configuration and manual resource reservations.
+
 The [SL-enhanced CPU guide](docs/sl486-support.md) explains processor power-saving support and DOS POWER.EXE. The [POST-code guide](docs/post-codes.md) explains startup codes shown by a diagnostic card.
 
 ## Build and development

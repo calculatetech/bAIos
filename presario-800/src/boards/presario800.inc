@@ -111,6 +111,7 @@
 
 ; Generic services retain this board's one-KiB state and POST scratch phase.
 %define CFG_ROM_SIZE 131072
+%define CFG_ROM_CODE_SEGMENT 0xF000
 %define CFG_ROM_MODEL_BYTE 0xFC
 %define CFG_PLATFORM_SYSTEM_SUBMODEL 1
 %define CFG_PLATFORM_SYSTEM_REVISION 0

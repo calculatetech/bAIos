@@ -1,0 +1,33 @@
+# Plug and Play
+
+Plug and Play identifies compatible expansion cards and assigns free resources. Resources include interrupt lines (IRQs), direct memory access (DMA) channels, I/O addresses, and memory windows. Supported ports provide this feature for 486-class and newer chipsets, including chipsets that support both 386 and 486 processors. The board adapter determines support.
+
+Plug and Play reserves a small amount of memory below 640 KB for startup data. The amount depends on the installed cards.
+
+## Choose who configures cards
+
+Open Setup > Plug and Play. Use Configuration > BIOS (Default) for DOS and systems without Plug and Play resource management. The BIOS configures all assignable devices in this mode.
+
+Use Operating System when the operating system manages Plug and Play cards. The BIOS still configures devices needed to start the computer. It leaves optional devices for the operating system. Both choices honor the manual reservations during BIOS allocation.
+
+## Reserve resources for older cards
+
+Older cards can use jumpers or their own configuration program. Reserve their resources so the BIOS does not assign the same resources to another card. Read the card manual or its configuration program first.
+
+Set each used IRQ and DMA channel to Reserved. Keep unused resources Available (Default). Enabled onboard controllers keep their own resources. Available does not disable a controller.
+
+I/O Windows provides two address ranges. Enter the base and length in decimal. For example, hexadecimal 220h is decimal 544. A base of 544 and length 16 reserves addresses 220h through 22Fh. A zero length disables that window.
+
+Upper Memory reserves 16 KB blocks. Reserve every block used by a manually configured card.
+
+These reservations guide BIOS assignments. They do not prevent an operating-system driver or a separate card utility from changing hardware configuration.
+
+## Rebuild automatic assignments
+
+Set Clear ESCD on Reset to Request, then save and restart. The BIOS rebuilds automatic assignments and keeps manual reservations. After complete reconstruction, the choice returns to Keep (Default). If reconstruction is incomplete, the request remains pending.
+
+Automatic assignments are rebuilt at startup. This implementation does not require a writable BIOS chip or a stored copy of every card assignment.
+
+## Boot from an expansion card
+
+Use the existing boot-order categories in Drives. Other selects startup programs provided by expansion cards. Place Other before Hard Disk when the expansion card must supply the startup device. The card must contain a compatible startup ROM and a usable boot device.

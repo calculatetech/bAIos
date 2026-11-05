@@ -1,4 +1,4 @@
-; P1 public interface. Normal ROMs deliberately have no installation signature.
+; Complete public interface. Only explicit partial test compositions omit discovery.
 ; BiosSelector covers physical0400..103FF; all public temporaries use caller SS.
 PNP_PAYLOAD equ 0xAD
 PNP_BASE equ PNP_PAYLOAD+66
@@ -29,7 +29,7 @@ PNP_VIEW equ PNP_CHIP-1
 times -(PNP_VIEW < -PNP_FRAME) db 0
 times -(PNP_NODE+PNP_NODE_MAX > -8) db 0
 
-%ifdef EMULATOR_PNP_TEST
+%ifndef EMULATOR_PNP_PARTIAL
 align 16,db 0xFF
 pnp_installation:
     db '$PnP',0x10,0x21

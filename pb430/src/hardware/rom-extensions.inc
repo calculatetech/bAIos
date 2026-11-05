@@ -2,6 +2,7 @@
 %include "hardware/vga-compat.inc"
 %endif
 %include "firmware/setup-pnp.inc"
+%include "firmware/pnp-boot-route.inc"
 ; CPU helpers use late space to preserve the fixed F065 VGA entry.
 %ifndef BOARD_LATE_CDBOOT
 %include "hardware/cpu.inc"

@@ -210,6 +210,7 @@ startup:
     jmp cache_stock_warm_entry
 .warm_cache_return:
     cli ; The modular startup rebuilds its vectors before enabling IRQs.
+    call pnp_warm_budget
     mov esp,ebp
     mov ax,[0x40E]
     cmp ax,STATE_SEG

@@ -1,5 +1,5 @@
 ; Type-zero bus-zero option ROMs. The board supplies 16-KiB shadow blocks.
-pci_option_roms:
+pnp_pci_option_roms:
     mov byte [fs:M_PCI_ROM_USED],0
     mov byte [fs:M_PCI_ROM_RESERVED],0
     ; Reserve complete ISA images, including images that start below D000.
@@ -65,7 +65,7 @@ pci_option_roms:
     call pci_read
     test eax,0x007F0000
     jnz .next
-    call pci_rom_load
+    call pnp_pci_rom_load
 .next:
     call pci_next_function
     cmp bx,256
@@ -76,7 +76,7 @@ pci_option_roms:
     ret
 
 ; BX device. Keep the original command and disable ROM decode on every exit.
-pci_rom_load:
+pnp_pci_rom_load:
     pushad
     push ds
     push es
@@ -237,7 +237,7 @@ pci_rom_load:
     ret
 
 ; DX generic scan position: PCI images have already initialized exactly once.
-pci_rom_skip:
+pnp_pci_rom_skip:
     push ax
     push cx
     push bx

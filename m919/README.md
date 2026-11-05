@@ -14,6 +14,8 @@ Normal defaults request enabled caches and write-back where supported. A failed 
 
 This board uses serial mice and has no PS/2 mouse connector. PS/2 mouse initialization is disabled. There is no game-port setting. Floppy Controller is in Drives, parallel-port DMA is in Devices, and DRAM timings are in Chipset > Memory.
 
+Setup > Plug and Play assigns resources to compatible expansion cards. Read the [Plug and Play guide](../docs/plug-and-play.md) for BIOS/operating-system policy and manual reservations for older cards.
+
 ## Known limitations
 
 Revision3.4 can fail to warm reset with Microsoft EMM386 loaded. Its recurring floppy-controller problem is also unresolved. A successful boot with different memory managers does not remove those limitations.

@@ -22,11 +22,11 @@ spec=importlib.util.spec_from_file_location('pnp_settings',Path(__file__).with_n
 settings=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(settings)
 PORTS=('m919','pb430','presario-800')
-OUTPUT='build/tests/pnp-allocation'
+OUTPUT='build/tests/pnp-runtime'
 M919_MASKS=[0xF0,1,1,0x70,0x90,3,1,0xFF,0xFF,7,0x0F,0x7F,1,0x0F,1,0xFC,0xFF,0xFF,0x0F,1,0xFF,1,3,0x1F]
 
 
-def isa_machine(port,bus,output='build/tests/pnp-allocation',conventional_kib=None):
+def isa_machine(port,bus,output='build/tests/pnp-runtime',conventional_kib=None):
     class Machine(settings.Settings):
         def __init__(self,bus):
             self.bus=bus
@@ -59,6 +59,7 @@ def isa_machine(port,bus,output='build/tests/pnp-allocation',conventional_kib=No
             assert self.port92&2 and self.nmi and not cpu.reg_read(x.UC_X86_REG_EFLAGS)&0x200
             self.high_reads+=size
         def interrupt(self,cpu,vector,unused):
+            if hasattr(self,'runtime_interrupt') and self.runtime_interrupt(cpu,vector):return
             if vector==0x15:
                 Caller.inject(self,'int15',cpu.reg_read(x.UC_X86_REG_IP))
                 return
@@ -73,7 +74,7 @@ def isa_machine(port,bus,output='build/tests/pnp-allocation',conventional_kib=No
                 self.payload_shadow[offset:offset+size]=value.to_bytes(size,'little')
         def call(self,name,**registers):
             if ((port=='m919' and (name.startswith('pnp_') or name=='settings_nv6_retire')) or
-                (port in ('pb430','presario-800') and (name.startswith(('pnp_isa_','pnp_delay_','pnp_claim_','pnp_work_','pnp_bus_','pnp_census')) or name in ('pnp_pit_sample','pnp_prepare','pnp_finish','pnp_resource_next','pnp_stream_byte','pnp_normalize_event','pnp_eisa_id_valid','pnp_replay','pnp_place_ldn','pnp_candidate','pnp_try_ldn','pnp_solve','pnp_program','pnp_seed','pnp_reserve','pnp_map_node','pnp_rom_resources','settings_nv6_retire')))) and name not in ('pnp_module_install','pnp_post_invoke','pnp_publish','pnp_early','pnp_finish_entry','pnp_pci_initialize'):
+                (port in ('pb430','presario-800') and (name.startswith(('pnp_isa_','pnp_delay_','pnp_claim_','pnp_work_','pnp_bus_','pnp_census','pnp_initialize_','pnp_discover_')) or name in ('pnp_pit_sample','pnp_prepare','pnp_finish','pnp_resource_next','pnp_stream_byte','pnp_normalize_event','pnp_eisa_id_valid','pnp_replay','pnp_place_ldn','pnp_candidate','pnp_try_ldn','pnp_solve','pnp_program','pnp_seed','pnp_reserve','pnp_map_node','pnp_rom_resources','settings_nv6_retire')))) and name not in ('settings_nv6_retire','pnp_journal_release','pnp_rom_enter','pnp_module_install','pnp_post_invoke','pnp_publish','pnp_early','pnp_finish_entry','pnp_pci_initialize'):
                 registers['BX']=self.listing.symbol(name)
                 name='pnp_post_invoke'
             return super().call(name,**registers)
@@ -99,7 +100,7 @@ def isa_machine(port,bus,output='build/tests/pnp-allocation',conventional_kib=No
     return Machine(bus)
 
 
-def isa_transport(port,output='build/tests/pnp-allocation'):
+def isa_transport(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     def call(m,name,**registers):
         return m.call(name,DX=m.bus.read_port or 0x203,ES=0x2000,DI=0x100,**registers)
@@ -158,7 +159,7 @@ def isa_transport(port,output='build/tests/pnp-allocation'):
             'PIT_minimum_delays_and_timeout':True,'empty_scan_PIT_seconds':empty_budgets,'persistent_writes':0}
 
 
-def mode3_delays(port,output='build/tests/pnp-allocation'):
+def mode3_delays(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus
     tested=[]
     for phase in (0,0x7FE0,0xFFE0):
@@ -213,7 +214,7 @@ def memory_register_boundaries(port):
     return {'actual_allocator_seed_census_replay_commit':tested,'Activate_last':True}
 
 
-def resource_framing(port='mp386',output='build/tests/pnp-allocation'):
+def resource_framing(port='mp386',output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     identity=serial(b'\x41\xD0\x12\x34',1)
     ldn=b'\x15\x41\xD0\x00\x01\x01'
@@ -261,7 +262,7 @@ def resource_framing(port='mp386',output='build/tests/pnp-allocation'):
             'known_memory_forms':3,'malformed_lengths':4,'full_payload_canaries':True}
 
 
-def journal_boundaries(port='mp386',output='build/tests/pnp-allocation'):
+def journal_boundaries(port='mp386',output='build/tests/pnp-runtime'):
     tested=[]
     for allocated in (1024,8192):
         from shared.tools.isa_pnp_proof import Bus
@@ -300,7 +301,7 @@ def journal_boundaries(port='mp386',output='build/tests/pnp-allocation'):
             'last_fit_minimum_excess_and_overflow_atomic':True,'BDA_accounting_and_external_owner_release':True}
 
 
-def resource_domains(port,output='build/tests/pnp-allocation'):
+def resource_domains(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus
     m=isa_machine(port,Bus(),output)
     rows=[(0x47,struct.pack('<BHHBB',1,0x310,0x330,16,8),(2,1,0,0x310,0x330,16,8,0)),
@@ -345,7 +346,7 @@ def resource_domains(port,output='build/tests/pnp-allocation'):
             'all32bit_fields_no_truncation':True,'null_slots_and24byte_canaries':True}
 
 
-def resource_ledger(port,output='build/tests/pnp-allocation'):
+def resource_ledger(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus
     m=isa_machine(port,Bus(),output)
     if port in ('m919','mp386'):
@@ -410,7 +411,7 @@ def resource_ledger(port,output='build/tests/pnp-allocation'):
             'owner_rollback_reuses_records':True,'internal_PIC2_does_not_own_external_IRQ9':True}
 
 
-def card_census(port,output='build/tests/pnp-allocation',exhaustion=False,cases=None):
+def card_census(port,output='build/tests/pnp-runtime',exhaustion=False,cases=None):
     selected=set(cases or ('valid','malformed','empty','relocation'))
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     version=b'\x0A\x10\0'+b'\x82\x03\0ISA'
@@ -509,7 +510,7 @@ def card_census(port,output='build/tests/pnp-allocation',exhaustion=False,cases=
             'deactivate_all_and_WaitForKey':True,'no_persistent_or_public_snapshot_writes':True}
 
 
-def resource_selection(port,output='build/tests/pnp-allocation'):
+def resource_selection(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     version=b'\x0A\x10\0\x82\x03\0ISA'
     def device(flags):return b'\x15\x41\xD0\x05\0'+bytes((flags,))
@@ -544,7 +545,7 @@ def resource_selection(port,output='build/tests/pnp-allocation'):
             'actual_reopen_full_stream_and_unchanged_hardware_until_commit':True}
 
 
-def resource_programming(port,output='build/tests/pnp-allocation'):
+def resource_programming(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     tested=[]
     for family in (24,32,'fixed32'):
@@ -582,7 +583,7 @@ def resource_programming(port,output='build/tests/pnp-allocation'):
             'external_ISA2_owns_PIC9':True,'Activate_last_no_filler_writes':True}
 
 
-def onboard_map(port,output='build/tests/pnp-allocation'):
+def onboard_map(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus
     m=isa_machine(port,Bus([]),output)
     m.call('settings_load')
@@ -607,7 +608,7 @@ def onboard_map(port,output='build/tests/pnp-allocation'):
             'PIC_internal_cascade_owner_preserved':True,'no_persistent_writes':not m.writes}
 
 
-def static_resources(port,output='build/tests/pnp-allocation'):
+def static_resources(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     def rom(base,index,cycle=False,irq=None):
         raw=bytearray(2048);raw[:3]=b'\x55\xAA\x04';struct.pack_into('<H',raw,0x1A,0x40)
@@ -660,7 +661,7 @@ def static_resources(port,output='build/tests/pnp-allocation'):
             'post_census_live_extents_without_vector_recall':True,'no_initialization_or_persistent_writes':True}
 
 
-def clear_retirement(port,output='build/tests/pnp-allocation'):
+def clear_retirement(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus
     tested=[]
     ordinal=65 if port=='m919' else 58
@@ -713,7 +714,7 @@ def clear_retirement(port,output='build/tests/pnp-allocation'):
             'power_loss_during_publication_uses_existing_invalid_record_semantics':True}
 
 
-def packet_journal_lifetime(port,output='build/tests/pnp-allocation'):
+def packet_journal_lifetime(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus
     m=isa_machine(port,Bus([]),output)
     if port in ('m919','mp386'):
@@ -730,7 +731,7 @@ def packet_journal_lifetime(port,output='build/tests/pnp-allocation'):
             'old33C_33F_collision_regression':True}
 
 
-def allocation_finish(port,output='build/tests/pnp-allocation'):
+def allocation_finish(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     stream=b'\x0A\x10\0\x82\x03\0ISA\x15\x41\xD0\x05\0\x01\x4B\xE0\x03\x08\x22\0\x08\x2A\x02\x08\x79\0'
     bus=Bus([Card(serial(b'\x41\xD0\xFF\xFF',1),stream)]);bus.pause=False
@@ -747,17 +748,19 @@ def allocation_finish(port,output='build/tests/pnp-allocation'):
     control=bytes(m.cpu.mem_read(m.base+0x320,28))
     m.call('ata_identify_selected',FS=(m.base+0x200)>>4)
     assert bytes(m.cpu.mem_read(m.base+0x320,28))==control
-    m.call('pnp_publish');m.call('pnp_finish')
+    m.call('pnp_publish');m.call('pnp_finish_entry')
     assert bytes(m.cpu.mem_read(0x4FB,3))==b'\x01\x03\x02'
     assert decode_saved(m)[0]['C_PNP']==bytes(15)
     assert m.get('U_PNP',15)==policy
-    assert not any(m.cpu.mem_read(m.base+0x330,16))
+    assert not any(m.cpu.mem_read(m.base+0x330,4))
+    assert not any(m.cpu.mem_read(m.base+0x338,4))
+    assert int.from_bytes(m.cpu.mem_read(m.base+0x334,4),'little')
     assert int.from_bytes(m.cpu.mem_read(0x413,2),'little')==m.base>>10
     return {'actual_prepare_assignment_slave_packet_owner_and_finish':True,'actual_count_port_and_verified_Clear':True,
             'release_restores_memory_and_keeps_distinct_draft':True}
 
 
-def retained_isa_rom(port,output='build/tests/pnp-allocation'):
+def retained_isa_rom(port,output='build/tests/pnp-runtime'):
     """The expansion ROM really disappears on LDN disable and returns on Activate."""
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     base=0xC8000
@@ -775,24 +778,25 @@ def retained_isa_rom(port,output='build/tests/pnp-allocation'):
         responds=bool(regs[0x30] and actual==base)
         visible.append(responds)
         cpu.mem_write(address,bytes(rom[address-base:address-base+size]) if responds else b'\xFF'*size)
-    hook=m.cpu.hook_add(UC_HOOK_MEM_READ,mapped,None,base,base+len(rom)-1)
-    try:
+    for warm in (False,True):
+        # Independent POST workspaces, with the same retained external card.
+        m=isa_machine(port,bus,output);visible.clear()
         m.call('settings_load');m.call('pnp_publish')
         if port=='m919':m.cpu.mem_write(0x413,struct.pack('<H',m.base>>10))
-        for warm in (False,True):
+        hook=m.cpu.hook_add(UC_HOOK_MEM_READ,mapped,None,base,base+len(rom)-1)
+        try:
             m.call('pnp_prepare')
             assert visible and any(visible),'Power-up ROM must really be visible to the first scan'
             assert (1,0,0x30,0) in bus.config_writes,'Census must really disable this LDN'
             assert card.registers[0][0x30]==1,'The card must not self-conflict against its retained power-up ROM'
             assert int.from_bytes(bytes(card.registers[0][at] for at in range(0x76,0x7A)),'big')==base
-            m.call('pnp_finish');m.call('pnp_publish')
-            if not warm and port!='m919':assert m.call('pnp_module_install')
-    finally:m.cpu.hook_del(hook)
+            m.call('pnp_finish_entry');m.call('pnp_publish')
+        finally:m.cpu.hook_del(hook)
     return {'actual_powerup_visibility_disable_reassignment_and_activation':True,
             'cold_and_retained_warm':True,'no_ID_dedup_or_onboard_owner_release':True}
 
 
-def manual_irq_alias(port,output='build/tests/pnp-allocation'):
+def manual_irq_alias(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     results=[]
     for irq in (2,9,None):
@@ -814,7 +818,7 @@ def manual_irq_alias(port,output='build/tests/pnp-allocation'):
             'individual_release_allows_assignment':True,'internal_cascade2_unchanged':True}
 
 
-def pci_precedence(output='build/tests/pnp-allocation'):
+def pci_precedence(output='build/tests/pnp-runtime'):
     """Actual PCI allocator must leave the required ISA fixed aperture available."""
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     from shared.tools.pci_proof import PCI,Endpoint
@@ -845,7 +849,7 @@ def pci_precedence(output='build/tests/pnp-allocation'):
     return {'required_before_relocatable_PCI':results,'whole_initializer_reorder_would_steal_required_resource':True}
 
 
-def pci_fixed_rom(output='build/tests/pnp-allocation'):
+def pci_fixed_rom(output='build/tests/pnp-runtime'):
     """ROM visibility follows actual PCI command/ROM BAR writes, before ISA."""
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     from shared.tools.pci_proof import PCI,Endpoint
@@ -880,7 +884,7 @@ def pci_fixed_rom(output='build/tests/pnp-allocation'):
     return {'existing_fixed_VGA_owner_before_ISA':results,'actual_decode_drives_live_extent':True}
 
 
-def pci_vga_first_use(output='build/tests/pnp-allocation'):
+def pci_vga_first_use(output='build/tests/pnp-runtime'):
     """Early selected ROM remains decoded after the actual BAR allocator."""
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     from shared.tools.pci_proof import PCI,Endpoint
@@ -936,7 +940,7 @@ def pci_vga_first_use(output='build/tests/pnp-allocation'):
             'decode_gated_reads':len(visibility),'final_INT10':'C000:0100','conflicting_ISA_inactive':True}
 
 
-def pci_final_routing(output='build/tests/pnp-allocation'):
+def pci_final_routing(output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     from shared.tools.pci_proof import PCI,Endpoint
     stream=b'\x0A\x10\0\x82\x03\0ISA\x15\x41\xD0\x05\0\x01\x22\0\x08\x79\0'
@@ -964,7 +968,7 @@ def pci_final_routing(output='build/tests/pnp-allocation'):
             'actual_southbridge_peer_bits_and_Activate_preserved':True}
 
 
-def pci_manual_windows(output='build/tests/pnp-allocation'):
+def pci_manual_windows(output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     from shared.tools.pci_proof import PCI,Endpoint
     tested=[]
@@ -986,7 +990,7 @@ def pci_manual_windows(output='build/tests/pnp-allocation'):
     return {'real_Save_load_map_existing_PCI_allocator':tested,'ISA_and_both_manual_windows_disjoint':True}
 
 
-def early_port_ownership(port,output='build/tests/pnp-allocation'):
+def early_port_ownership(port,output='build/tests/pnp-runtime'):
     """Actual saved disable/readdress must change external decode before census."""
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     from shared.tools.peripheral_proof import UART
@@ -1057,7 +1061,7 @@ def early_port_ownership(port,output='build/tests/pnp-allocation'):
     return {'existing_adapter_changes_before_map_and_census':tested,'no_probe_or_NV_writes':True}
 
 
-def pb_fixed_video(output='build/tests/pnp-allocation',cases=None):
+def pb_fixed_video(output='build/tests/pnp-runtime',cases=None):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     import importlib
     sys.path.insert(0,str(ROOT/'pb430/tools'));core=importlib.import_module('core_proof')
@@ -1084,7 +1088,7 @@ def pb_fixed_video(output='build/tests/pnp-allocation',cases=None):
     return {'actual_reset_fixed_video_before_ISA':results}
 
 
-def pb_scratch_lifetime(output='build/tests/pnp-allocation'):
+def pb_scratch_lifetime(output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus
     m=isa_machine('pb430',Bus(),output);m.call('settings_load')
     assert m.call('pnp_work_begin')
@@ -1110,7 +1114,7 @@ def pb_scratch_lifetime(output='build/tests/pnp-allocation'):
             'actual_F000_staged_bytes':True,'returning_memory_ceiling_below_hole_preserved':True}
 
 
-def resource_capabilities(port,output='build/tests/pnp-allocation'):
+def resource_capabilities(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     class Observed(Bus):
         def __init__(self,cards):super().__init__(cards);self.io=[]
@@ -1139,7 +1143,7 @@ def resource_capabilities(port,output='build/tests/pnp-allocation'):
             'advertised_edge_preferred_alternate_only_backtracks':True,'no_host_timing_or_DMA_programming':True}
 
 
-def allocation_policy(port,output='build/tests/pnp-allocation'):
+def allocation_policy(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     tested=[]
     for os_policy,release in ((0,False),(0,True),(1,True)):
@@ -1161,7 +1165,7 @@ def allocation_policy(port,output='build/tests/pnp-allocation'):
     return {'real_verified_Save_load_union_release_and_policy':tested}
 
 
-def setup_journal_lifetime(port,output='build/tests/pnp-allocation'):
+def setup_journal_lifetime(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     stream=b'\x0A\x10\0\x82\x03\0ISA\x15\x41\xD0\x05\0\x01\x4B\xE0\x03\x08\x79\0'
     bus=Bus([Card(serial(b'\x41\xD0\xFF\xFF',1),stream)]);bus.pause=False
@@ -1201,14 +1205,14 @@ def setup_journal_lifetime(port,output='build/tests/pnp-allocation'):
             'saved_cmos':bytes(m.cmos).hex(),'saved_nv':bytes(m.nvram[0x200:0x240]).hex()}
 
 
-def natural_capacity(port,output='build/tests/pnp-allocation'):
+def natural_capacity(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     prefix=b'\x0A\x10\0\x82\x03\0ISA';device=b'\x15\x41\xD0\x05\0\x01'
     def run(amount,kib):
         card=Card(serial(b'\x41\xD0\xFF\xFF',1),prefix+device*amount+b'\x79\0',ldns=amount,powerup_active=True)
         bus=Bus([card]);bus.pause=False;m=isa_machine(port,bus,output,kib)
         m.call('settings_load');m.call('setup_defaults');m.draft()
-        policy=bytearray(15);policy[14]=1;m.put('U_PNP',policy);assert m.call('settings_save')
+        policy=bytearray(15);policy[14]=1;m.put('U_PNP',policy);m.put('U_HALT',b'\x01');assert m.call('settings_save')
         m.call('settings_load');m.call('pnp_publish');before=m.snapshot();m.writes.clear()
         m.cpu.mem_write(0xFFF0,b'FLOOR-CANARY')
         m.call('pnp_prepare')
@@ -1220,9 +1224,10 @@ def natural_capacity(port,output='build/tests/pnp-allocation'):
         assert bytes(m.cpu.mem_read(0xFFF0,12))==b'FLOOR-CANARY'
         assert m.snapshot()==before and not m.writes,'Rebuild must not publish progress'
         used=kib*1024-int.from_bytes(m.cpu.mem_read(m.base+0x320,4),'little')
-        m.call('pnp_finish')
-        assert decode_saved(m)[0]['C_PNP'][14]==int(bool(status))
-        assert int.from_bytes(m.cpu.mem_read(0x413,2),'little')==kib
+        m.call('pnp_finish_entry')
+        runtime=bool(int.from_bytes(m.cpu.mem_read(m.base+0x334,4),'little'))
+        assert decode_saved(m)[0]['C_PNP'][14]==int(bool(status) or not runtime)
+        assert int.from_bytes(m.cpu.mem_read(0x413,2),'little')==(m.base>>10 if runtime else kib)
         return status,used
     status,used=run(1,512);assert not status
     kib=64+(used+1023)//1024
@@ -1236,7 +1241,7 @@ def natural_capacity(port,output='build/tests/pnp-allocation'):
         last=amount;amount+=1
 
 
-def rebuild_clear(port,output='build/tests/pnp-allocation'):
+def rebuild_clear(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     prefix=b'\x0A\x10\0\x82\x03\0ISA\x15\x41\xD0\x05\0\x01'
     def stream(base,bad=False):
@@ -1247,23 +1252,23 @@ def rebuild_clear(port,output='build/tests/pnp-allocation'):
         if bad:value=(value+1)&255 or 1
         return data+bytes((0x79,value))
     card=Card(serial(b'\x41\xD0\xFF\xFF',1),stream(0x3E0,True),powerup_active=True)
-    bus=Bus([card]);bus.pause=False;m=isa_machine(port,bus,output)
+    bus=Bus([card]);bus.pause=False
     tested=[]
     for index,(name,base,bad,active,pending) in enumerate((('bad_End',0x3E0,True,0,1),
             ('valid_next_rebuild',0x3E0,False,1,0),('valid_unassignable',0x350,False,0,0))):
-        m.call('settings_load');m.draft()
+        m=isa_machine(port,bus,output)
+        m.call('settings_load');m.draft();m.put('U_HALT',b'\x01')
         policy=bytearray(15);struct.pack_into('<HH',policy,3,0x350,8);policy[14]=1
         m.put('U_PNP',policy);assert m.call('settings_save')
         m.cmos[0x69]=0xD2;m.cmos[0x36]=0x71;m.cmos[0x37]=0xA0
         m.call('settings_load');m.call('pnp_publish')
-        if index:assert m.call('pnp_module_install')
         if port=='m919':m.cpu.mem_write(0x413,struct.pack('<H',m.base>>10))
         card.resources=stream(base,bad);card.csn=0x71;card.state='sleep'
         before=decode_saved(m);m.writes.clear();m.call('pnp_prepare')
         root=int.from_bytes(m.cpu.mem_read(m.base+0x330,4),'little')
         assert bool(m.cpu.mem_read(root+19,1)[0])==bad
         assert card.csn==1 and card.registers[0][0x30]==active
-        m.call('pnp_publish');m.call('pnp_finish');after=decode_saved(m)
+        m.call('pnp_publish');m.call('pnp_finish_entry');after=decode_saved(m)
         expected=bytearray(policy);expected[14]=pending
         assert after[0]['C_PNP']==expected and after[1]==before[1]
         for field in ('C_IDE','C_PORTS','C_CHIP'):assert after[0][field]==before[0][field]
@@ -1274,7 +1279,7 @@ def rebuild_clear(port,output='build/tests/pnp-allocation'):
             'all_unrelated_logical_settings_and_recovery_markers_preserved':True}
 
 
-def dependent_alternatives(port,output='build/tests/pnp-allocation'):
+def dependent_alternatives(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     prefix=b'\x0A\x10\0\x82\x03\0ISA';device=b'\x15\x41\xD0\x05\0\x01'
     stream=prefix+device+b'\x31\0\x4B\0\x03\x08\x22\x10\0'
@@ -1292,7 +1297,7 @@ def dependent_alternatives(port,output='build/tests/pnp-allocation'):
             'joint_required':resource_selection(port,output)}
 
 
-def logical_limits(port,output='build/tests/pnp-allocation'):
+def logical_limits(port,output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     prefix=b'\x0A\x10\0\x82\x03\0ISA';device=b'\x15\x41\xD0\x05\0\x01'
     tested=[]
@@ -1579,7 +1584,7 @@ def allocation_causal(port,groups=None):
     return results
 
 
-def mp_negative(output='build/tests/pnp-allocation'):
+def mp_negative(output='build/tests/pnp-runtime'):
     """Forward correction: ordinary legacy/NV6 settings, no MP PnP adoption."""
     class Ordinary(settings.Settings):
         def __init__(self):
@@ -1655,6 +1660,21 @@ def prepare(port):
         build(port,OUTPUT+'/production')
         build(port,OUTPUT,('EMULATOR_PNP_TEST',))
 
+
+
+def prepare_partial(port):
+    output=OUTPUT+'/partial'
+    if port=='presario-800':
+        subprocess.run(['pwsh','-NoProfile','-File',str(ROOT/port/'tools/build.ps1'),
+                        '-OutputDirectory',output,'-PnpPartialTest'],check=True,stdout=sys.stderr)
+    elif port=='pb430':
+        spec=importlib.util.spec_from_file_location('pnp_pb_partial_build',ROOT/port/'tools/build.py')
+        owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
+        owner.run(output,defines=('EMULATOR_PNP_PARTIAL',))
+    else:build(port,output,('EMULATOR_PNP_PARTIAL',))
+    machine=settings.Settings(port,output)
+    assert not scan(machine.image.read_bytes())
+    return {'installation_absent':True,'sha256':hashlib.sha256(machine.image.read_bytes()).hexdigest()}
 
 def scan(raw):
     """No listing/symbol input: installation checks follow the public ROM contract."""
@@ -1773,7 +1793,7 @@ class Caller(settings.Settings):
         registers=dict(EAX=0x1234A55A,EBX=0x87654321,ECX=0xABCD1234,EDX=0x76543210,
                        ESI=0x24681357,EDI=0x13572468,EBP=0x19283746,
                        DS=self.buffer,ES=self.buffer,FS=self.buffer,GS=self.buffer,
-                       SS=self.stack,CS=self.code,ESP=self.stack_offset,EFLAGS=0xED7)
+                       SS=self.stack,CS=self.code,ESP=self.stack_offset,EFLAGS=getattr(self,'caller_flags',0xED7))
         for name,value in registers.items():
             if self.mode!='real' and name in ('DS','ES','FS','GS','SS'):continue
             cpu.reg_write(getattr(x,'UC_X86_REG_'+name),value)
@@ -1784,7 +1804,7 @@ class Caller(settings.Settings):
         cpu.mem_write(lower,b'BEFORE-PNP-STACK!')
         cpu.mem_write(upper,b'AFTER-PNP-STACK!!')
         cpu.mem_write(0x30000+offset,frame)
-        cpu.mem_write(0x10200,b'\xF4')
+        cpu.mem_write(0x10200,getattr(self,'return_opcode',b'\xF4'))
         before={name:cpu.reg_read(getattr(x,'UC_X86_REG_'+name)) for name in registers}
         descriptor_state=tuple(cpu.reg_read(getattr(x,'UC_X86_REG_'+name)) for name in ('CR0','GDTR','IDTR'))
         stopped=[]
@@ -1793,7 +1813,8 @@ class Caller(settings.Settings):
         self.public_active=True
         try:
             entry=struct.unpack_from('<H',self.header,13 if self.mode=='real' else 17)[0]
-            cpu.emu_start((self.code<<4)+entry,0x100000,count=1000000)
+            if hasattr(self,'execute'):self.execute((self.code<<4)+entry,0x100000,1000000)
+            else:cpu.emu_start((self.code<<4)+entry,0x100000,count=1000000)
         finally:
             self.public_active=False
             cpu.hook_del(hook)
@@ -2067,7 +2088,7 @@ def information_services_mode(port,mode):
 
 def information_services(port):
     result={mode:information_services_mode(port,mode) for mode in ('real','ss16','ss32')}
-    if OUTPUT=='build/tests/pnp-allocation':result['actual_ISA_producer']=allocation_information(port)
+    if OUTPUT=='build/tests/pnp-runtime':result['actual_ISA_producer']=allocation_information(port)
     return result
 
 
@@ -2088,7 +2109,7 @@ def allocation_information(port):
         module_start=source.index(b'BAIPNP2\0')
         private_size=struct.unpack_from('<H',source,module_start+8)[0]
         private_base=(segment<<4)+(module_start if port=='m919' else 0)
-        m.call('pnp_finish')
+        m.call('pnp_finish_entry')
         assert not any(m.cpu.mem_read(m.base+0x338,4))
         frozen=bytes(m.cpu.mem_read(0x4AD,83));expected=bytes((1,count))+struct.pack('<HH',0x20B if count else 0,0)
         for mode in ('real','ss16','ss32'):
@@ -2465,6 +2486,11 @@ def set_node(port):
 def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_video=False,expect_first_active=True):
     """Real reset/application/publication, using the existing board hardware seams."""
     import importlib
+    def cad_scratch(cpu):
+        base=int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4
+        end=base+cpu.mem_read(base,1)[0]*1024
+        for low,high in ((0x80000,0x80004),(0x6F00,0x7000)):
+            assert high<=base or low>=end,('CAD stimulus overlaps advertised EBDA',base,end,low,high)
     sys.path.insert(0,str(ROOT/port/'tools'))
     image=ROOT/port/OUTPUT/('baios-presario800-system.rom' if port=='presario-800' else f'baios-{port}.bin')
     saved=bytearray.fromhex(cmos)
@@ -2483,7 +2509,7 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
                'chipset_late_cache','pnp_publish','post_debug_summary')}
     if port=='presario-800':
         video_entry=0xF0000+next(int(match[1],16) for line in publication_listing.lines
-            if 'call VGA_SEGMENT:VGA_ENTRY' in line and
+            if 'call pnp_rom_enter' in line and
             (match:=re.match(r'\s*\d+\s+([0-9A-F]{8})\s+[0-9A-F]',line)))
     else:video_entry=0xF0000+publication_listing.symbol('initialize_video')
     progress[video_entry]='initialize_video'
@@ -2526,6 +2552,7 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
                     'uarts':sorted(device.devices()[0])}
         return {'SIO':dict(m.routing.sio),'uarts':[a for a in (0x3F8,0x2F8,0x3E8,0x2E8) if m.routing.uart(a)]}
     def between():
+        if pnp_bus is not None and hasattr(pnp_bus,'after_post'):pnp_bus.after_post()
         if not causal or port=='mp386':return
         persistent=(bytes(nv_cmos) if port=='m919' else bytes(m.cmos),bytes(0x10000))
         c=Caller(port,'ss32',persistent)
@@ -2546,6 +2573,10 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
         if port=='m919':m.initial_cmos=bytes(c.cmos)
         else:m.cmos[:]=c.cmos
         transition.append({'old_hardware':actual,'current_unchanged':True,'verified_static_record':True})
+    def phase_complete():
+        if pnp_bus is not None and hasattr(pnp_bus,'after_each_post'):
+            listing=m.pnp_listing if port=='m919' else m.listing if port=='pb430' else publication_listing
+            pnp_bus.after_each_post(m,m.cpu if port!='m919' else cpu,listing)
     escape=[False]
     ram_entry=0xF0000+publication_listing.symbol('chipset_visible_ram_test')
     keyboard_boundary=0xF0000+publication_listing.symbol('post_keyboard_wait')
@@ -2561,6 +2592,7 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
         assert set(writes)==set(range(0x4AD,0x500)),('snapshot bounds',writes)
         boundaries.append([min(writes),max(writes)])
     def observe(cpu,address,listing):
+        if pnp_bus is not None and getattr(pnp_bus,'runtime_continue',False):return
         if pnp_bus is not None and hasattr(pnp_bus,'observe_startup'):
             pnp_bus.observe_startup(m,cpu,address,listing)
         if pnp_bus is not None and (address in progress or address==finish_address):
@@ -2623,17 +2655,24 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
             if active[0]:close_publication()
             if finishing[0]:
                 finishing[0]=False
-                allowed={0x413,0x414,0x4FB,0x4FC,0x4FD,0x4EE if port=='m919' else 0x4E7}
+                allowed={0x40E,0x40F,0x413,0x414,0x4FB,0x4FC,0x4FD,0x4EE if port=='m919' else 0x4E7}
                 assert set(finish_writes)<=allowed,('finish bounds',finish_writes)
                 assert {0x4FB,0x4FC,0x4FD}<=set(finish_writes)
                 base=cpu.reg_read(x.UC_X86_REG_FS)<<4
                 assert not any(cpu.mem_read(base+0x320,8))
                 assert not any(cpu.mem_read(base+0x32C,8))
                 assert not any(cpu.mem_read(base+0x338,4))
-                assert int.from_bytes(cpu.mem_read(0x413,2),'little')==original_memory[0]
+                relative=int.from_bytes(cpu.mem_read(base+0x334,4),'little')
+                runtime=(bool(relative) and bytes(cpu.mem_read(base+relative,4))==b'PNP3')
+                ceiling=base>>10 if runtime else original_memory[0]
+                assert int.from_bytes(cpu.mem_read(0x413,2),'little')==ceiling
                 finish_observations.append({'writes':sorted(set(finish_writes)),
-                    'restored_conventional_KiB':original_memory[0],
+                    'restored_conventional_KiB':ceiling,'original_conventional_KiB':original_memory[0],
+                    'runtime_published':runtime,'advertised_runtime_KiB':cpu.mem_read(base,1)[0],
                     'released_control':True,'ISA':bytes(cpu.mem_read(0x4FB,3)).hex()})
+            if port=='presario-800':
+                m.base=int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4
+                m.segment=m.base>>4
             snapshots.append(bytes(cpu.mem_read(0x4AD,83)).hex())
             persistent_snapshots.append((bytes(nv_cmos) if port=='m919' else bytes(m.cmos)).hex())
             if causal or pnp_bus is not None:hardware.append(hardware_state())
@@ -2662,6 +2701,10 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
                 super().__init__(image,payload,isa_bus=pnp_bus,external_video=external_video)
                 if pnp_bus is not None and hasattr(pnp_bus,'video_rom'):
                     self.cpu.mem_write(0xC0000,pnp_bus.video_rom)
+            def interrupt(self,cpu,vector,unused):
+                if vector==0x10 and getattr(pnp_bus,'execute_video_interrupt',False):
+                    return importlib.import_module('core_proof').rtc.Clock.interrupt(self,cpu,vector,unused)
+                return super().interrupt(cpu,vector,unused)
             def code(self,cpu,address,size,unused):
                 if self.starting and address==0xC0003 and pnp_bus is not None and hasattr(pnp_bus,'video_rom'):
                     # Execute the authored external device's instructions. The
@@ -2679,10 +2722,19 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
         for warm in phases:
             if not warm:m.cold_boot();between()
             else:
+                if getattr(pnp_bus,'actual_cad',False):
+                    cad_scratch(m.cpu)
+                    m.irq_scans((0x1D,0x38,0xE0,0x53),guest=0x80000)
+                    assert m.reset_pending,'Actual Ctrl+Alt+Del did not produce a reset pulse'
+                    m.complete_reset(count=300000000)
+                    pnp_bus.actual_cad=False
+                    phase_complete()
+                    continue
                 m.sys_flag=4
                 m.cpu.mem_write(0x472,b'\x34\x12')
                 m.reset_pending=True
                 m.complete_reset(count=300000000)
+            phase_complete()
     elif port=='presario-800':
         os.environ['BAIOS_BUILD_DIRECTORY']=OUTPUT
         chipset=importlib.import_module('test-chipset')
@@ -2703,8 +2755,14 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
             if not warm:
                 m.startup(reset=True,production_controls=True,through_publication=True);between()
             else:
+                if getattr(pnp_bus,'actual_cad',False):
+                    cad_scratch(m.cpu)
+                    m.scans((0x1D,0x38,0xE0,0x53),guest=0x80000)
+                    assert m.warm,'Actual Ctrl+Alt+Del did not reach warm entry'
+                    pnp_bus.actual_cad=False
                 m.warm=True
                 m.startup(production_controls=True,through_publication=True)
+            phase_complete()
     else:
         cache=importlib.import_module('cache_proof')
         geometry=importlib.import_module('geometry_proof')
@@ -2714,6 +2772,10 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
             def __init__(self,**kwargs):
                 super().__init__(**kwargs)
                 if causal or pnp_bus is not None:self.routing=sio.SIO(kib=64,ram=4,kind='real')
+            def interrupt(self,cpu,number):
+                if number==0x10 and getattr(pnp_bus,'execute_video_interrupt',False):
+                    return self.cpu_interrupt(cpu,number)
+                return super().interrupt(cpu,number)
             def prepare(self,cpu):
                 super().prepare(cpu)
                 if pnp_bus is not None and hasattr(pnp_bus,'video_rom'):
@@ -2752,9 +2814,26 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
             m.continuing=False
             m.escaped=False
             m.defaults_requested=False
-            if warm:m.write(0x472,2,0x1234)
+            if warm:
+                if getattr(pnp_bus,'runtime_reset_owners',False):m.reset_requests.clear()
+                if getattr(pnp_bus,'actual_cad',False):
+                    cad_scratch(cpu)
+                    m.queue.extend((0x1D,0x38,0xE0,0x53))
+                    cpu.mem_write(0x80000,b'\xFB\xF4\xEB\xFD')
+                    for reg,value in dict(CS=0x8000,IP=0,SS=0,SP=0x7000,EFLAGS=0x202).items():
+                        cpu.reg_write(getattr(x,'UC_X86_REG_'+reg),value)
+                    step.execute(0x80000,0x80004,2000000)
+                    assert m.reset_requests,'Actual Ctrl+Alt+Del did not produce KBC reset'
+                    pnp_bus.actual_cad=False
+                elif getattr(pnp_bus,'runtime_reset_owners',False):
+                    for reg,value in dict(CS=0xF000,SS=0,SP=0x7000,EFLAGS=0x202).items():
+                        cpu.reg_write(getattr(x,'UC_X86_REG_'+reg),value)
+                    step.execute(0xF0000+m.pnp_listing.symbol('warm_reset'),0xFFFFF,2000000)
+                    assert m.reset_requests,'Actual warm_reset did not produce a KBC reset'
+                else:m.write(0x472,2,0x1234)
             _,fixture=geometry.mapped(m.modules,expected=4,memory=m,rom_image=image)
             cpu,m,listing,state,nv_cmos,step=fixture
+            m.pnp_execute=step.execute
             m.state=state
             cpu.hook_add(UC_HOOK_MEM_WRITE,memory)
             if pnp_bus is not None:cpu.hook_add(UC_HOOK_CODE,private_fetch,None,0xE0000,0xEFFFF)
@@ -2762,6 +2841,7 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
             step.execute(0xF0000+cpu.reg_read(x.UC_X86_REG_IP),0xFFFFF,50000000)
             m.initial_cmos=bytes(nv_cmos)
             if not warm:between()
+            phase_complete()
     assert len(snapshots)==len(phases),(port,len(snapshots))
     final_cmos=bytes(nv_cmos) if port=='m919' else bytes(m.cmos)
     final_nv=bytes(m.nvram) if port=='mp386' else bytes(0x10000)
@@ -2832,6 +2912,1794 @@ def pci_manual_oracle(reserved):
         candidates.append({'base':base,'conflicting_independent_owners':owners})
         if not owners:return base,candidates
     raise AssertionError('Authored PCI case has no feasible interval')
+
+
+def runtime_rom(number,status=0x120,unknown=True,bcv=0x200,disconnect=0x220,bev=0,indicators=4,counter=False):
+    """Authored external ROM, independent wire fields and actual x86 entry."""
+    raw=bytearray(2048);raw[:3]=b'\x55\xAA\x04'
+    at=0x600+number*16
+    code=bytes.fromhex('1E5031C08ED858A3')+struct.pack('<H',at)
+    for opcode,off in ((b'\x89\x1E',2),(b'\x89\x16',4),(b'\x8C\x06',6),(b'\x89\x3E',8)):
+        code+=opcode+struct.pack('<H',at+off)
+    if counter:code+=b'\xFF\x06'+struct.pack('<H',0x680+number*2)
+    code+=b'\xB8'+struct.pack('<H',status)+b'\x1F\xCB'
+    raw[3:6]=b'\xE9'+struct.pack('<h',0x100-6)
+    raw[0x100:0x100+len(code)]=code
+    struct.pack_into('<H',raw,0x1A,0x40 if unknown else 0x60)
+    if unknown:
+        raw[0x40:0x46]=b'TEST\x07\x01';struct.pack_into('<H',raw,0x46,0x60)
+        raw[0x49]=(-sum(raw[0x40:0x50]))&255
+    raw[0x60:0x66]=b'$PnP\x01\x02';raw[0x6A:0x6E]=b'\x41\xD0\x05\0'
+    raw[0x75]=indicators;struct.pack_into('<HHH',raw,0x76,bcv,disconnect,bev)
+    raw[0x69]=(-sum(raw[0x60:0x80]))&255
+    for off in (bcv,disconnect,bev):
+        if off:raw[off]=0xCB
+    raw[-1]=(-sum(raw))&255
+    return bytes(raw)
+
+
+def runtime_promotion(port):
+    """Actual allocation/discovery/private finish -> resident overlap copy."""
+    from shared.tools.isa_pnp_proof import Bus
+    m=isa_machine(port,Bus(),OUTPUT)
+    for n,seg in enumerate((0xC800,0xD000)):
+        m.cpu.mem_write(seg<<4,runtime_rom(n))
+    m.call('settings_load');m.call('setup_defaults');m.draft()
+    policy=bytearray(15);policy[14]=1;m.put('U_PNP',policy);assert m.call('settings_save')
+    if port!='m919':m.call('pnp_journal_release') # Constructor-only copied bank.
+    m.call('pnp_early')
+    m.call('option_rom_discovery')
+    for n in range(2):
+        ax,bx,dx,es,di=struct.unpack('<5H',m.cpu.mem_read(0x600+n*16,10))
+        assert (ax,bx,dx,es,di)==(0xFFFF,0xFFFF,0xFFFF,0xF000,m.listing.symbol('pnp_installation')),(n,ax,bx,dx,es,di)
+    old=m.base;prefix=m.allocated
+    m.cpu.mem_write(old+0x27A,b'\x03\x02\x02')
+    m.cpu.mem_write(0x104,struct.pack('<HH',0xE0,(old>>4)+0x20))
+    m.cpu.mem_write(0x118,struct.pack('<HH',0x5678,0x1234))
+    m.cpu.mem_write(0x475,b'\x03');m.cpu.mem_write(0x4C,struct.pack('<HH',0x1234,0xABCD))
+    old_prefix=bytes(m.cpu.mem_read(old,prefix));original_kib=int.from_bytes(m.cpu.mem_read(old+0x328,2),'little')
+    source_start,source_end=struct.unpack('<II',m.cpu.mem_read(old+0x320,8))
+    resident=0xF0000+m.listing.symbol('pnp_promote_runtime')
+    entered=[];writes=[]
+    def code(cpu,address,size,unused):
+        entered.append((cpu.reg_read(x.UC_X86_REG_CS),address))
+    def write(cpu,access,address,size,value,unused):
+        if old+0x320<=address and address+size<=old+0x33C:return
+        if ((address<old+prefix and address+size>old) or
+            (address<source_end and address+size>source_start)):
+            writes.append((bool(entered),address,size))
+    a=m.cpu.hook_add(UC_HOOK_CODE,code,None,resident,resident)
+    b=m.cpu.hook_add(UC_HOOK_MEM_WRITE,write)
+    try:m.call('pnp_finish_entry')
+    finally:m.cpu.hook_del(a);m.cpu.hook_del(b)
+    base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4
+    size=m.cpu.mem_read(base,1)[0]*1024
+    assert base<old and base+size==old+prefix,(port,hex(base),size,hex(old),prefix,
+        bytes(m.cpu.mem_read(old+0x320,28)).hex(),m.get('C_ERROR').hex())
+    assert entered and all(cs==0xF000 for cs,address in entered)
+    assert all(after for after,address,size in writes),'Overlapping write preceded resident return'
+    relative=int.from_bytes(m.cpu.mem_read(base+0x334,4),'little')
+    assert relative==prefix
+    header=bytes(m.cpu.mem_read(base+relative,60))
+    assert header[:4]==b'PNP3' and int.from_bytes(header[4:8],'little')==2
+    records=bytes(m.cpu.mem_read(base+relative+60,48))
+    assert [struct.unpack_from('<HH',records,i*24) for i in range(2)]==[(0xC800,0x60),(0xD000,0x60)]
+    assert all(struct.unpack_from('<H',records,i*24+10)[0]==0x120 for i in range(2))
+    assert m.cpu.mem_read(base+0x27A,3)==b'\x03\x02\x02'
+    assert m.cpu.mem_read(0x104,4)==struct.pack('<HH',0xE0,(base>>4)+0x20)
+    assert m.cpu.mem_read(0x118,4)==b'\x78\x56\x34\x12'
+    assert m.cpu.mem_read(0x475,1)==b'\x03' and m.cpu.mem_read(0x4C,4)==b'\x34\x12\xCD\xAB'
+    assert int.from_bytes(m.cpu.mem_read(0x413,2),'little')==base>>10
+    assert not any(m.cpu.mem_read(base+0x338,4))
+    assert m.call('check_disk_buffer',EAX=base+prefix-1,EDX=base+prefix+1)==False
+    assert m.call('check_disk_buffer',EAX=base+size,EDX=base+size+512)
+    m.base=base;m.allocated=size;m.call('settings_load')
+    assert m.get('C_PNP',15)[14]==0
+    return {'actual_early_discovery_finish_promotion':True,'original_KiB':original_kib,'old_EBDA':old,'new_EBDA':base,
+            'prefix_bytes':prefix,'advertised_bytes':size,'complete_records':records.hex(),
+            'resident_before_overlap':entered,'overlapping_writes':len(writes),'native_only_FDPT_rebase':True,
+            'external_disk_count_hook_and_APM_preserved':True,'actual_tail_buffer_guard':True,'Clear_retired_after_publication':True}
+
+
+def runtime_assemble(port,name,source):
+    """Only authored external devices/loaders, never a substituted BIOS hop."""
+    import shutil
+    work=ROOT/port/OUTPUT/'runtime-fixtures';work.mkdir(parents=True,exist_ok=True)
+    asm=work/(name+'.asm');binary=asm.with_suffix('.bin');asm.write_text(source)
+    nasm=shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA'])/'bin/NASM/nasm.exe')
+    subprocess.run([nasm,'-f','bin','-o',str(binary),str(asm)],check=True)
+    return binary.read_bytes()
+
+
+def runtime_provider(port,number,action='boot',status=0x120,bcv=True,bev=False,indicators=4,bev_action='return',witness_port=None,init_witness=False,strict_chs=False):
+    witness=0x900+number*32
+    source=f'''bits 16
+org 0
+db 55h,0AAh,4
+jmp init
+times 1Ah-($-$$) db 0
+dw header
+times 60h-($-$$) db 0
+header:
+db '$PnP',1,2
+dw 0
+db 0,0
+dd 0500D041h
+dw 0,0
+db 0,0,0,{indicators}
+dw {"connect" if bcv else "0"},disconnect,{"bootstrap" if bev else "0"},0,0
+init:
+push ds
+{"push ax" if init_witness else ""}
+xor ax,ax
+mov ds,ax
+{f'pop ax' if init_witness else ''}
+{f'mov [{0x600+number*16}],ax' if init_witness else ''}
+{f'mov [{0x602+number*16}],bx' if init_witness else ''}
+{f'mov [{0x604+number*16}],dx' if init_witness else ''}
+{f'mov [{0x606+number*16}],es' if init_witness else ''}
+{f'mov [{0x608+number*16}],di' if init_witness else ''}
+inc word [{witness}]
+pop ds
+mov ax,{status}
+retf
+connect:
+push ds
+push ax
+xor ax,ax
+mov ds,ax
+pop ax
+mov [{witness+8}],ax
+mov [{witness+10}],bx
+mov [{witness+12}],dx
+mov [{witness+14}],es
+mov [{witness+16}],di
+inc word [{witness+2}]
+mov al,[475h]
+add al,80h
+mov [{witness+18}],al
+inc byte [475h]
+mov word [4Ch],disk
+mov [4Eh],cs
+mov word [60h],alien_hook
+mov [62h],cs
+mov word [64h],alien_hook
+mov [66h],cs
+pop ds
+retf
+disconnect:
+push ds
+xor ax,ax
+mov ds,ax
+inc word [{witness+4}]
+pop ds
+retf
+alien_hook:
+inc word [cs:0] ; Must never execute: BIOS recaptures managed continuation.
+iret
+bootstrap:
+push ds
+push ax
+xor ax,ax
+mov ds,ax
+pop ax
+mov [{witness+8}],ax
+mov [{witness+10}],bx
+mov [{witness+12}],dx
+mov [{witness+14}],es
+mov [{witness+16}],di
+inc word [{witness+6}]
+pop ds
+{"retf" if bev_action=='return' else 'int 18h' if bev_action=='int18' else 'int 19h'}
+disk:
+push bp
+mov bp,sp
+push ds
+{'push ax' if strict_chs else ''}
+xor ax,ax
+mov ds,ax
+{'pop ax' if strict_chs else ''}
+cmp dl,[{witness+18}]
+jne failed
+{f'''cmp ah,0
+je strict_reset
+mov [{witness+22}],dx
+mov [{witness+24}],cx
+mov [{witness+26}],ax
+mov [{witness+28}],es
+mov [{witness+30}],bx
+cmp dh,0
+jne failed
+cmp cx,1
+jne failed
+cmp ax,0201h
+jne failed
+cmp bx,7C00h
+jne failed''' if strict_chs else ''}
+inc word [{witness+20}]
+'''
+    if action!='cf':
+        if action=='retry':source+='cmp byte [6EFh],1\njne failed\n'
+        source+='''push si
+push di
+push cx
+push cs
+pop ds
+mov si,sector
+mov di,bx
+mov cx,256
+cld
+rep movsw
+pop cx
+pop di
+pop si
+and word [ss:bp+6],0FFFEh
+pop ds
+pop bp
+iret
+'''
+    source+='''failed:
+or word [ss:bp+6],1
+pop ds
+pop bp
+iret
+'''
+    if strict_chs:source+='''strict_reset:
+and word [ss:bp+6],0FFFEh
+pop ds
+pop bp
+iret
+'''
+    source+='''
+sector:
+xor ax,ax
+mov ds,ax
+'''
+    source+=f'mov word [6F0h],{number+1}\n'
+    if action in ('int18','int19'):
+        source+='''mov ax,2222h
+mov ds,ax
+mov es,ax
+mov fs,ax
+mov ss,ax
+mov sp,400h
+std
+cli
+'''+('int 18h\n' if action=='int18' else 'int 19h\n')
+    if witness_port is not None:source+=f'mov al,{number+1}\nout {witness_port},al\n'
+    source+='hlt\n'+f'times 510-($-sector) db {number+1}\ndw '+('0' if action=='unsigned' else '0AA55h')+'\ntimes 2048-($-$$) db 0\n'
+    raw=bytearray(runtime_assemble(port,f'provider-{number}-{action}-{status}-{bcv}-{bev}-{bev_action}-{witness_port}-{init_witness}'+('-strict-CHS' if strict_chs else ''),source))
+    raw[0x69]=(-sum(raw[0x60:0x80]))&255;raw[-1]=(-sum(raw))&255
+    return bytes(raw)
+
+
+def runtime_external_machine(port,actions=('int18','boot'),statuses=None,images=None):
+    from shared.tools.isa_pnp_proof import Bus
+    m=isa_machine(port,Bus(),OUTPUT)
+    m.cpu.mem_write(0x600,b'\xCC'*10)
+    for n,action in enumerate(actions):
+        image=images[n] if images else runtime_provider(port,n,action,status=(statuses or [0x120]*len(actions))[n])
+        m.cpu.mem_write((0xC800+n*0x100)<<4,image)
+    m.call('settings_load');m.call('setup_defaults');m.draft()
+    m.put('U_HALT',b'\x01')
+    assert m.call('settings_save')
+    if port!='m919':m.call('pnp_journal_release')
+    m.call('pnp_early');m.call('option_rom_discovery')
+    m.runtime_post_intervals=struct.unpack('<II',m.cpu.mem_read(m.base+0x320,8))
+    m.call('pnp_finish_entry')
+    m.base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4
+    m.allocated=m.cpu.mem_read(m.base,1)[0]*1024
+    runtime_attach_interrupts(m)
+    m.cpu.mem_write(0x475,b'\x01') # Independently installed native80 is earlier.
+    m.cpu.mem_write(0x1000,b'\xCF') # External pre-existing reset provider.
+    m.cpu.mem_write(0x4C,struct.pack('<HH',0x1000,0))
+    for field,value in (('C_BOOT',4),('C_BOOT_SECOND',0),('C_BOOT_THIRD',0),('C_BOOT_FOURTH',0)):
+        m.put(field,bytes((value,)))
+    return m
+
+
+def runtime_attach_interrupts(m):
+    def interrupt(cpu,vector):
+        if vector not in (0x08,0x09,0x12,0x13,0x16,0x18,0x19,0x1C):return False
+        flags=cpu.reg_read(x.UC_X86_REG_EFLAGS)
+        sp=(cpu.reg_read(x.UC_X86_REG_SP)-6)&65535;ss=cpu.reg_read(x.UC_X86_REG_SS)
+        cpu.mem_write((ss<<4)+sp,struct.pack('<HHH',cpu.reg_read(x.UC_X86_REG_IP),cpu.reg_read(x.UC_X86_REG_CS),flags&65535))
+        off,seg=struct.unpack('<HH',cpu.mem_read(vector*4,4))
+        cpu.reg_write(x.UC_X86_REG_SP,sp);cpu.reg_write(x.UC_X86_REG_EFLAGS,flags&~0x300)
+        cpu.reg_write(x.UC_X86_REG_CS,seg);cpu.reg_write(x.UC_X86_REG_IP,off)
+        return True
+    m.runtime_interrupt=interrupt
+    # External8042 command-byte protocol for the existing late handoff owner.
+    queue=[];command=[0x43];write_command=[False]
+    original_in,original_out=m.bus.input,m.bus.output
+    def kbc_in(port,size):
+        if port==0x64:return int(bool(queue))
+        if port==0x60:return queue.pop(0) if queue else 0
+        return original_in(port,size)
+    def kbc_out(port,size,value):
+        if port==0x64:
+            if value==0x20:queue.append(command[0])
+            elif value==0x60:write_command[0]=True
+            return True
+        if port==0x60 and write_command[0]:command[0]=value;write_command[0]=False;return True
+        return original_out(port,size,value)
+    m.bus.input,m.bus.output=kbc_in,kbc_out
+    m.runtime_kbc_queue=queue
+
+
+def runtime_execute_boot(m):
+    handoffs=[];terminal=[]
+    retry=0xF0000+m.listing.symbol('boot_retry')
+    def code(cpu,address,length,unused):
+        if address==0x7C00:handoffs.append(tuple(cpu.reg_read(getattr(x,'UC_X86_REG_'+r)) for r in ('DL','ES','DI')))
+        if address==retry:terminal.append('retry');cpu.emu_stop()
+        elif (address<0x80000 or address in getattr(m,'runtime_loader_halts',())) and bytes(cpu.mem_read(address,1))==b'\xF4':terminal.append('loader');cpu.emu_stop()
+    h=m.cpu.hook_add(UC_HOOK_CODE,code)
+    try:
+        for reg,value in dict(CS=0xF000,DS=0,ES=0,FS=m.base>>4,SS=0,SP=0x7000,EFLAGS=0x202).items():m.cpu.reg_write(getattr(x,'UC_X86_REG_'+reg),value)
+        (m.execute(0xF0000+m.listing.symbol('int19'),0xFFFFF,8000000) if hasattr(m,'execute') else m.cpu.emu_start(0xF0000+m.listing.symbol('int19'),0xFFFFF,count=8000000))
+    finally:m.cpu.hook_del(h)
+    assert len(terminal)==1,('boot did not reach terminal',hex(m.cpu.reg_read(x.UC_X86_REG_CS)),hex(m.cpu.reg_read(x.UC_X86_REG_IP)))
+    return {'terminal':terminal[0],'handoffs':handoffs}
+
+
+def runtime_handoff_external(port,action):
+    m=runtime_external_machine(port,(action,'boot'))
+    handoffs=[];private=[]
+    def code(cpu,address,size,unused):
+        if address==0x7C00:
+            handoffs.append(tuple(cpu.reg_read(getattr(x,'UC_X86_REG_'+r)) for r in ('DL','ES','DI')))
+        if address<0xF0000 and cpu.reg_read(x.UC_X86_REG_CS) not in (0,0xC800,0xC900):private.append(address)
+        if address<0x80000 and bytes(cpu.mem_read(address,1))==b'\xF4':cpu.emu_stop()
+    hook=m.cpu.hook_add(UC_HOOK_CODE,code)
+    try:
+        for reg,value in dict(CS=0xF000,DS=0,ES=0,FS=m.base>>4,SS=0,SP=0x7000,EFLAGS=0x202).items():
+            m.cpu.reg_write(getattr(x,'UC_X86_REG_'+reg),value)
+        m.cpu.emu_start(0xF0000+m.listing.symbol('int19'),0xFFFFF,count=1000000)
+    finally:m.cpu.hook_del(hook)
+    assert int.from_bytes(m.cpu.mem_read(0x6F0,2),'little')==2,(port,action,hex(m.cpu.reg_read(x.UC_X86_REG_IP)))
+    witnesses=[struct.unpack('<16H',m.cpu.mem_read(0x900+n*32,32)) for n in range(2)]
+    assert [w[:3] for w in witnesses]==[(1,1,1),(1,1,0)],witnesses
+    assert all(w[4:9]==(4,0xFFFF,0xFFFF,0xF000,m.listing.symbol('pnp_installation')) for w in witnesses),witnesses
+    assert [w[9]&255 for w in witnesses]==[0x81,0x81],witnesses
+    assert all(h==(0x81,0xF000,m.listing.symbol('pnp_installation')) for h in handoffs),handoffs
+    assert not private,private[:10]
+    return {'action':action,'actual_discovery_promotion_connect_read_loader_continuation':True,
+            'witnesses':witnesses,'handoffs':handoffs,'one_disconnect_first_only':True,'no_private_fetch':True}
+
+
+def runtime_strict_chs(port):
+    image=runtime_provider(port,0,strict_chs=True)
+    m=runtime_external_machine(port,('boot',),images=(image,))
+    result=runtime_execute_boot(m)
+    witness=struct.unpack('<16H',m.cpu.mem_read(0x900,32))
+    assert witness[11:]==(0x81,1,0x0201,0,0x7C00),(port,'F2 C0/H0/S1 read',witness,result)
+    assert result['terminal']=='loader' and result['handoffs']==[(0x81,0xF000,m.listing.symbol('pnp_installation'))]
+    assert witness[:3]==(1,1,0) and witness[10]==1
+    end=image.rfind(b'\x55\xAA')+2
+    expected=image[end-512:end]
+    assert len(expected)==512 and bytes(m.cpu.mem_read(0x7C00,512))==expected
+    return {'strict_external_C0_H0_S1_driver':True,'actual_DX_CX_AX_ES_BX':witness[11:],
+            'actual_read_once':witness[10],'full_sector_sha256':hashlib.sha256(expected).hexdigest(),'actual_handoff':result}
+
+
+def runtime_relocation(port):
+    m=runtime_external_machine(port,('int18','boot'))
+    old,size=m.base,m.allocated;new=0x60000;relocated=[];reads=[];handoffs=[]
+    m.cpu.mem_write(0x104,struct.pack('<HH',0xE0,(old>>4)+0x20))
+    m.cpu.mem_write(0x118,struct.pack('<HH',0x5678,0x1234))
+    m.cpu.mem_write(old+0x27A,b'\x03\x02\x02')
+    bcv=int.from_bytes(m.cpu.mem_read(0xC9060+0x16,2),'little')
+    def code(cpu,address,length,unused):
+        if address==0xC9000+bcv and not relocated:
+            data=bytes(cpu.mem_read(old,size));cpu.mem_write(new,data)
+            cpu.mem_write(0x40E,struct.pack('<H',new>>4));cpu.mem_write(0x413,struct.pack('<H',new>>10))
+            cpu.mem_write(old,b'\xA7'*size);m.base=new;m.allocated=size;relocated.append(True)
+        if address==0x7C00:handoffs.append((cpu.reg_read(x.UC_X86_REG_DL),cpu.reg_read(x.UC_X86_REG_ES),cpu.reg_read(x.UC_X86_REG_DI)))
+        if address<0x80000 and bytes(cpu.mem_read(address,1))==b'\xF4':cpu.emu_stop()
+    def read(cpu,access,address,length,value,unused):
+        if relocated and old<=address<old+size:reads.append(address)
+    a=m.cpu.hook_add(UC_HOOK_CODE,code);b=m.cpu.hook_add(UC_HOOK_MEM_READ,read)
+    try:
+        for reg,value in dict(CS=0xF000,DS=0,ES=0,FS=old>>4,SS=0,SP=0x7000,EFLAGS=0x202).items():m.cpu.reg_write(getattr(x,'UC_X86_REG_'+reg),value)
+        m.cpu.emu_start(0xF0000+m.listing.symbol('int19'),0xFFFFF,count=1000000)
+    finally:m.cpu.hook_del(a);m.cpu.hook_del(b)
+    assert relocated and not reads,reads[:10]
+    assert m.cpu.mem_read(0x6F0,2)==b'\x02\0'
+    assert m.cpu.mem_read(0x104,4)==struct.pack('<HH',0xE0,(new>>4)+0x20)
+    assert m.cpu.mem_read(0x118,4)==b'\x78\x56\x34\x12'
+    assert m.cpu.mem_read(new+0x27A,3)==b'\x03\x02\x02'
+    # Actual INT15/C1 handler resolves the current public base after relocation.
+    m.cpu.mem_write(0x1200,b'\xB8\x00\xC1\xCD\x15\xF4')
+    m.cpu.reg_write(x.UC_X86_REG_CS,0);m.cpu.reg_write(x.UC_X86_REG_IP,0x1200)
+    m.cpu.reg_write(x.UC_X86_REG_SS,0);m.cpu.reg_write(x.UC_X86_REG_SP,0x7000)
+    m.cpu.emu_start(0x1200,0x1206,count=20000)
+    assert m.cpu.reg_read(x.UC_X86_REG_ES)==new>>4
+    relative=int.from_bytes(m.cpu.mem_read(new+0x334,4),'little')
+    assert m.call('check_disk_buffer',EAX=new+relative-1,EDX=new+relative+1)==False
+    assert m.call('check_disk_buffer',EAX=new+size,EDX=new+size+512)
+    return {'actual_second_BCV_external_relocation':True,'only_advertised_bytes_copied':size,
+            'old_region_poisoned_and_unused':True,'current_C1_and_tail_guard':True,
+            'native_only_FDPT_alias_rebased':True,'external_FDPT_and_APM_preserved':True,'handoffs':handoffs}
+
+
+
+def runtime_public_current(port,model,cpu,listing,bus):
+    """OS callers on the actual produced CPU; no constructor/load/publication."""
+    import types
+    class OSCPU:
+        def __getattr__(self,name):return getattr(cpu,name)
+        def mem_write(self,address,data):
+            cpu.mem_write(address,data)
+            if port=='m919' and address<0xA0000:
+                for at in range(0,len(data),4):
+                    piece=data[at:at+4];model.write(address+at,len(piece),int.from_bytes(piece,'little'))
+    operating=OSCPU();context=cpu.context_save()
+    base=int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4;size=cpu.mem_read(base,1)[0]*1024
+    frozen=bytes(cpu.mem_read(0x4AD,83));live=bytes(cpu.mem_read(base,size))
+    headers=scan(bytes(cpu.mem_read(0xF0000,65536)));assert len(headers)==1
+    results={}
+    try:
+        for mode in ('real','ss16','ss32'):
+            cpu.context_restore(context)
+            c=object.__new__(Caller)
+            for name,value in dict(cpu=operating,port=port,listing=listing,base=base,allocated=size,
+                header=headers[0],mode=mode,public_active=False,caller_flags=0xCD7,return_opcode=b'\x90',
+                buffer=0x2000 if mode=='real' else 0x58,bios=0x40 if mode=='real' else 0x48,
+                stack=0x3000 if mode=='real' else 0x68,code=0xF000 if mode=='real' else 0x28,
+                return_code=0x1000 if mode=='real' else 0x38,
+                stack_offset=0xABCD7080 if mode!='ss32' else 0x100D0).items():setattr(c,name,value)
+            if mode!='real':
+                gdt=bytearray(0x78)
+                for selector,address,length,access,flags in (
+                    (0x28,0xF0000,65536,0x9A,0),(0x38,0x10000,65536,0x9A,0),
+                    (0x48,0x400,65536,0x92,0),(0x58,0x20000,65536,0x92,0),
+                    (0x68,0x30000,0x30000 if mode=='ss32' else 65536,0x92,0x40 if mode=='ss32' else 0)):
+                    gdt[selector:selector+8]=descriptor(address,length,access,flags)
+                operating.mem_write(0x6000,bytes(gdt));cpu.reg_write(x.UC_X86_REG_GDTR,(0,0x6000,len(gdt)-1,0))
+                cpu.reg_write(x.UC_X86_REG_CR0,cpu.reg_read(x.UC_X86_REG_CR0)|1)
+                cpu.reg_write(x.UC_X86_REG_CS,c.return_code)
+                loader=bytes.fromhex('FAB858008ED88EC08EE08EE8B868008ED0')
+                operating.mem_write(0x10300,loader)
+                cpu.emu_start(0x300+(c.return_code<<4),0x10300+len(loader),count=100)
+            else:
+                # Actual MOV reloads the OS's real-mode segment caches; host
+                # setters can retain unreal attributes from the board RAM path.
+                cpu.reg_write(x.UC_X86_REG_CS,c.return_code)
+                loader=bytes.fromhex('FAB800208ED88EC08EE08EE8B800308ED0')
+                operating.mem_write(0x10300,loader)
+                cpu.emu_start(0x10300,0x10300+len(loader),count=100)
+            c.far=types.MethodType(Caller.far,c)
+            if port=='m919' and mode=='real':c.execute=model.pnp_execute
+            forbidden=[];ports=[]
+            def read(uc,access,address,length,value,unused):forbidden.append(address)
+            def write(uc,access,address,length,value,unused):
+                assert address+length<=0xC0000 or address>=0x100000,('public ROM write',mode,address,
+                    *[uc.reg_read(getattr(x,'UC_X86_REG_'+r)) for r in ('CS','IP','SS','ESP','FS','GS')])
+            def io(uc,address,length,unused):
+                code=bytes(uc.mem_read(address,min(length,8))).lstrip(b'\x66\x67')
+                if code and code[0] in (0xE6,0xE7,0xEE,0xEF):
+                    portno=code[1] if code[0] in (0xE6,0xE7) else uc.reg_read(x.UC_X86_REG_DX)
+                    ports.append(portno)
+            hooks=[cpu.hook_add(UC_HOOK_MEM_READ,read,None,base,base+size-1),
+                   cpu.hook_add(UC_HOOK_MEM_WRITE,write),cpu.hook_add(UC_HOOK_CODE,io)]
+            try:
+                operating.mem_write(0x20100,b'\xCC'*16)
+                assert c.far(0,[0x100,c.buffer,0x108,c.buffer,c.bios])==0
+                count=cpu.mem_read(0x20100,1)[0];maximum=int.from_bytes(cpu.mem_read(0x20108,2),'little')
+                assert 10<=count<=20 and 18<=maximum<=128
+                status,node,next_handle=get_node(c,0,1);assert status==0 and decode(node)[0]=='PNP0000'
+                operating.mem_write(0x20200,node)
+                assert c.far(2,[0,0x200,c.buffer,1,c.bios])==0
+                operating.mem_write(0x20100,b'\xCC'*12)
+                assert c.far(0x40,[0x100,c.buffer,c.bios])==0
+                actual=bytes(cpu.mem_read(0x20100,12))
+                expected=bytes((1,len(bus.cards)))+struct.pack('<HH',bus.read_port if bus.cards else 0,0)
+                assert actual==expected+b'\xCC'*6,(mode,actual.hex(),expected.hex())
+                before=len(ports)
+                for function in (9,10,0x41,0x42,0x43):assert c.far(function)==0x82
+                assert len(ports)==before
+                assert c.far(0x1234)==0x81
+                assert not forbidden and 0x71 not in ports and 0x279 not in ports and 0xA79 not in ports
+                results[mode]={'count_BYTE':count,'max_WORD':maximum,'first_node':decode(node)[0],
+                    'unchanged_Current_Set_success':True,'ISA_six_bytes':actual[:6].hex(),
+                    'optional82_no_mutation':True,'same_produced_CPU':True,
+                    'full_Caller_far_state_canaries':True}
+            finally:
+                for hook in hooks:cpu.hook_del(hook)
+            assert bytes(cpu.mem_read(0x4AD,83))==frozen
+            assert bytes(cpu.mem_read(base,size))==live
+    finally:cpu.context_restore(context)
+    return {'independent_actual_ROM_scan':headers[0].hex(),'actual_base':base,'modes':results}
+
+def runtime_boot_current(port,model,cpu,listing,bus,expected_marker,expected_drive=0x81,handoff_count=1):
+    before=len(bus.loader_markers);handoffs=[]
+    def entry(uc,address,length,unused):
+        if address==0x7C00:handoffs.append(tuple(uc.reg_read(getattr(x,'UC_X86_REG_'+r)) for r in ('DL','ES','DI')))
+    hook=cpu.hook_add(UC_HOOK_CODE,entry,None,0x7C00,0x7C00)
+    try:
+        base=int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4
+        for reg,value in dict(CS=0xF000,DS=0,ES=0,FS=base>>4,SS=0,SP=0x7000,EFLAGS=0x202).items():
+            cpu.reg_write(getattr(x,'UC_X86_REG_'+reg),value)
+        at=0xF0000+listing.symbol('int19')
+        if port=='m919':model.pnp_execute(at,0xFFFFF,8000000)
+        else:cpu.emu_start(at,0xFFFFF,count=8000000)
+    finally:cpu.hook_del(hook)
+    assert bus.loader_markers[before:]==[expected_marker],(port,bus.loader_markers[before:],hex(cpu.reg_read(x.UC_X86_REG_IP)))
+    assert handoffs==[(expected_drive,0xF000,listing.symbol('pnp_installation'))]*handoff_count,handoffs
+    return {'actual_marker':expected_marker,'handoff':handoffs,'same_produced_CPU':True}
+
+def runtime_chain(port):
+    causes=('forward','backward','cycle','later-bad','zero-length','short-PnP','bad-checksum','bad-callback','bad-string','legacy')
+    images=[];valid=[]
+    for number,cause in enumerate(causes):
+        raw=bytearray(runtime_rom(number,status=0))
+        if cause=='backward':
+            raw[0x80:0x90]=raw[0x40:0x50];raw[0x40:0x50]=bytes(16);struct.pack_into('<H',raw,0x1A,0x80)
+        elif cause=='cycle':struct.pack_into('<H',raw,0x66,0x40)
+        elif cause=='later-bad':struct.pack_into('<H',raw,0x66,0x7F8)
+        elif cause=='zero-length':raw[0x65]=0
+        elif cause=='short-PnP':raw[0x65]=1
+        elif cause=='bad-checksum':raw[0x69]^=1
+        elif cause=='bad-callback':struct.pack_into('<H',raw,0x76,0x800)
+        elif cause=='bad-string':struct.pack_into('<H',raw,0x6E,0x7F0);raw[0x7F0:]=b'\x01'*16
+        elif cause=='legacy':struct.pack_into('<H',raw,0x1A,0)
+        if cause not in ('bad-checksum','zero-length','short-PnP'):
+            raw[0x69]=0;raw[0x69]=(-sum(raw[0x60:0x80]))&255
+        # Keep the deliberately unterminated final string nonzero at the footer.
+        footer=0x700 if cause=='bad-string' else len(raw)-1
+        raw[footer]=0;raw[footer]=(-sum(raw))&255
+        images.append((0xC800+number*0x80,bytes(raw)))
+        valid.append(cause in ('forward','backward','legacy'))
+    marker=len(causes)+1
+    images.append((0xC800+len(causes)*0x80,runtime_provider(port,len(causes),witness_port=0xE9)))
+    phase=[]
+    def completed(port,model,cpu,listing,bus):
+        expected=[(len(phase)+1)*int(good) for good in valid]+[len(phase)+1]
+        assert bus.initializations==expected,(port,bus.initializations,expected)
+        result={'public_calls':runtime_public_current(port,model,cpu,listing,bus),
+                'boot':runtime_boot_current(port,model,cpu,listing,bus,marker),
+                'actual_initialization_counts':list(bus.initializations)}
+        phase.append(result);return result
+    post=runtime_startup_snapshot(port,phases=(False,True),rom_images=images,
+        boot_order=(4,0,0,0),post_action=completed,snapshot_name='p3-chain-post')
+    assert len(phase)==2
+    return {'causes':dict(zip(causes,valid)),'cold_and_warm_same_run_to_saved_Other_sector':phase,
+            'actual_startup':post.startup_evidence,'all_later_physical_provider_reachable':True}
+
+
+def runtime_display(port):
+    if port=='presario-800':return {'alternative_display':'not-applicable; selected retained Cirrus owner',
+        'fixed_display_actual_POST':'runtime_media executes retained32KiB clear/fill/copy/whole-ROM validation/INT10 and final promotion'}
+    from shared.tools.isa_pnp_proof import Bus
+    source='''bits 16
+org 0
+db 55h,0AAh,64
+jmp init
+times 1Ah-($-$$) db 0
+dw header
+times 60h-($-$$) db 0
+header: db '$PnP',1,2
+dw 0
+db 0,0
+dd 0900D041h
+dw 0,0
+db 0,0,0,1
+dw connect,0,0,0,0
+times 100h-($-$$) db 0
+init:
+push ds
+xor ax,ax
+mov ds,ax
+inc word [600h]
+mov [606h],es
+mov [608h],di
+pop ds
+mov ax,88h
+retf
+times 200h-($-$$) db 0
+connect:
+push ds
+push ax
+xor ax,ax
+mov ds,ax
+pop ax
+mov [60Ah],ax
+inc word [602h]
+mov word [40h],handler
+mov [42h],cs
+pop ds
+retf
+times 240h-($-$$) db 0
+handler:
+push ds
+push ax
+xor ax,ax
+mov ds,ax
+inc word [604h]
+pop ax
+cmp ax,1130h
+jne .done
+push cs
+pop es
+mov bp,300h
+mov cx,16
+mov dx,24
+.done:
+pop ds
+iret
+times 32768-($-$$) db 0
+'''
+    raw=bytearray(runtime_assemble(port,'selected-pnp-display',source))
+    decoy=bytearray(runtime_rom(7));raw[0x4000:0x4000+len(decoy)]=decoy
+    raw[0x69]=(-sum(raw[0x60:0x80]))&255;raw[-1]=(-sum(raw))&255
+    class Display(Bus):
+        def __init__(self):
+            super().__init__([]);self.video_rom=bytes(raw);self.installed=False;self.last=None
+            self.execute_video_interrupt=True
+            self.loader_markers=[];self.runtime_continue=False
+            self.record=None;self.wrong_guard=None;self.record_check=None;self.guard_verified=False;self.commit_pending=False
+        def observe_startup(self,model,cpu,address,listing):
+            self.last=cpu;self.model=model;self.listing=listing
+            if not self.installed:
+                cpu.mem_write(0xC8000,runtime_provider(port,0,witness_port=0xE9));self.installed=True
+                self.finish_address=0xF0000+listing.symbol('pnp_finish_entry')
+                def selected(uc,address,length,unused):
+                    base=int.from_bytes(uc.mem_read(0x40E,2),'little')<<4
+                    self.record=int.from_bytes(uc.mem_read(base+0x334,4),'little')
+                    row=bytes(uc.mem_read(self.record,28))
+                    assert struct.unpack_from('<H',row,4)[0]==0xC000
+                    self.original_next=int.from_bytes(row[:4],'little')
+                    self.wrong_guard=(self.record>>4,bytes(uc.mem_read(self.record>>4,32)))
+                def guard(uc,access,address,length,value,unused):
+                    if self.wrong_guard and not self.guard_verified:
+                        low,_=self.wrong_guard
+                        assert address+length<=low or address>=low+32,('F1 wrong-normalization write',self.record,address,length,value)
+                        if address==self.record+17:
+                            assert length==1 and value==5
+                            self.commit_pending=True
+                def committed(uc,address,length,unused):
+                    if self.commit_pending:
+                        row=bytes(uc.mem_read(self.record,28));low,original=self.wrong_guard
+                        assert row[17]==5 and int.from_bytes(row[:4],'little')==self.original_next
+                        assert bytes(uc.mem_read(low,32))==original
+                        self.guard_verified=True;self.commit_pending=False
+                cpu.hook_add(UC_HOOK_CODE,selected,None,0xC0200,0xC0200)
+                cpu.hook_add(UC_HOOK_MEM_WRITE,guard)
+                cpu.hook_add(UC_HOOK_CODE,committed)
+            if self.record is not None and address==self.finish_address:
+                row=bytes(cpu.mem_read(self.record,28));low,original=self.wrong_guard
+                assert row[17]==5 and int.from_bytes(row[:4],'little')==self.original_next
+                assert self.guard_verified
+                base=int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4
+                pointer=int.from_bytes(cpu.mem_read(base+0x334,4),'little');links=[]
+                while pointer:
+                    assert pointer not in [a for a,b in links]
+                    following=int.from_bytes(cpu.mem_read(pointer,4),'little');links.append((pointer,following));pointer=following
+                assert len(links)==2 and links[-1][0]==self.record and links[-1][1]==self.original_next
+                self.record_check={'selected_pointer':self.record,'flags':row[17],'original_next':self.original_next,
+                    'actual_complete_links':links,'wrong_normalization_guard':low,'guard_sha256':hashlib.sha256(original).hexdigest()}
+        def output(self,p,size,value):
+            if p==0xE9:self.loader_markers.append(value);self.last.emu_stop();return True
+            return super().output(p,size,value)
+    bus=Display()
+    saved=settings.Settings(port,OUTPUT);saved.call('settings_load');saved.call('setup_defaults');saved.draft()
+    for field,value in (('U_BOOT',4),('U_BOOT_SECOND',0),('U_BOOT_THIRD',0),('U_BOOT_FOURTH',0)):saved.put(field,bytes((value,)))
+    saved.put('U_HALT',b'\x01');assert saved.call('settings_save')
+    evidence=startup(port,bytes(saved.cmos).hex(),'',pnp_bus=bus,phases=(False,),external_video=True)
+    words=struct.unpack('<6H',bus.last.mem_read(0x600,12))
+    assert words[0:2]==(1,1) and words[2]>0 and words[5]==2,words
+    assert words[3]==0xF000 and bytes(bus.last.mem_read(0xF0000+words[4],4))==b'$PnP'
+    assert bus.last.mem_read(0x670,2)==b'\0\0','Interior selected-extent decoy initialized'
+    assert bus.last.mem_read(0x900,2)==b'\x01\0','Adjacent physical provider lost'
+    assert bus.record_check is not None
+    prior=bus.last.mem_read(0x475,1)[0];bus.runtime_continue=True
+    stop=getattr(bus.model,'stop_address',None)
+    if stop is not None:bus.model.stop_address=-1
+    try:boot=runtime_boot_current(port,bus.model,bus.last,bus.listing,bus,1,0x80+prior)
+    finally:
+        bus.runtime_continue=False
+        if stop is not None:bus.model.stop_address=stop
+    return {'init_once':True,'Video2_BCV_once_before_actual_INT10':True,'witness':words,
+            'complete_selected_extent_excludes_internal_decoy':True,'adjacent_provider_once':True,'actual_startup':evidence,
+            'selected_actual_record_and_unrelated_low_RAM':bus.record_check,
+            'same_selected_extent_run_to_later_sector':boot}
+
+
+def runtime_pci_instances(port):
+    if port!='m919':return {'PCI_deployment':'not-applicable; no PCI ROM deployment owner'}
+    sys.path.insert(0,str(ROOT/'m919/tools'))
+    from pci_rom_proof import ROMHardware
+    from pci_proof import compose,invoke
+    class Hardware(ROMHardware):
+        def __init__(self,**options):
+            super().__init__(**options)
+            self.pci.endpoints[0x60].rom_mask=0xFFFF8000
+            self.loader_markers=[]
+        def outgoing(self,cpu,port,size,value):
+            if port==0xE9:self.loader_markers.append(value);cpu.emu_stop();return
+            return super().outgoing(cpu,port,size,value)
+        def observe(self,cpu,address,size):
+            self.last_cpu=cpu
+            if 0xE3185<=address<0xE33E0:
+                if not hasattr(self,'private_trace'):self.private_trace=[]
+                if len(self.private_trace)<120:self.private_trace.append([hex(address),*[cpu.reg_read(getattr(x,'UC_X86_REG_'+r)) for r in ('AX','DX','DS','SI','ECX','EFLAGS')]])
+            if address==0xC0003:
+                self.vga_entered=True
+            if address==0xE3185:self.outer_input=bytes(cpu.mem_read(0xC0000,32)).hex()
+            return super().observe(cpu,address,size)
+        def prepare(self,cpu):
+            super().prepare(cpu)
+            raw=bytearray(32768);raw[:2048]=runtime_provider(port,0,'cf',init_witness=True)
+            raw[2]=64;struct.pack_into('<H',raw,0x18,0x40)
+            raw[0x40:0x58]=b'PCIR'+struct.pack('<HHHHBBBBHHBBH',0x1106,0x3249,0,0x18,0,0x85,1,1,64,0,0,0x80,0)
+            raw[0x4000:0x4800]=runtime_rom(7,unknown=False,counter=True)
+            raw[-1]=(-sum(raw[:-1]))&255;self.card_rom=bytes(raw)
+            # Same product identity, separate physical instance outside both
+            # selected VGA and deployed PCI extents.
+            self.isa=runtime_provider(port,1,'cf',init_witness=True);cpu.mem_write(0xC8000,self.isa)
+            self.dbase[0x8000:0x8800]=runtime_provider(port,2,witness_port=0xE9,init_witness=True)
+            cpu.mem_write(0xD8000,bytes(self.dbase[0x8000:0x8800]))
+    hardware=Hardware(mask=0xFFFF8000);hardware.rom_image=ROOT/port/OUTPUT/'baios-m919.bin'
+    saved=settings.Settings(port,OUTPUT);saved.call('settings_load');saved.call('setup_defaults');saved.draft()
+    chip=bytearray(saved.get('U_CHIP',24));chip[2]=chip[12]=1;saved.put('U_CHIP',chip)
+    for field,value in (('U_BOOT',4),('U_BOOT_SECOND',0),('U_BOOT_THIRD',0),('U_BOOT_FOURTH',0)):saved.put(field,bytes((value,)))
+    assert saved.call('settings_save')
+    try:row,fixture=compose(hardware,saved=saved.cmos)
+    except Exception:
+        cpu=hardware.last_cpu;base=int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4
+        diagnostic={'vga_entered':getattr(hardware,'vga_entered',False),'vga_sum8':sum(cpu.mem_read(0xC0000,32768))&255,
+            'INT10':bytes(cpu.mem_read(0x40,4)).hex(),'registers':hardware.registers,
+            'control':bytes(cpu.mem_read(base+0x320,32)).hex(),'provider_events':hardware.provider_events,
+            'CS_IP':[cpu.reg_read(x.UC_X86_REG_CS),cpu.reg_read(x.UC_X86_REG_IP)]}
+        diagnostic['private_trace']=getattr(hardware,'private_trace',[])
+        diagnostic['outer_input']=getattr(hardware,'outer_input',None)
+        (ROOT/port/OUTPUT/'runtime-pci-failure.json').write_text(json.dumps(diagnostic,indent=2));raise
+    cpu,model,listing,*_=fixture
+    assert hardware.stop=='POST FF',row
+    # The actual POST already performs the late scanner and resident promotion.
+    at=struct.unpack('<5H',cpu.mem_read(0x600,10))
+    assert at[0]==0x68 and at[1:3]==(0xFFFF,0xFFFF),at
+    assert at[3]==0xF000 and bytes(cpu.mem_read(0xF0000+at[4],4))==b'$PnP'
+    for number in (1,2):assert cpu.mem_read(0x600+number*16,2)==b'\xFF\xFF'
+    assert [int.from_bytes(cpu.mem_read(0x900+n*32,2),'little') for n in range(3)]==[1,1,1]
+    assert cpu.mem_read(0x670,2)==b'\0\0','Deployed-extent decoy initialized'
+    base=int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4
+    relative=int.from_bytes(cpu.mem_read(base+0x334,4),'little')
+    header=bytes(cpu.mem_read(base+relative,60));count=int.from_bytes(header[4:8],'little')
+    records=[bytes(cpu.mem_read(base+relative+60+24*n,24)) for n in range(count)]
+    selected=[struct.unpack_from('<H',r,0)[0] for r in records]
+    assert selected.count(0xD000)==selected.count(0xC800)==selected.count(0xD800)==1,selected
+    copied=bytes(cpu.mem_read(0xD0000,32768))
+    assert copied==hardware.card_rom,'Complete deployed immutable ROM differs'
+    assert not hardware.card.read(0x30,4)&1
+    before=bytes(cpu.mem_read(base+relative,60+24*count));invoke(fixture,'option_rom_discovery')
+    assert bytes(cpu.mem_read(base+relative,60+24*count))==before
+    model.pnp_execute=fixture[-1].execute
+    prior=cpu.mem_read(0x475,1)[0]
+    boot=runtime_boot_current(port,model,cpu,listing,hardware,3,0x80+prior)
+    assert [int.from_bytes(cpu.mem_read(0x902+n*32,2),'little') for n in range(3)]==[1,1,1]
+    assert [int.from_bytes(cpu.mem_read(0x904+n*32,2),'little') for n in range(3)]==[1,1,0]
+    return {'actual_POST':row,'PCI_BDF':0x68,'entry_witness':at,'instance_segments':selected,
+            'same_ID_distinct_physical_instances_retained':True,'complete_deployed_extent_decoy_skipped':True,
+            'ROMBAR_disabled_shadow_retained':True,'late_reentry_no_duplicate':True,
+            'same_PCI_deployment_and_late_extent_to_terminal_sector':boot}
+
+def runtime_disk_modules():
+    import importlib
+    os.environ['BAIOS_BUILD_DIRECTORY']=OUTPUT
+    sys.path.insert(0,str(ROOT/'presario-800/tools'))
+    return importlib.import_module('test-cdboot'),importlib.import_module('test-ide-options')
+
+
+def runtime_startup_snapshot(port,phases=(False,),cards=(),policy=None,relocate_first=False,actions=('cf','boot'),snapshot_name='runtime-post-memory',actual_cad=False,rom_images=None,boot_order=None,post_action=None,bad_read_ports=None,expect_active=None):
+    """One actual cold POST with real media discovery, shared by runtime rows."""
+    from shared.tools.isa_pnp_proof import Bus
+    from shared.tools.pci_proof import PCI,Endpoint
+    cd,ide=runtime_disk_modules()
+    disk=cd.Packet([None,cd.disc(media=0)])
+    saved=settings.Settings(port,OUTPUT);saved.call('settings_load');saved.call('setup_defaults');saved.draft()
+    saved.put('U_HALT',b'\x01')
+    saved.put('U_TYPES',b'\x40')
+    if boot_order is not None:
+        for field,value in zip(('U_BOOT','U_BOOT_SECOND','U_BOOT_THIRD','U_BOOT_FOURTH'),boot_order):saved.put(field,bytes((value,)))
+    if policy is not None:saved.put('U_PNP',policy)
+    if port in ('m919','pb430'):
+        chip=bytearray(saved.get('U_CHIP',24));chip[12 if port=='m919' else 6]=1;saved.put('U_CHIP',chip)
+    assert saved.call('settings_save')
+    addresses={name:0xF0000+saved.listing.symbol(name) for name in
+               ('pnp_publish','pnp_finish_entry','pnp_incomplete_callback','int19','post_debug_summary')}
+    if rom_images is None:rom_images=[(0xC800+n*0x100,runtime_provider(port,n,action)) for n,action in enumerate(actions)]
+    class Devices(Bus):
+        def __init__(self):
+            super().__init__(cards,bad_read_ports);self.installed=False;self.captured=None;self.runtime_continue=False
+            self.initial_budgets=[];self.initializations=[0]*len(rom_images);self.hooked=set();self.relocation=None
+            self.phase_results=[];self.loader_markers=[]
+            self.incomplete=[];self.finish_roots=[]
+            self.actual_cad=actual_cad
+            self.runtime_reset_owners=True
+            if port=='m919':self.pci=PCI({0x91:Endpoint(identity=0x673A1060,cls=0x010100)})
+        def input(self,p,size):
+            if 0x1F0<=p<=0x1F7 or p==0x3F6:return disk.port_in(disk.cpu,p,size,None)
+            return super().input(p,size)
+        def output(self,p,size,value):
+            if p==0xE9:
+                self.loader_markers.append(value);self.latest[1].emu_stop();return True
+            if 0x1F0<=p<=0x1F7 or p==0x3F6:disk.port_out(disk.cpu,p,size,value,None);return True
+            return super().output(p,size,value)
+        def observe_startup(self,model,cpu,address,listing):
+            self.latest=(model,cpu,listing,address)
+            disk.cpu=cpu
+            if address==addresses['pnp_publish'] and not any(cpu.mem_read((int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4)+0x330,4)):
+                self.initial_budgets.append(int.from_bytes(cpu.mem_read(0x413,2),'little'))
+                if id(cpu) not in self.hooked:
+                    for index,(segment,image) in enumerate(rom_images):
+                        def initialized(cpu,address,size,unused,index=index):self.initializations[index]+=1
+                        at=(segment<<4)+3
+                        cpu.hook_add(UC_HOOK_CODE,initialized,None,at,at)
+                    self.hooked.add(id(cpu))
+                    def incomplete(cpu,address,size,unused):self.incomplete.append(address)
+                    at=addresses['pnp_incomplete_callback'];cpu.hook_add(UC_HOOK_CODE,incomplete,None,at,at)
+                for segment,image in rom_images:cpu.mem_write(segment<<4,image)
+                self.installed=True
+            if address==addresses['pnp_finish_entry']:
+                base=int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4
+                self.post_intervals=struct.unpack('<II',cpu.mem_read(base+0x320,8))
+                root=int.from_bytes(cpu.mem_read(base+0x330,4),'little')
+                self.finish_roots.append(bytes(cpu.mem_read(root,32)).hex())
+            terminal='int19' if port=='pb430' else 'post_debug_summary'
+            if address==addresses[terminal]:self.captured=(model,cpu,listing)
+        def after_each_post(self,model,cpu,listing):
+            if post_action is None:return
+            self.runtime_continue=True
+            stop=getattr(model,'stop_address',None)
+            if stop is not None:model.stop_address=-1
+            try:self.phase_results.append(post_action(port,model,cpu,listing,self))
+            finally:
+                self.runtime_continue=False
+                if stop is not None:model.stop_address=stop
+        def after_post(self):
+            if not relocate_first or self.relocation is not None:return
+            model,cpu,listing=self.captured
+            old=int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4
+            size=cpu.mem_read(old,1)[0]*1024;new=0x90000
+            data=bytes(cpu.mem_read(old,size))
+            def put(address,payload):
+                cpu.mem_write(address,payload)
+                if port=='m919':
+                    for at in range(0,len(payload),4):model.write(address+at,len(payload[at:at+4]),int.from_bytes(payload[at:at+4],'little'))
+            put(new,data);put(0x40E,struct.pack('<H',new>>4));put(0x413,struct.pack('<H',new>>10))
+            put(old,b'\xA7'*size)
+            if port=='presario-800':model.base=new;model.segment=new>>4
+            self.relocation={'old':old,'new':new,'copied_only_advertised_bytes':size}
+    bus=Devices()
+    try:evidence=startup(port,bytes(saved.cmos).hex(),'',pnp_bus=bus,phases=phases,expect_first_active=(not bool(cards)) if expect_active is None else expect_active)
+    except Exception as error:
+        if hasattr(bus,'latest'):
+            model,cpu,listing,address=bus.latest
+            failure={'error':repr(error),'PC':{name:cpu.reg_read(getattr(x,'UC_X86_REG_'+name)) for name in ('CS','IP','SS','SP','AX','BX','CX','DX','FS')},
+                     'console':getattr(model,'console',''),'last_observed':address,
+                     'hops':getattr(model,'startup_hops',[]),'disk_commands':disk.selected_commands}
+            (ROOT/port/OUTPUT/'runtime-startup-failure.json').write_text(json.dumps(failure,indent=2))
+        raise
+    evidence['actual_ROM_initializations']=bus.initializations
+    evidence['actual_before_module_available_KiB']=bus.initial_budgets
+    evidence['external_relocation_between_POST_and_reset']=bus.relocation
+    evidence['actual_incomplete_notice_entries']=bus.incomplete
+    evidence['actual_complete_P2_roots_before_finish']=bus.finish_roots
+    evidence['actual_after_each_POST']=bus.phase_results
+    evidence['actual_loader_IO_markers']=bus.loader_markers
+    assert bus.captured and disk.selected_commands
+    model,cpu,listing=bus.captured;bus.runtime_continue=True
+    # As in the established CD→FDC fixture, continue the COMPLETE produced
+    # public memory state on a flat external device fixture. No settings,
+    # vectors, device records or runtime fields are fabricated or reloaded.
+    snapshot=bytes(cpu.mem_read(0,0x100000))
+    work=ROOT/port/OUTPUT
+    (work/(snapshot_name+'.bin')).write_bytes(snapshot)
+    metadata={'image_sha256':hashlib.sha256(saved.image.read_bytes()).hexdigest(),
+              'snapshot_sha256':hashlib.sha256(snapshot).hexdigest(),
+              'post_intervals':bus.post_intervals,'startup':evidence}
+    if hasattr(bus,'pci'):metadata['PCI']={str(bdf):bytes(device.raw).hex() for bdf,device in bus.pci.endpoints.items()}
+    metadata['FDC']={'dor':getattr(model,'fdc_dor',getattr(model,'ports',{}).get('dor',0)),
+                     'positions':list(model.positions) if hasattr(model,'positions') else [getattr(model,'pcn',0),0]}
+    (work/(snapshot_name+'.json')).write_text(json.dumps(metadata,indent=2))
+    if post_action is not None:
+        from types import SimpleNamespace
+        return SimpleNamespace(cpu=cpu,base=int.from_bytes(snapshot[0x40E:0x410],'little')<<4,
+                               startup_evidence=evidence)
+    driver=runtime_resume_snapshot(port,snapshot,metadata,disk,getattr(bus,'pci',None),model)
+    assert driver.cpu.mem_read(0x475,1)==b'\x01',('Native discovery failed',port,disk.selected_commands)
+    return driver
+
+
+def runtime_resume_snapshot(port,snapshot,metadata,disk,pci=None,model=None):
+    """Continue an actual produced snapshot; never infer native BIOS records."""
+    from shared.tools.isa_pnp_proof import Bus
+    assert hashlib.sha256(snapshot).hexdigest()==metadata['snapshot_sha256']
+    driver=isa_machine(port,Bus(),OUTPUT)
+    assert hashlib.sha256(driver.image.read_bytes()).hexdigest()==metadata['image_sha256']
+    driver.cpu.mem_write(0,snapshot)
+    driver.base=int.from_bytes(snapshot[0x40E:0x410],'little')<<4
+    driver.allocated=snapshot[driver.base]*1024
+    runtime_attach_interrupts(driver)
+    if pci is not None:driver.bus.pci=pci
+    driver.runtime_post_intervals=metadata['post_intervals'];driver.native_device=disk
+    driver.native_model=model;driver.startup_evidence=metadata['startup']
+    driver.external_FDC=metadata.get('FDC')
+    driver.cmos[:]=bytes.fromhex(metadata['startup']['cmos'])
+    import copy
+    driver.post_seed=(snapshot,metadata,type(disk),copy.deepcopy({k:v for k,v in vars(disk).items() if k!='cpu'}),copy.deepcopy(pci))
+    runtime_native_device(driver)
+    return driver
+
+
+
+def runtime_load_post(port,snapshot_name='runtime-post-memory'):
+    """Reuse the last task-owned actual POST snapshot with its captured devices."""
+    from shared.tools.pci_proof import PCI,Endpoint
+    cd,_=runtime_disk_modules();disk=cd.Packet([None,cd.disc(media=0)])
+    work=ROOT/port/OUTPUT
+    raw=(work/(snapshot_name+'.bin')).read_bytes();metadata=json.loads((work/(snapshot_name+'.json')).read_text())
+    endpoints={}
+    for bdf,config in metadata.get('PCI',{}).items():
+        device=Endpoint();device.raw[:]=bytes.fromhex(config);endpoints[int(bdf)]=device
+    return runtime_resume_snapshot(port,raw,metadata,disk,PCI(endpoints) if endpoints else None)
+
+def runtime_clone_post(m):
+    import copy
+    raw,metadata,kind,values,pci=m.post_seed
+    disk=object.__new__(kind);vars(disk).update(copy.deepcopy(values))
+    return runtime_resume_snapshot(m.port,raw,metadata,disk,copy.deepcopy(pci))
+
+
+def runtime_native_device(m):
+    cd,ide=runtime_disk_modules()
+    existing=hasattr(m,'native_device')
+    disk=m.native_device if existing else ide.Disk(('ata','absent'))
+    disk.cpu=m.cpu
+    inp,out=m.bus.input,m.bus.output
+    def incoming(port,size):
+        if 0x1F0<=port<=0x1F7 or port==0x3F6:return disk.port_in(m.cpu,port,size,None)
+        if 0x170<=port<=0x177 or port==0x376:return (1<<(size*8))-1
+        return inp(port,size)
+    def outgoing(port,size,value):
+        if 0x1F0<=port<=0x1F7 or port==0x3F6:disk.port_out(m.cpu,port,size,value,None);return True
+        return out(port,size,value)
+    m.bus.input,m.bus.output=incoming,outgoing
+    if not existing:
+        m.cpu.mem_write(0x4C,struct.pack('<HH',m.listing.symbol('int13'),0xF000))
+        m.call('ata_detect_primary')
+    assert m.cpu.mem_read(0x475,1)==b'\x01'
+    return cd,disk
+
+
+def runtime_handoff_native(port,m=None,action='int18'):
+    if m is None:m=runtime_external_machine(port,('cf','boot'))
+    cd,disk=runtime_native_device(m)
+    start,end=m.runtime_post_intervals
+    # Loader owns this memory only after the actual final release. Erase the
+    # real former journal, then execute the real loader INT18 continuation.
+    count=min(min(end,m.base)-start,0xFFF0)//2
+    sector=runtime_assemble(port,'native-reuse-loader-'+action,f'''bits 16
+org 7C00h
+mov ax,{start>>4}
+mov es,ax
+mov di,{start&15}
+mov cx,{count}
+mov ax,0A7A7h
+rep stosw
+xor ax,ax
+mov ds,ax
+mov word [6F2h],1234h
+int {"19h" if action=='int19' else "18h"}
+hlt
+times 510-($-$$) db 0
+dw 0AA55h
+''')
+    disk.disk_words.update({(0,n):v for n,v in enumerate(struct.unpack('<256H',sector))})
+    m.put('C_BOOT',b'\x02');m.put('C_BOOT_SECOND',b'\x04')
+    handoffs=[]
+    def code(cpu,address,length,unused):
+        if address==0x7C00:
+            handoffs.append((cpu.reg_read(x.UC_X86_REG_DL),cpu.reg_read(x.UC_X86_REG_ES),cpu.reg_read(x.UC_X86_REG_DI),bytes(cpu.mem_read(0x902,2))))
+        if address<0x80000 and bytes(cpu.mem_read(address,1))==b'\xF4':cpu.emu_stop()
+    h=m.cpu.hook_add(UC_HOOK_CODE,code)
+    try:
+        for reg,value in dict(CS=0xF000,DS=0,ES=0,FS=m.base>>4,SS=0,SP=0x7000,EFLAGS=0x202).items():m.cpu.reg_write(getattr(x,'UC_X86_REG_'+reg),value)
+        (m.execute(0xF0000+m.listing.symbol('int19'),0xFFFFF,8000000) if hasattr(m,'execute') else m.cpu.emu_start(0xF0000+m.listing.symbol('int19'),0xFFFFF,count=8000000))
+    finally:m.cpu.hook_del(h)
+    assert m.cpu.mem_read(0x6F2,2)==b'\x34\x12'
+    assert m.cpu.mem_read(0x6F0,2)==b'\x02\0'
+    assert handoffs[0]==(0x80,0xF000,m.listing.symbol('pnp_installation'),b'\0\0'),handoffs
+    assert handoffs[-1][0]==0x81 and disk.taskfiles, (handoffs,disk.taskfiles)
+    assert m.cpu.mem_read(start,count*2)==b'\xA7'*(count*2)
+    return {'actual_native_ATA_read_and_loader_interrupt':action,'released_journal_overwritten':[start,count*2],
+            'native_before_any_IPL_connection':True,'handoffs':[(a,b,c,d.hex()) for a,b,c,d in handoffs],
+            'actual_taskfiles':disk.taskfiles,'later_distinct_provider':True}
+
+
+
+def runtime_disk_ownership(port,post):
+    m=runtime_clone_post(post);cd,disk=runtime_native_device(m)
+    old,size=m.base,m.allocated;new=0x60000
+    native13=bytes(m.cpu.mem_read(0x4C,4));native41=bytes(m.cpu.mem_read(0x104,4))
+    assert int.from_bytes(native41[2:],'little')==old>>4
+    external46=struct.pack('<HH',0x5678,0x1234);m.cpu.mem_write(0x118,external46)
+    m.cpu.mem_write(new,bytes(m.cpu.mem_read(old,size)))
+    m.cpu.mem_write(0x40E,struct.pack('<H',new>>4));m.cpu.mem_write(0x413,struct.pack('<H',new>>10))
+    m.cpu.mem_write(old,b'\xA7'*size);m.base=new;m.allocated=size
+    m.cpu.mem_write(0x6EF,b'\x01') # Authored provider media is now available.
+    # Preserve this legal external relocation for actual CD continuation too.
+    import copy
+    snapshot=bytes(m.cpu.mem_read(0,0x100000));metadata=copy.deepcopy(post.post_seed[1])
+    metadata['snapshot_sha256']=hashlib.sha256(snapshot).hexdigest()
+    m.post_seed=(snapshot,metadata,*post.post_seed[2:])
+    source=runtime_assemble(port,'native-after-relocation',"""bits 16
+org 7C00h
+xor ax,ax
+mov ds,ax
+mov word [6F2h],1234h
+int 18h
+hlt
+times 510-($-$$) db 0
+dw 0AA55h
+""")
+    disk.disk_words.update({(0,n):word for n,word in enumerate(struct.unpack('<256H',source))})
+    m.put('C_BOOT',b'\x02');m.put('C_BOOT_SECOND',b'\x04')
+    observed=[]
+    def code(cpu,address,length,unused):
+        if address==0x7C00 and not observed:
+            observed.append((bytes(cpu.mem_read(0x104,4)),bytes(cpu.mem_read(0x118,4)),bytes(cpu.mem_read(0x4C,4)),cpu.reg_read(x.UC_X86_REG_DL)))
+    h=m.cpu.hook_add(UC_HOOK_CODE,code)
+    try:result=runtime_execute_boot(m)
+    finally:m.cpu.hook_del(h)
+    assert observed==[(native41[:2]+struct.pack('<H',new>>4),external46,native13,0x80)],observed
+    assert m.cpu.mem_read(0x6F2,2)==b'\x34\x12' and m.cpu.mem_read(0x6F0,2)==b'\x02\0'
+    assert m.cpu.mem_read(old,size)==b'\xA7'*size
+    wrapped=runtime_handoff_cd(port,m,expected_native_fdpt=native41[:2]+struct.pack('<H',new>>4),
+                               external_fdpt=external46)
+    return {'actual_native_publication_then_legal_complete_relocation':True,
+            'native_only_FDPT_rebased_external_pointer_hook_count_retained':True,
+            'native80_to_later81':result,'relocated_CD_source_chain_and_teardown':wrapped,
+            'old_advertised_region_unused':True}
+
+
+def runtime_saved_priority(port,post):
+    results=[]
+    for order in ((2,4,0,0),(4,2,0,0)):
+        m=runtime_clone_post(post);_,disk=runtime_native_device(m)
+        m.cpu.mem_write(0x6EF,b'\x01')
+        sector=runtime_assemble(port,'priority-native',"""bits 16
+org 7C00h
+xor ax,ax
+mov ds,ax
+mov word [6F0h],80h
+hlt
+times 510-($-$$) db 0
+dw 0AA55h
+""")
+        disk.disk_words.update({(0,n):word for n,word in enumerate(struct.unpack('<256H',sector))})
+        relative=int.from_bytes(m.cpu.mem_read(m.base+0x334,4),'little')
+        tail=bytes(m.cpu.mem_read(m.base+relative,m.allocated-relative))
+        entered=[]
+        def edit(cpu,address,length,unused):
+            if not entered:
+                for field,value in zip(('U_BOOT','U_BOOT_SECOND','U_BOOT_THIRD','U_BOOT_FOURTH'),order):
+                    m.put(field,bytes((value,)))
+                entered.append(True)
+        at=0xF0000+m.listing.symbol('.input','setup_main')
+        hook=m.cpu.hook_add(UC_HOOK_CODE,edit,None,at,at)
+        interrupt=m.runtime_interrupt
+        m.runtime_interrupt=lambda cpu,vector:False if vector==0x16 else interrupt(cpu,vector)
+        try:m.ui((0x4400,13))
+        finally:m.cpu.hook_del(hook);m.runtime_interrupt=interrupt
+        assert entered and m.reset
+        m.call('settings_load')
+        assert tuple(m.get(field)[0] for field in ('C_BOOT','C_BOOT_SECOND','C_BOOT_THIRD','C_BOOT_FOURTH'))==order
+        assert bytes(m.cpu.mem_read(m.base+relative,m.allocated-relative))==tail
+        decoded=decode_saved(m)[0];assert decoded['C_PNP'][14]==0
+        result=runtime_execute_boot(m)
+        first=order[0]==2
+        assert result['terminal']=='loader' and result['handoffs'][-1][0]==(0x80 if first else 0x81)
+        assert int.from_bytes(m.cpu.mem_read(0x6F0,2),'little')==(0x80 if first else 2)
+        assert int.from_bytes(m.cpu.mem_read(0x902,2),'little')==int(not first)
+        results.append({'saved_order':order,'actual_Setup_F10_Save_reload':True,
+                        'whole_runtime_tail_preserved_by_Setup':True,'actual_handoff':result,
+                        'native_success_before_any_IPL_connection':first})
+    return results
+
+def runtime_apm(port,mode):
+    """Use the existing OS caller/descriptor machinery on produced firmware."""
+    import importlib
+    from types import MethodType,SimpleNamespace
+    m=runtime_external_machine(port,('cf','boot'))
+    runtime_disk_modules()
+    owner=importlib.import_module('test-apm')
+    os_client=SimpleNamespace(cpu=m.cpu,mode=0,halts=[],contract=None)
+    for name in ('api','run','enter','real','protected_irq'):
+        setattr(os_client,name,MethodType(getattr(owner.Apm,name),os_client))
+    def registers(self):return {r:self.cpu.reg_read(getattr(x,'UC_X86_REG_'+r)) for r in owner.REGS}
+    def setup(self,flags=0x202):
+        for reg,value in dict(CS=0x9000,IP=0,DS=0,ES=0,FS=0x1234,GS=0x5678,SS=0,SP=0x6FFE,EFLAGS=flags).items():self.cpu.reg_write(getattr(x,'UC_X86_REG_'+reg),value)
+    os_client.state=MethodType(registers,os_client);os_client.setup=MethodType(setup,os_client)
+    def api(function,**kwargs):
+        result=os_client.api(function,**kwargs);assert not result['cf'],(port,mode,function,result)
+        return result
+    outputs=() if mode==1 else ('EAX','EBX','ECX','ESI','EDI') if mode==2 else ('EAX','EBX','ECX','EDX','ESI','EDI')
+    result=api(mode,outputs=outputs)
+    if mode!=1:
+        contract={'offset':result['bx'] if mode==2 else result['ebx'],
+                  'data':result['cx'] if mode==2 else result['dx'],'code':result['ax'],
+                  'length':result['si'] if mode==2 else result['esi']&65535,'data_length':result['di']}
+        if mode==3:contract.update(code16=result['cx'],length16=result['esi']>>16)
+        assert contract['data']==m.base>>4 and 0<contract['data_length']<=m.allocated
+        os_client.contract=contract;os_client.enter(mode)
+    api(0x0E,cx=0x0102,outputs=('EAX',))
+    old,size=m.base,m.allocated;new=0x60000
+    original=bytes(m.cpu.mem_read(old,size));m.cpu.mem_write(new,original)
+    m.cpu.mem_write(0x40E,struct.pack('<H',new>>4));m.cpu.mem_write(0x413,struct.pack('<H',new>>10))
+    if mode!=1:
+        # The OS owns this returned mapping and reloads it for the new base.
+        m.cpu.mem_write(0x600+os_client.data_selector,owner.descriptor(new,os_client.contract['data_length'],0x92))
+    m.cpu.mem_write(old,b'\xA7'*size);m.base=new;m.allocated=size
+    reads=[]
+    def read(cpu,access,address,length,value,unused):
+        if old<=address<old+size:reads.append(address)
+    h=m.cpu.hook_add(UC_HOOK_MEM_READ,read)
+    try:
+        api(0x0E,cx=0x0101,outputs=('EAX',));api(4)
+        if mode!=1:os_client.real()
+        # Reconnect through the actual current-base real interface.
+        result=api(1);api(4)
+    finally:m.cpu.hook_del(h)
+    assert not reads,reads[:10]
+    assert m.cpu.mem_read(new+0x334,4)==original[0x334:0x338]
+    relative=int.from_bytes(original[0x334:0x338],'little')
+    assert m.cpu.mem_read(new+relative,size-relative)==original[relative:]
+    assert m.cpu.mem_read(old,size)==b'\xA7'*size
+    return {'mode':mode,'actual_connect_and_calls':True,'returned_contract':getattr(os_client,'contract',None),
+            'OS_descriptor_updated_after_complete_EBDA_relocation':mode!=1,
+            'actual_disconnect_reconnect_current_base':True,'provider_state_preserved_old_base_unused':True}
+
+
+def runtime_floppy_device(m,media):
+    import importlib
+    runtime_disk_modules();legacy=importlib.import_module('test-legacy-disk')
+    floppy=legacy.floppy_buffer_model(m.base>>4,media=media);floppy.cpu=m.cpu
+    source=getattr(m,'native_model',None)
+    if getattr(m,'external_FDC',None):
+        floppy.fdc_dor=m.external_FDC['dor'];floppy.positions=list(m.external_FDC['positions'])
+    if source is not None:
+        floppy.fdc_dor=getattr(source,'fdc_dor',getattr(source,'ports',{}).get('dor',floppy.fdc_dor))
+        if hasattr(source,'positions'):floppy.positions=list(source.positions)
+    incoming,outgoing=m.bus.input,m.bus.output
+    def inp(port,size):
+        if port in (0x3F4,0x3F5,0x3F7):return floppy.port_in(m.cpu,port,size,None)
+        return incoming(port,size)
+    def out(port,size,value):
+        if port in (4,5,0x0A,0x0B,0x0C,0x81,0x3F2,0x3F5,0x3F7):floppy.port_out(m.cpu,port,size,value,None);return True
+        return outgoing(port,size,value)
+    m.bus.input,m.bus.output=inp,out
+    # The established FDC/DMA fixture's external IRQ and timer delivery. Both
+    # events enter the actual produced IVT; no firmware wait is replaced.
+    def event(cpu,address,size,unused):
+        if floppy.fdc_irq and cpu.reg_read(x.UC_X86_REG_EFLAGS)&0x200:
+            floppy.fdc_irq=False;legacy.rtc.Clock.interrupt(floppy,cpu,0x0E,None)
+        elif address>=0xE0000 and bytes(cpu.mem_read(address,1))==b'\xF4':
+            cpu.reg_write(x.UC_X86_REG_IP,(cpu.reg_read(x.UC_X86_REG_IP)+1)&65535)
+            legacy.rtc.Clock.interrupt(floppy,cpu,8,None)
+    hook=m.cpu.hook_add(UC_HOOK_CODE,event)
+    return floppy,hook
+
+
+def runtime_handoff_floppy(port,post):
+    m=runtime_clone_post(post)
+    start,end=m.runtime_post_intervals;count=min(min(end,m.base)-start,0xFFF0)//2
+    loader=runtime_assemble(port,'floppy-reuse-loader',f'''bits 16
+org 7C00h
+mov ax,{start>>4}
+mov es,ax
+mov di,{start&15}
+mov cx,{count}
+mov ax,0A7A7h
+rep stosw
+xor ax,ax
+mov ds,ax
+mov word [6F2h],0F10Fh
+int 18h
+hlt
+times 510-($-$$) db 0
+dw 0AA55h
+''')
+    floppy,hook=runtime_floppy_device(m,loader*18)
+    m.put('C_BOOT',b'\x01');m.put('C_BOOT_SECOND',b'\x04')
+    try:result=runtime_execute_boot(m)
+    finally:m.cpu.hook_del(hook)
+    assert m.cpu.mem_read(0x6F2,2)==b'\x0F\xF1'
+    assert m.cpu.mem_read(0x6F0,2)==b'\x02\0'
+    assert result['handoffs'][0]==(0,0xF000,m.listing.symbol('pnp_installation'))
+    assert result['handoffs'][-1][0]==0x81
+    assert any(row[0]==0x46 for row in floppy.fdc_log)
+    assert m.cpu.mem_read(start,count*2)==b'\xA7'*(count*2)
+    result.update(actual_FDC_DMA_read_and_loader_INT18=True,actual_FDC_commands=floppy.fdc_log,
+                  released_journal_overwritten=[start,count*2],later_distinct_provider=True)
+    return result
+
+
+def runtime_buffer_native_floppy(port,m):
+    cd,disk=runtime_native_device(m)
+    ata_payload=bytes((n*37+0x29)&255 for n in range(512))
+    fdc_payload=bytes((n*17+0x53)&255 for n in range(512))
+    disk.disk_words.update({(0,n):word for n,word in enumerate(struct.unpack('<256H',ata_payload))})
+    floppy,hook=runtime_floppy_device(m,fdc_payload*18)
+    base,size=m.base,m.allocated;before=bytes(m.cpu.mem_read(base,size))
+    prefix=int.from_bytes(before[0x334:0x338],'little')
+    def preserved():
+        after=bytes(m.cpu.mem_read(base,size))
+        assert after[prefix:]==before[prefix:]
+        assert after[0x27A:0x27D]==before[0x27A:0x27D]
+        assert after[0x2F0:0x33C]==before[0x2F0:0x33C]
+    tested=[]
+    def poison(address):
+        bounds=(bytes(m.cpu.mem_read(address-16,16)),bytes(m.cpu.mem_read(address+512,16)))
+        m.cpu.mem_write(address,b'\xE7'*512)
+        return bounds
+    def transferred(address,drive,trace,bounds):
+        expected=ata_payload if drive==0x80 else fdc_payload
+        assert bytes(m.cpu.mem_read(address,512))==expected,(port,drive,'adjacent payload')
+        assert (bytes(m.cpu.mem_read(address-16,16)),bytes(m.cpu.mem_read(address+512,16)))==bounds
+        if drive==0x80:
+            commands=disk.taskfiles[trace:]
+            assert len(commands)==1 and commands[0][0]==0 and commands[0][1] in (0x20,0xC4) and commands[0][2:]==(0,1),commands
+            assert disk.transfer_words==256
+        else:
+            commands=floppy.fdc_log[trace:]
+            assert any(row[0]==0x46 and row[4]==1 for row in commands),commands
+            assert floppy.dma_address==address and floppy.dma_count==511
+            assert floppy.transferred==expected
+        return {'full_512byte_payload_sha256':hashlib.sha256(expected).hexdigest(),
+                'actual_read_commands':commands,'PIO_words':256 if drive==0x80 else None,
+                'actual_DMA_address':address if drive==0 else None,'DMA_bytes':512 if drive==0 else None,
+                'separately_poisoned_destination_and_boundary_canaries':True}
+    try:
+        for drive in (0x80,0):
+            for address,reject in ((base+prefix,True),(base-512,False)):
+                m.caller_buffers=[] if reject else [(address,address+512)]
+                trace=len(disk.taskfiles) if drive==0x80 else len(floppy.fdc_log)
+                bounds=None if reject else poison(address)
+                carry,ax=cd.api(m,2,al=1,dl=drive,bx=address&15,es=address>>4)
+                assert carry==reject,(port,drive,hex(address),carry,hex(ax),floppy.fdc_log,floppy.fdc_senses,floppy.positions)
+                if reject:assert trace==(len(disk.taskfiles) if drive==0x80 else len(floppy.fdc_log))
+                accepted=None if reject else transferred(address,drive,trace,bounds)
+                preserved()
+                tested.append({'drive':drive,'address':address,'rejected':reject,'AX':ax,'accepted_transfer':accepted})
+        # Native EDD transfer and parameter output share the actual advertised
+        # range guard; keep their real parameter blocks and installed INT13.
+        for address,reject in ((base+prefix,True),(base-512,False)):
+            m.caller_buffers=[] if reject else [(address,address+512)]
+            trace=len(disk.taskfiles);bounds=None if reject else poison(address)
+            m.cpu.mem_write(0x20500,struct.pack('<BBHHHQ',16,0,1,address&15,address>>4,0))
+            carry,ax=cd.api(m,0x42,dl=0x80,ds=0x2000,si=0x500)
+            assert carry==reject,(port,'EDD',address,carry,hex(ax))
+            if reject:assert trace==len(disk.taskfiles)
+            accepted=None if reject else transferred(address,0x80,trace,bounds)
+            preserved()
+            tested.append({'owner':'EDD','address':address,'rejected':reject,'AX':ax,'accepted_transfer':accepted})
+    finally:m.cpu.hook_del(hook);m.caller_buffers=[]
+    return {'actual_native_CHS_EDD_and_FDC_DMA_owners':tested,'complete_provider_tail_policy_controls_APM_preserved':True}
+
+
+
+def runtime_parameter_buffers(port,post):
+    m=runtime_clone_post(post);cd,disk=runtime_native_device(m)
+    # Independent external ATA input:131072 sectors,16 heads,63 sectors/track.
+    # The produced fixture saves Auto translation, whose established small-LBA
+    # logical geometry is32 heads/63 sectors (different from raw IDENTIFY).
+    # This medium holds65 complete logical cylinders. No BIOS record or output
+    # supplies these expectations; ATA sectors in this device are512 bytes.
+    identify=disk.payloads[0]
+    assert (struct.unpack_from('<H',identify,6)[0],struct.unpack_from('<H',identify,12)[0],
+            struct.unpack_from('<I',identify,120)[0])==(16,63,131072)
+    expected=struct.pack('<HHIIIQH',26,2,65,32,63,131072,512)
+    relative=int.from_bytes(m.cpu.mem_read(m.base+0x334,4),'little')
+    tail=bytes(m.cpu.mem_read(m.base+relative,m.allocated-relative))
+    results=[]
+    for address,reject in ((m.base+m.allocated-2,True),(m.base-26,False)):
+        # The required input size word occupies only aligned tail padding in
+        # the refusal case; compare the complete caller-supplied pre-call bytes.
+        length=2 if reject else 26
+        original=bytes(m.cpu.mem_read(address,length))
+        boundaries=None if reject else (bytes(m.cpu.mem_read(address-16,16)),bytes(m.cpu.mem_read(address+26,16)))
+        m.cpu.mem_write(address,struct.pack('<H',26)+(b'' if reject else b'\xE7'*24))
+        before=bytes(m.cpu.mem_read(m.base+relative,m.allocated-relative))
+        m.caller_buffers=[] if reject else [(address,address+26)]
+        carry,ax=cd.api(m,0x48,dl=0x80,ds=address>>4,si=address&15)
+        assert carry==reject,(port,address,carry,hex(ax))
+        assert bytes(m.cpu.mem_read(m.base+relative,m.allocated-relative))==before
+        output=None
+        if not reject:
+            output=bytes(m.cpu.mem_read(address,26))
+            assert output==expected,(port,'AH48 actual parameters',output.hex(),expected.hex())
+            assert (bytes(m.cpu.mem_read(address-16,16)),bytes(m.cpu.mem_read(address+26,16)))==boundaries
+        m.cpu.mem_write(address,original)
+        assert bytes(m.cpu.mem_read(m.base+relative,m.allocated-relative))==tail
+        results.append({'buffer':address,'rejected':reject,'AX':ax,'complete_output':output.hex() if output else None,
+                        'independent_geometry_capacity_sector_size':None if reject else [65,32,63,131072,512],
+                        'poisoned_non_input_bytes_and_preserved_canaries':not reject})
+    m.caller_buffers=[]
+    return {'actual_AH48':results,'complete_runtime_tail_preserved':True}
+
+
+def runtime_relocated_buffer_apis(port,post):
+    import copy
+    m=runtime_clone_post(post)
+    old,size=m.base,m.allocated;new=0x60000
+    m.cpu.mem_write(new,bytes(m.cpu.mem_read(old,size)))
+    m.cpu.mem_write(0x40E,struct.pack('<H',new>>4));m.cpu.mem_write(0x413,struct.pack('<H',new>>10))
+    m.cpu.mem_write(old,b'\xA7'*size);m.base=new;m.allocated=size
+    snapshot=bytes(m.cpu.mem_read(0,0x100000));metadata=copy.deepcopy(post.post_seed[1])
+    metadata['snapshot_sha256']=hashlib.sha256(snapshot).hexdigest()
+    m.post_seed=(snapshot,metadata,*post.post_seed[2:])
+    m.cpu.mem_write(0x1500,bytes.fromhex('CD12A3B006B800C1CD158C06B206F4'))
+    for reg,value in dict(CS=0,IP=0x1500,DS=0,SS=0,SP=0x7000,EFLAGS=0x202).items():
+        m.cpu.reg_write(getattr(x,'UC_X86_REG_'+reg),value)
+    m.cpu.emu_start(0x1500,0x150F,count=100000)
+    kib,segment=struct.unpack('<HH',m.cpu.mem_read(0x6B0,4))
+    assert kib==new>>10 and segment==new>>4,(port,kib,segment,new>>10,new>>4,
+        bytes(m.cpu.mem_read(0x48,4)).hex(),bytes(m.cpu.mem_read(0x413,2)).hex())
+    assert m.cpu.mem_read(new,1)[0]*1024==size
+    old_reads=[]
+    def read(cpu,access,address,length,value,unused):
+        if old<=address<old+size:old_reads.append(address)
+    hook=m.cpu.hook_add(UC_HOOK_MEM_READ,read)
+    try:transfers=runtime_buffer_native_floppy(port,m)
+    finally:m.cpu.hook_del(hook)
+    parameters=runtime_parameter_buffers(port,m)
+    assert not old_reads and m.cpu.mem_read(old,size)==b'\xA7'*size
+    return {'actual_INT12_KiB':kib,'actual_C1_segment':segment,'actual_BDA_base':new,
+            'advertised_bytes':size,'copied_only_advertised_region':True,
+            'native_CHS_EDD_FDC':transfers,'native_AH48':parameters,
+            'old_region_poisoned_and_unused':True}
+
+def runtime_handoff_cd(port,post,media=0,action='int19',expected_native_fdpt=None,external_fdpt=None):
+    m=runtime_clone_post(post);cd,disk=runtime_native_device(m)
+    image=cd.disc(media=media)
+    read=("mov si,dap\nmov ax,4200h\nint 13h\n" if media==0 else
+          "mov ax,0201h\nmov cx,2\nint 13h\n")
+    loader=runtime_assemble(port,f'cd-loader-{media}-{action}',f'''bits 16
+org 7C00h
+xor ax,ax
+mov ds,ax
+mov [6F8h],dl
+mov ax,2000h
+mov es,ax
+xor bx,bx
+{read}
+pushf
+pop word [6F6h]
+mov [6F4h],ax
+mov word [6F2h],5678h
+int {"18h" if action=='int18' else "19h"}
+hlt
+dap: db 16,0
+dw 1,0,2000h
+dq 22
+times 510-($-$$) db 0
+dw 0AA55h
+''')
+    image[21*2048:21*2048+512]=loader;disk.images[1]=image
+    m.put('C_BOOT',b'\x03');m.put('C_BOOT_SECOND',b'\x04')
+    native_hook=bytes(m.cpu.mem_read(0x4C,4));native_fdpt=bytes(m.cpu.mem_read(0x104,4))
+    if expected_native_fdpt is not None:native_fdpt=expected_native_fdpt
+    first_bcv=0xC8000+int.from_bytes(m.cpu.mem_read(0xC8076,2),'little');clean=[]
+    def code(cpu,address,size,unused):
+        if address==first_bcv:
+            assert bytes(cpu.mem_read(0x4C,4))==native_hook
+            assert bytes(cpu.mem_read(0x104,4))==native_fdpt
+            if external_fdpt is not None:assert bytes(cpu.mem_read(0x118,4))==external_fdpt
+            assert cpu.mem_read(m.base+0x298,1)==b'\0'
+            assert cpu.mem_read(0x475,1)==b'\x01'
+            clean.append(True)
+    h=m.cpu.hook_add(UC_HOOK_CODE,code)
+    try:result=runtime_execute_boot(m)
+    finally:m.cpu.hook_del(h)
+    drive=0xE0 if media==0 else 0
+    assert m.cpu.mem_read(0x6F2,2)==b'\x78\x56'
+    assert m.cpu.mem_read(0x6F8,1)==bytes((drive,))
+    assert int.from_bytes(m.cpu.mem_read(0x6F6,2),'little')&1==0
+    expected=image[22*2048:23*2048] if media==0 else image[21*2048+512:21*2048+1024]
+    assert m.cpu.mem_read(0x20000,len(expected))==expected
+    assert clean==[True]
+    assert result['handoffs'][0]==(drive,0xF000,m.listing.symbol('pnp_installation'))
+    assert result['handoffs'][-1][0]==0x81 and m.cpu.mem_read(0x6F0,2)==b'\x02\0'
+    result.update(media=media,actual_packet_catalog_image_and_separate_RETF=True,
+                  actual_loaded_image_INT13_read_and_loader_interrupt=action,
+                  prior_native_hook_FDPT_and_count_restored_before_next_BCV=True,
+                  packet_commands=[(u,p.hex()) for u,p in disk.packet_log])
+    return result
+
+
+def runtime_buffer_cd(port,post):
+    results=[]
+    for bad_load in (False,True):
+        m=runtime_clone_post(post);cd,disk=runtime_native_device(m)
+        base,size=m.base,m.allocated;relative=int.from_bytes(m.cpu.mem_read(base+0x334,4),'little')
+        protected=bytes(m.cpu.mem_read(base+relative,size-relative))
+        disk.images[1]=cd.disc(media=0,segment=(base+relative)>>4 if bad_load else 0)
+        m.put('C_BOOT',b'\x03');m.put('C_BOOT_SECOND',b'\x04')
+        reached=[]
+        def first(cpu,address,length,unused):reached.append(True);cpu.emu_stop()
+        h=m.cpu.hook_add(UC_HOOK_CODE,first,None,0x7C00,0x7C00)
+        try:
+            for reg,value in dict(CS=0xF000,DS=0,ES=0,FS=base>>4,SS=0,SP=0x7000,EFLAGS=0x202).items():m.cpu.reg_write(getattr(x,'UC_X86_REG_'+reg),value)
+            m.cpu.emu_start(0xF0000+m.listing.symbol('int19'),0xFFFFF,count=8000000)
+        finally:m.cpu.hook_del(h)
+        after=bytes(m.cpu.mem_read(base+relative,size-relative))
+        assert reached and after[:8]==protected[:8] and after[40:48]==protected[40:48] and after[50:52]==protected[50:52] and after[60:]==protected[60:],(bad_load,reached,
+            [(i,a,b) for i,(a,b) in enumerate(zip(protected,after)) if a!=b][:20],
+            hex(m.cpu.reg_read(x.UC_X86_REG_CS)),hex(m.cpu.reg_read(x.UC_X86_REG_IP)))
+        if bad_load:
+            count=int.from_bytes(after[4:8],'little')
+            assert int.from_bytes(after[8:12],'little')==count and int.from_bytes(after[12:16],'little')==count and after[16]==3
+            assert m.cpu.reg_read(x.UC_X86_REG_DL)==0x81
+            assert m.cpu.mem_read(base+0x298,1)==b'\0'
+            results.append({'catalog_load_overlaps_tail':True,'actual_fallback_provider_DL':0x81})
+            continue
+        assert m.cpu.mem_read(base+0x298,1)==b'\x01'
+        for address,reject in ((base+relative,True),(base-2048,False)):
+            m.caller_buffers=[] if reject else [(address,address+2048)]
+            before=len(disk.packet_log)
+            m.cpu.mem_write(0x20500,struct.pack('<BBHHHQ',16,0,1,address&15,address>>4,22))
+            carry,ax=cd.api(m,0x42,dl=0xE0,ds=0x2000,si=0x500)
+            assert carry==reject,(port,'CD',address,carry,hex(ax))
+            if reject:assert len(disk.packet_log)==before
+            after=bytes(m.cpu.mem_read(base+relative,size-relative))
+            assert after[:8]==protected[:8] and after[40:48]==protected[40:48] and after[50:52]==protected[50:52] and after[60:]==protected[60:]
+            results.append({'public_CD_buffer':address,'rejected':reject,'AX':ax})
+        m.caller_buffers=[]
+    return {'actual_catalog_load_and_public_CD_guard':results,'complete_runtime_tail_preserved':True}
+
+
+def runtime_media(port,post=None):
+    if post is None:post=runtime_startup_snapshot(port)
+    result={'actual_startup':post.startup_evidence}
+    work=ROOT/port/OUTPUT/'runtime-media-results.json'
+    work.write_text(json.dumps(result,indent=2))
+    checks=(('native_floppy_buffers',lambda:runtime_buffer_native_floppy(port,runtime_clone_post(post))),
+            ('native_parameters',lambda:runtime_parameter_buffers(port,post)),
+            ('native',lambda:runtime_handoff_native(port,runtime_clone_post(post))),
+            ('floppy',lambda:runtime_handoff_floppy(port,post)),
+            ('CD_E0',lambda:runtime_handoff_cd(port,post)),
+            ('CD_00',lambda:runtime_handoff_cd(port,post,2,'int18')),
+            ('CD_buffers',lambda:runtime_buffer_cd(port,post)))
+    for name,check in checks:
+        print(port,'runtime',name,file=sys.stderr,flush=True)
+        result[name]=check();work.write_text(json.dumps(result,indent=2))
+    return result
+
+
+def runtime_reset(port,cad=False,used=False):
+    policy=bytearray(15);struct.pack_into('<H',policy,0,1<<5);policy[2]=1<<3
+    struct.pack_into('<HH',policy,3,0x350,8);struct.pack_into('<H',policy,11,1<<5);policy[14]=1
+    options={};phase=[]
+    if used:
+        from shared.tools.isa_pnp_proof import Card,serial
+        cards=[]
+        for n,base in enumerate((0x330,0x338)):
+            stream=b'\x0A\x10\0\x82\x03\0ISA\x15\x41\xD0\x05\0\x01\x4B'+struct.pack('<HB',base,8)+b'\x79\0'
+            cards.append(Card(serial(b'\x41\xD0\xFF\xFF',n+1),stream,powerup_active=True))
+        def completed(port,model,cpu,listing,bus):
+            base=int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4
+            relative=int.from_bytes(cpu.mem_read(base+0x334,4),'little')
+            header=bytes(cpu.mem_read(base+relative,60));count=int.from_bytes(header[4:8],'little')
+            assert header[8:19]==bytes(11),('stale cursor/connection',header.hex())
+            assert header[20:40]==bytes(20) and header[52:60]==bytes(8)
+            records=[bytes(cpu.mem_read(base+relative+60+n*24,24)) for n in range(count)]
+            providers=[r for r in records if int.from_bytes(r[:2],'little') in (0xC800,0xC900)]
+            assert len(providers)==2 and [int.from_bytes(r[10:12],'little') for r in providers]==[0x120]*2
+            assert all(cpu.mem_read(vector+2,2)==b'\0\xF0' for vector in (0x4C,0x60,0x64))
+            assert len(bus.cards)==2 and bus.read_port!=0x203 and all(c.registers[0][0x30] for c in bus.cards)
+            public=runtime_public_current(port,model,cpu,listing,bus)
+            boot=runtime_boot_current(port,model,cpu,listing,bus,2,handoff_count=2)
+            after=bytes(cpu.mem_read(base+relative,60))
+            assert struct.unpack_from('<II',after,8)==(3,3) # Selected VGA is a non-IPL first record.
+            assert after[16]&3==3 and cpu.mem_read(0x475,1)==b'\x02'
+            result={'fresh_header_before_attempt':header.hex(),'fresh_provider_relationships':[r.hex() for r in records],
+                'same_CPU_public_calls':public,'actual_attempts_then_noninitial_connection':boot,
+                'used_header_before_next_reset':after.hex(),'actual_ISA':[{'identity':c.identity.hex(),'CSN':c.csn,'registers':c.registers} for c in bus.cards]}
+            phase.append(result);return result
+        options=dict(cards=cards,rom_images=((0xC800,runtime_provider(port,0,'int18')),
+            (0xC900,runtime_provider(port,1,witness_port=0xE9))),boot_order=(4,0,0,0),
+            post_action=completed,bad_read_ports={0x203:'no-pair'},expect_active=True)
+    post=runtime_startup_snapshot(port,phases=(False,True,True),policy=policy,relocate_first=True,
+                                  snapshot_name='p3-used-reset-post' if used else 'runtime-reset-post',actual_cad=cad,**options)
+    result=post.startup_evidence
+    assert len(result['snapshots'])==len(result['finish_observations'])==3
+    budgets=result['actual_before_module_available_KiB']
+    assert len(budgets)==3 and len(set(budgets))==1,budgets
+    assert result['actual_ROM_initializations']==[3,3],result['actual_ROM_initializations']
+    sizes=[r['advertised_runtime_KiB'] for r in result['finish_observations']]
+    ceilings=[r['restored_conventional_KiB'] for r in result['finish_observations']]
+    assert len(set(sizes))==len(set(ceilings))==1,(sizes,ceilings)
+    assert all(r['runtime_published'] for r in result['finish_observations'])
+    assert result['external_relocation_between_POST_and_reset']
+    expected=bytearray(policy);expected[14]=0
+    if used:
+        saved=settings.Settings(port,OUTPUT);saved.cmos[:]=bytes.fromhex(result['cmos'])
+        assert decode_saved(saved)[0]['C_PNP']==expected
+    else:assert decode_saved(post)[0]['C_PNP']==expected
+    return {'cold_plus_two_actual_warm_startups':result,'actual_CtrlAltDel_first_reset':cad,'stable_original_budget_and_runtime_extent':True,
+            'relocated_old_instance_ended_and_complete_fresh_provider_set':True,'saved_manual_policy_preserved':True,
+            'actual_used_state_multicard_phases':phase}
+
+
+def runtime_retry(port,post=None):
+    if post is None:post=runtime_startup_snapshot(port,actions=('cf','retry'),snapshot_name='runtime-retry-post')
+    m=runtime_clone_post(post)
+    for field,value in (('C_BOOT',4),('C_BOOT_SECOND',0),('C_BOOT_THIRD',0),('C_BOOT_FOURTH',0)):
+        m.put(field,bytes((value,)))
+    m.runtime_kbc_queue.append(0x1E) # Arrived before the exhausted retry epoch.
+    assert runtime_execute_boot(m)['terminal']=='retry'
+    before=[struct.unpack('<16H',m.cpu.mem_read(0x900+n*32,32))[:3] for n in range(2)]
+    assert before==[(1,1,1),(1,1,1)],before
+    m.cpu.mem_write(0x6EF,b'\x01') # External media becomes readable; no BIOS change.
+    waits=[];loaded=[];forbidden=[]
+    lo,hi=m.runtime_post_intervals
+    def code(cpu,address,length,unused):
+        if lo<=address<hi:forbidden.append(address)
+        if address==0x7C00:loaded.append(cpu.reg_read(x.UC_X86_REG_DL))
+        if bytes(cpu.mem_read(address,1))==b'\xF4':
+            if address>=0xF0000:waits.append(address)
+            cpu.emu_stop()
+    h=m.cpu.hook_add(UC_HOOK_CODE,code)
+    try:
+        def run(count=2000000):
+            at=(m.cpu.reg_read(x.UC_X86_REG_CS)<<4)+m.cpu.reg_read(x.UC_X86_REG_IP)
+            m.cpu.emu_start(at,0xFFFFF,count=count)
+        run()
+        assert waits and not loaded
+        for _ in range(2):
+            # Real IRQ0 wakes HLT; time and media alone cannot consume the gate.
+            m.cpu.reg_write(x.UC_X86_REG_IP,m.cpu.reg_read(x.UC_X86_REG_IP)+1)
+            assert m.runtime_interrupt(m.cpu,8)
+            run()
+            assert not loaded and [struct.unpack('<16H',m.cpu.mem_read(0x900+n*32,32))[:3] for n in range(2)]==before
+        m.runtime_kbc_queue.append(0x30)
+        m.cpu.reg_write(x.UC_X86_REG_IP,m.cpu.reg_read(x.UC_X86_REG_IP)+1)
+        assert m.runtime_interrupt(m.cpu,9)
+        run(8000000)
+    finally:m.cpu.hook_del(h)
+    assert loaded==[0x81] and m.cpu.mem_read(0x6F0,2)==b'\x02\0',(loaded,waits,
+        hex(m.cpu.reg_read(x.UC_X86_REG_CS)),hex(m.cpu.reg_read(x.UC_X86_REG_IP)),
+        bytes(m.cpu.mem_read(0x417,0x27)).hex(),m.runtime_kbc_queue,
+        [struct.unpack('<16H',m.cpu.mem_read(0x900+n*32,32))[:3] for n in range(2)])
+    after=[struct.unpack('<16H',m.cpu.mem_read(0x900+n*32,32))[:3] for n in range(2)]
+    assert after==[(1,2,2),(1,2,1)],after
+    assert not forbidden
+    return {'actual_startup':post.startup_evidence,'stale_scan_and_two_timer_wakes_did_not_retry':True,
+            'fresh_IRQ1_INT16_reopened_once':True,'before':before,'after':after,'actual_DL':loaded,
+            'no_POST_reinitialization_or_private_fetch':True}
+
+
+def runtime_capacity(port,baseline):
+    from shared.tools.isa_pnp_proof import Card,serial
+    initial=baseline.startup_evidence['placement_observations'][0]
+    assert initial['actual_LDN_count']==initial['stored_LDN_count']==0
+    kib=initial['original_KiB']
+    # The authored producers are selectedC000 plus two independent C800/C900
+    # images. Their three extent claims occur after census; each image retains
+    # one28B record. Baseline is an actual normal memory/placement producer.
+    before_census=initial['journal_cursor']+3*32
+    relative=int.from_bytes(baseline.cpu.mem_read(baseline.base+0x334,4),'little')
+    prefix=baseline.cpu.mem_read(baseline.base+relative+19,1)[0]*1024
+    staging=(prefix+60+3*24+1023)&~1023
+    def fits(amount):
+        cursor=before_census
+        def take(size):
+            nonlocal cursor
+            candidate=cursor-size
+            if port=='pb430' and candidate<0x40000 and cursor>0x20000:candidate=0x20000-size
+            cursor=candidate
+            return cursor>=0x10000
+        groups=[];remaining=amount
+        while remaining:
+            count=min(remaining,256);identity=serial(b'\x41\xD0\xFF\xFF',len(groups)+1)
+            groups.append((tuple((byte>>bit)&1 for byte in identity for bit in range(8)),count));remaining-=count
+        for _,count in sorted(groups,reverse=True):
+            if not take(32):return False
+            for _ in range(count):
+                if not take(564):return False
+        for _ in range(3):
+            if not take(32):return False
+        for _ in range(3):
+            if not take(28):return False
+        return take(staging)
+    maximum=0
+    while fits(maximum+1):maximum+=1
+    results=[]
+    for amount in (maximum,maximum+1):
+        remaining=amount;cards=[]
+        while remaining:
+            count=min(remaining,256)
+            stream=b'\x0A\x10\0\x82\x03\0ISA'+b'\x15\x41\xD0\x05\0\0'*count+b'\x79\0'
+            cards.append(Card(serial(b'\x41\xD0\xFF\xFF',len(cards)+1),stream,ldns=count,powerup_active=True));remaining-=count
+        policy=bytearray(15);policy[13:]=b'\x01\x01'
+        print(port,'runtime capacity',amount,'LDNs',file=sys.stderr,flush=True)
+        post=runtime_startup_snapshot(port,cards=cards,policy=policy)
+        evidence=post.startup_evidence;observed=evidence['placement_observations'][0]
+        root=bytes.fromhex(evidence['actual_complete_P2_roots_before_finish'][0])
+        assert observed['actual_LDN_count']==observed['stored_LDN_count']==amount
+        assert observed['reconstruction_status']==root[19]==0,'Earlier P2 failure cannot stand in for retention capacity'
+        assert int.from_bytes(root[24:28],'little')==amount
+        assert all(not row[0x30] for card in cards for row in card.registers.values())
+        fit=amount==maximum
+        finish=evidence['finish_observations'][0]
+        assert finish['runtime_published']==fit,(port,amount,maximum,finish)
+        assert bool(evidence['actual_incomplete_notice_entries'])==(not fit)
+        assert decode_saved(post)[0]['C_PNP'][14]==int(not fit)
+        if fit:
+            relative=int.from_bytes(post.cpu.mem_read(post.base+0x334,4),'little')
+            assert post.cpu.mem_read(post.base+relative,8)==b'PNP3\x03\0\0\0'
+            post.put('C_BOOT',b'\x04')
+            result=runtime_execute_boot(post)
+            assert result['terminal']=='loader' and post.cpu.mem_read(0x6F0,2)==b'\x02\0'
+        else:
+            assert not any(post.cpu.mem_read(post.base+0x334,8))
+            assert post.get('C_ERROR')[0]&0x40
+        results.append({'LDNs':amount,'cards':len(cards),'P2_complete':True,'runtime_fit':fit,
+                        'actual_startup_finish':evidence,'pending_Clear':int(not fit)})
+    return {'actual_normal_memory_KiB':kib,'LDN_bytes':564,'card_bytes':32,
+            'complete_prefix_bytes':prefix,'separately_charged_staging_bytes':staging,
+            'temporary_instance_bytes':3*28,'last_fit_LDNs':maximum,'first_excess_LDNs':maximum+1,
+            'existing_scratch_exclusion':[0x20000,0x40000] if port=='pb430' else None,'cases':results}
+
+
+def runtime_provider_set(port):
+    results={}
+    for name,actions in (('empty',()),('one',('boot',)),('A1_A2',('cf','cf')),('A1_A2_B',('cf','cf','boot'))):
+        m=runtime_external_machine(port,actions)
+        relative=int.from_bytes(m.cpu.mem_read(m.base+0x334,4),'little')
+        assert int.from_bytes(m.cpu.mem_read(m.base+relative+4,4),'little')==len(actions)
+        result=runtime_execute_boot(m)
+        expected='loader' if actions and actions[-1]=='boot' else 'retry'
+        assert result['terminal']==expected
+        rows=[struct.unpack('<16H',m.cpu.mem_read(0x900+n*32,32)) for n in range(len(actions))]
+        assert all(row[:3]==(1,1,int(action!='boot')) for row,action in zip(rows,actions)),rows
+        if expected=='loader':assert int.from_bytes(m.cpu.mem_read(0x6F0,2),'little')==len(actions)
+        result.update(equal_product_IDs_distinct_instances=True,complete_count=len(actions),witnesses=rows)
+        results[name]=result
+    return results
+
+
+
+def runtime_legacy(port):
+    results={}
+    for action in ('return','int18','boot'):
+        source="""bits 16
+org 0
+db 55h,0AAh,4
+jmp init
+times 1Ah-($-$$) db 0
+dw 0
+init:
+push ds
+xor ax,ax
+mov ds,ax
+inc word [700h]
+mov word [64h],chain
+mov [66h],cs
+pop ds
+retf
+chain:
+push ds
+xor ax,ax
+mov ds,ax
+inc word [702h]
+pop ds
+"""
+        source+=('retf\n' if action=='return' else 'int 18h\n' if action=='int18' else
+                 'xor ax,ax\nmov ds,ax\nmov word [6F0h],3\nhlt\n')
+        source+='times 2048-($-$$) db 0\n'
+        raw=bytearray(runtime_assemble(port,'legacy-chain-'+action,source));raw[-1]=(-sum(raw))&255
+        m=runtime_external_machine(port,('cf','cf'),images=(runtime_provider(port,0,'cf'),bytes(raw)))
+        if action=='boot':m.runtime_loader_halts=(0xC9000+raw.index(0xF4,0x1C),)
+        result=runtime_execute_boot(m)
+        assert struct.unpack('<2H',m.cpu.mem_read(0x700,4))==(1,1)
+        assert struct.unpack('<3H',m.cpu.mem_read(0x900,6))==(1,1,1)
+        assert result['terminal']==('loader' if action=='boot' else 'retry'),result
+        if action=='boot':assert m.cpu.mem_read(0x6F0,2)==b'\x03\0'
+        result['captured_legacy_chain_only_after_Other_providers']=True
+        result['return_or_active_INT18_advances_without_cycle']=action!='boot'
+        results[action]=result
+    return results
+
+def runtime_bev(port):
+    results={}
+    for name,indicators,status,bcv,bev in (('eligible',4,0x20,False,True),('not_IPL',0,0x20,False,True),
+        ('block_no_BCV',4,0x120,False,True),('null_BEV',4,0x20,False,False),('both_vectors',4,0x20,True,True),
+        ('no_attached_IPL',4,0,False,True),('unknown_IPL',4,0x10,False,True),
+        ('eligible_INT18',4,0x20,False,True),('eligible_INT19',4,0x20,False,True),('block_both_vectors',4,0x120,True,True)):
+        cause='int18' if name.endswith('INT18') else 'int19' if name.endswith('INT19') else 'return'
+        image=runtime_provider(port,0,action='cf',bcv=bcv,bev=bev,status=status,indicators=indicators,bev_action=cause)
+        m=runtime_external_machine(port,('cf','boot'),images=(image,runtime_provider(port,1)))
+        result=runtime_execute_boot(m)
+        row=struct.unpack('<16H',m.cpu.mem_read(0x900,32))
+        eligible=name in ('eligible','unknown_IPL','eligible_INT18','eligible_INT19')
+        block=name=='block_both_vectors'
+        assert row[:4]==(1,int(block),int(block),int(eligible)),(name,row)
+        if eligible:assert row[4:9]==(0,0xFFFF,0xFFFF,0xF000,m.listing.symbol('pnp_installation')),(name,row)
+        if block:assert row[4:9]==(4,0xFFFF,0xFFFF,0xF000,m.listing.symbol('pnp_installation')) and row[10]>0
+        assert m.cpu.mem_read(0x6F0,2)==b'\x02\0'
+        result['first_BEV_called']=eligible;result['first_connection_or_disconnect']=block
+        result['BEV_context']=row[4:9] if eligible else None;result['BEV_cause']=cause
+        result['block_BCV_precedes_BEV']=block
+        results[name]=result
+    return results
+
+
+def runtime_isa_association_case(port,first_present):
+    from shared.tools.isa_pnp_proof import Bus,Card,serial
+    cards=[];images=[];bases=(0xC8000,0xC9000)
+    for n,base in enumerate(bases):
+        memory=b'\x86\x09\0\x44'+struct.pack('<II',base,2048)
+        stream=b'\x0A\x10\0\x82\x03\0ISA\x15\x41\xD0\x05\0\x01'+memory+b'\x79\0'
+        cards.append(Card(serial(b'\x41\xD0\x05\0',n+1),stream,powerup_active=True,memory_upper=True))
+        images.append(runtime_provider(port,n,status=0x120 if n or first_present else 0,init_witness=True))
+    bus=Bus(cards,{0x203:'no-pair'});bus.pause=False;m=isa_machine(port,bus,OUTPUT)
+    visibility=[]
+    def mapped(cpu,access,address,length,value,unused):
+        for n,base in enumerate(bases):
+            if base<=address<base+2048:
+                regs=cards[n].registers[0]
+                actual=int.from_bytes(bytes(regs.get(at,0) for at in range(0x76,0x7A)),'big') if 0x76 in regs else base
+                responds=bool(regs[0x30] and actual==base)
+                visibility.append((n,responds))
+                cpu.mem_write(address,images[n][address-base:address-base+length] if responds else b'\xFF'*length)
+                return
+    h=m.cpu.hook_add(UC_HOOK_MEM_READ,mapped,None,bases[0],bases[-1]+2047)
+    try:
+        m.cpu.mem_write(0xD0000,runtime_provider(port,2,init_witness=True))
+        m.call('settings_load');m.call('setup_defaults');m.draft()
+        for field,value in (('U_BOOT',4),('U_BOOT_SECOND',0),('U_BOOT_THIRD',0),('U_BOOT_FOURTH',0)):m.put(field,bytes((value,)))
+        assert m.call('settings_save')
+        if port!='m919':m.call('pnp_journal_release')
+        m.call('pnp_early');m.call('option_rom_discovery');m.call('pnp_finish_entry')
+        m.base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4
+        # Install the actual resident disk handler for the boot reset service;
+        # this allocator-entry fixture has not run the POST IVT initializer.
+        m.cpu.mem_write(0x4C,struct.pack('<HH',m.listing.symbol('int13'),0xF000))
+        runtime_attach_interrupts(m)
+        boot=runtime_execute_boot(m)
+        expected=1 if first_present else 2
+        assert boot['terminal']=='loader' and m.cpu.mem_read(0x6F0,2)==expected.to_bytes(2,'little')
+        rows=[struct.unpack('<16H',m.cpu.mem_read(0x900+n*32,32)) for n in range(2)]
+        assert [row[1] for row in rows]==([1,0] if first_present else [0,1])
+        selected=0 if first_present else 1
+        assert rows[selected][4:9]==(4,cards[selected].csn,bus.read_port,0xF000,m.listing.symbol('pnp_installation'))
+    finally:m.cpu.hook_del(h)
+    assert bus.read_port!=0x203
+    observed=[]
+    for n,card in enumerate(cards):
+        assert card.registers[0][0x30]==1
+        ax,bx,dx,es,di=struct.unpack('<5H',m.cpu.mem_read(0x600+n*16,10))
+        assert (ax,bx,dx,es,di)==(0xFFFF,card.csn,bus.read_port,0xF000,m.listing.symbol('pnp_installation'))
+        observed.append({'serial':card.identity.hex(),'external_actual_CSN':card.csn,'init_BX':bx,'init_DX':dx})
+    assert struct.unpack('<3H',m.cpu.mem_read(0x620,6))==(0xFFFF,0xFFFF,bus.read_port)
+    base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4
+    offset=int.from_bytes(m.cpu.mem_read(base+0x334,4),'little')
+    records=bytes(m.cpu.mem_read(base+offset+60,72))
+    assert [struct.unpack_from('<H',records,n*24+10)[0] for n in range(3)]==[0x120 if first_present else 0,0x120,0x120]
+    assert [struct.unpack_from('<H',records,n*24+16)[0] for n in range(3)]==[cards[0].csn,cards[1].csn,0xFFFF]
+    assert all(struct.unpack_from('<H',records,n*24+22)[0]==0 for n in range(2))
+    assert any(not v for n,v in visibility),'Census must actually remove old ROM decode'
+    return {'actual_census_solve_ROM_registers_and_init_association':observed,
+            'non_ISA_distinct_instance':True,'captured_first_status':0x120 if first_present else 0,'actual_status_selected_terminal':boot,'selected_ROM':expected,
+            'complete_runtime_records':records.hex(),'relocated_read_port':bus.read_port}
+
+
+def runtime_isa_association(port):
+    return {str(present):runtime_isa_association_case(port,present) for present in (True,False)}
 
 
 def allocation_startup_causal(port,groups=None,pci_cases=(False,True),video_cases=(False,True)):
@@ -3057,7 +4925,7 @@ def composed_capacity(port,baseline):
         assert observed['stored_LDN_count']==min(amount,maximum)
         assert all(not row[0x30] for card in cards for row in card.registers.values())
         m.cmos[:]=bytes.fromhex(result['cmos']);after=decode_saved(m)
-        expected=bytearray(policy);expected[14]=int(amount>maximum)
+        expected=bytearray(policy);expected[14]=int(not result['finish_observations'][0]['runtime_published'])
         assert after[0]['C_PNP']==expected and after[1]==before[1]
         for field in ('C_IDE','C_PORTS','C_CHIP'):assert after[0][field]==before[0][field]
         assert len(result['finish_observations'])==1
@@ -3086,7 +4954,317 @@ def resource_semantics(port):
             'manual_IRQ':manual_irq_alias(port,OUTPUT),'programming':resource_programming(port,OUTPUT),
             'decoded_candidates_to_commit':allocation_causal(port,('io',))}
 def option_roms(port):return {'static':static_resources(port,OUTPUT),'retained_ISA':retained_isa_rom(port,OUTPUT),
-                              'static_report_to_commit':allocation_causal(port,('static',))}
+    'static_report_to_commit':allocation_causal(port,('static',)),'full_static_buffer_PCI':runtime_static_buffer(port),
+    'complete_generic_chain':runtime_chain(port),'complete_instances':runtime_provider_set(port),
+    'actual_ISA_association':runtime_isa_association(port),'selected_Video2':runtime_display(port),
+    'PCI_deployment_instances':runtime_pci_instances(port)}
+
+
+
+
+def runtime_static_buffer(port):
+    from shared.tools.isa_pnp_proof import Bus,Card,serial
+    from shared.tools.pci_proof import PCI,Endpoint
+    io=lambda base:b'\x47\x01'+struct.pack('<HHBB',base,base,1,16)
+    allocated=io(0xC010)*124+io(0xC030)+b'\x22\0\0'*2+b'\x79\0'
+    node=struct.pack('<HB4s3sH',1024,0,b'\x41\xD0\x05\0',bytes(3),3)+allocated+b'\x79\0\x79\0'
+    assert len(node)==1024
+    raw=bytearray(4096);raw[:4]=b'\x55\xAA\x08\xCB';struct.pack_into('<H',raw,0x1A,0x40)
+    raw[0x40:0x46]=b'$PnP\x01\x02';raw[0x4A:0x4E]=b'\x41\xD0\x05\0'
+    struct.pack_into('<H',raw,0x5E,0x200);raw[0x49]=(-sum(raw[0x40:0x60]))&255
+    code=bytes.fromhex('1E570E1FBE0004B90004FCF3A45F1FCB')
+    raw[0x200:0x200+len(code)]=code;raw[0x400:0x800]=node;raw[-1]=(-sum(raw))&255
+    returning=0xC8200+len(code)-1;results=[]
+    for present in (False,True):
+        card=Card(serial(b'\x41\xD0\xFF\xFF',1),b'\x0A\x10\0\x82\x03\0ISA\x15\x41\xD0\x05\0\x01\x4B\xE0\x03\x08\x79\0')
+        bus=Bus([card]);bounds=[];active=[None];written=set();endpoint=Endpoint(bars={0x10:0xFFFFFFF1})
+        if port=='m919':bus.pci=PCI({0x60:endpoint});bus.pci_address=0
+        def configure(m):
+            if not present:return
+            m.cpu.mem_write(0xC8000,bytes(raw))
+            def entry(cpu,address,length,unused):
+                if address==0xC8200:
+                    low=(cpu.reg_read(x.UC_X86_REG_ES)<<4)+cpu.reg_read(x.UC_X86_REG_DI)
+                    active[0]=(low,bytes(cpu.mem_read(low-16,16)),bytes(cpu.mem_read(low+1024,16)))
+                elif address==returning:
+                    low,before,after=active[0]
+                    assert bytes(cpu.mem_read(low-16,16))==before and bytes(cpu.mem_read(low+1024,16))==after
+                    assert bytes(cpu.mem_read(low,1024))==node and written==set(range(low,low+1024))
+                    bounds.append({'actual_ES_DI':low,'written_bytes':1024,'before_canary':before.hex(),'after_canary':after.hex()});active[0]=None
+            def write(cpu,access,address,length,value,unused):
+                if active[0] is not None and active[0][0]-16<=address<active[0][0]+1040:written.update(range(address,address+length))
+            m.cpu.hook_add(UC_HOOK_CODE,entry);m.cpu.hook_add(UC_HOOK_MEM_WRITE,write)
+        m,bus=allocation_fixture(port,[card],bus=bus,configure=configure)
+        assert card.registers[0][0x30]==1 and len(bounds)==int(present)
+        query=m.call('pnp_claim_query',AX=0x201,EDX=0xC010,ECX=16)
+        assert query==(not present),(port,present,query,bounds,bytes(m.cpu.mem_read(int.from_bytes(m.cpu.mem_read(m.base+0x330,4),'little'),32)).hex())
+        assert m.call('pnp_claim_query',AX=0x201,EDX=0xC030,ECX=16)==(not present)
+        bar=None
+        if port=='m919':
+            m.call('pci_initialize');bar=endpoint.read(0x10,4)&~3
+            # The first16-byte candidate C000 aliases DMA0..0F. Without
+            # the report C010 is free. With it, C010/C030 are static claims,
+            # C020 aliases PIC20..21, and C040 aliases PIT40..43, so C050
+            # is the first free candidate. These are independent AT decodes.
+            assert bar==(0xC050 if present else 0xC010),hex(bar)
+            assert endpoint.read(4,2)&1
+        results.append({'static_present':present,'actual_vector_boundaries':bounds,'ISA_active':True,'actual_PCI_BAR':bar,
+                        'complete_later_resource_after_124_duplicate_descriptors':True})
+    return results
+
+
+def runtime_legacy_coexistence(port,post=None):
+    source="""bits 16
+org 0
+db 55h,0AAh,4
+jmp init
+times 1Ah-($-$$) db 0
+dw 0
+init:
+push ds
+xor ax,ax
+mov ds,ax
+inc word [700h]
+mov word [64h],chain
+mov [66h],cs
+pop ds
+retf
+chain:
+push ds
+xor ax,ax
+mov ds,ax
+inc word [702h]
+cmp byte [6EEh],1
+pop ds
+je interrupted
+retf
+interrupted: int 18h
+hlt
+times 2048-($-$$) db 0
+"""
+    legacy=bytearray(runtime_assemble(port,'coexisting-legacy',source));legacy[-1]=(-sum(legacy))&255
+    chain=int.from_bytes(legacy[0x1E+0:0x1E+2],'little') if False else legacy.index(b'\x1E\x31\xC0\x8E\xD8\xFF\x06\x02\x07')
+    if post is None:post=runtime_startup_snapshot(port,rom_images=((0xC800,runtime_provider(port,0,'cf')),(0xC900,bytes(legacy))),
+        boot_order=(2,3,4,1),snapshot_name='p3-coexistence-post')
+    results=[]
+    for interrupted in (False,True):
+        m=runtime_clone_post(post);cd,disk=runtime_native_device(m);m.cpu.mem_write(0x6EE,bytes((int(interrupted),)))
+        native=runtime_assemble(port,'coexisting-native',"""bits 16
+org 7C00h
+xor ax,ax
+mov ds,ax
+mov word [6F2h],80h
+int 18h
+hlt
+times 510-($-$$) db 0
+dw 0AA55h
+""")
+        disk.disk_words.update({(0,n):word for n,word in enumerate(struct.unpack('<256H',native))})
+        image=cd.disc(media=0)
+        cdloader=runtime_assemble(port,'coexisting-CD',"""bits 16
+org 7C00h
+xor ax,ax
+mov ds,ax
+mov word [6F4h],0E0h
+int 19h
+hlt
+times 510-($-$$) db 0
+dw 0AA55h
+""")
+        image[21*2048:21*2048+512]=cdloader;disk.images[1]=image
+        floppy=runtime_assemble(port,'coexisting-floppy',"""bits 16
+org 7C00h
+xor ax,ax
+mov ds,ax
+mov word [6F6h],0FDh
+hlt
+times 510-($-$$) db 0
+dw 0AA55h
+""")
+        fdc,fdc_hook=runtime_floppy_device(m,floppy)
+        native13=bytes(m.cpu.mem_read(0x4C,4));trace=[]
+        bcv=0xC8000+int.from_bytes(m.cpu.mem_read(0xC8076,2),'little')
+        def observe(cpu,address,length,unused):
+            if address==0x7C00:
+                dl=cpu.reg_read(x.UC_X86_REG_DL);trace.append(('load',dl))
+                assert (cpu.reg_read(x.UC_X86_REG_ES),cpu.reg_read(x.UC_X86_REG_DI))==(0xF000,m.listing.symbol('pnp_installation'))
+            elif address==bcv:trace.append(('PnP',0))
+            elif address==0xC9000+chain:
+                trace.append(('legacy',int(interrupted)))
+                assert bytes(cpu.mem_read(0x4C,4))==native13 and cpu.mem_read(m.base+0x298,1)==b'\0'
+                assert cpu.mem_read(0x475,1)==b'\x01'
+        hook=m.cpu.hook_add(UC_HOOK_CODE,observe)
+        try:boot=runtime_execute_boot(m)
+        finally:m.cpu.hook_del(hook);m.cpu.hook_del(fdc_hook)
+        assert boot['terminal']=='loader' and trace==[('load',0x80),('load',0xE0),('PnP',0),('legacy',int(interrupted)),('load',0)],trace
+        assert struct.unpack('<3H',m.cpu.mem_read(0x6F2,6))==(0x80,0xE0,0xFD)
+        assert struct.unpack('<2H',m.cpu.mem_read(0x700,4))==(1,1)
+        # Actual CD volume/catalog reads own0800h..0FFFh, so they deliberately
+        # overwrite the old init witness900h. Initialization is observed on the
+        # external ROM entry during actual POST; BCV/disconnect occur afterwards.
+        assert post.startup_evidence['actual_ROM_initializations']==[1,1]
+        assert struct.unpack('<2H',m.cpu.mem_read(0x902,4))==(1,1)
+        results.append({'legacy_interrupt':interrupted,'same_native_CD_PnP_legacy_floppy_chain':trace,
+            'actual_FDC_commands':fdc.fdc_log,'actual_ATA_commands':disk.selected_commands,
+            'one_PnP_disconnect_and_one_legacy_call':True,'actual_CD_scratch_reused_old_init_witness':True})
+    return {'actual_startup':post.startup_evidence,'cases':results}
+
+
+def runtime_noncontiguous_pack(port):
+    from shared.tools.isa_pnp_proof import Bus
+    results=[]
+    for fit in (True,False):
+        m=isa_machine(port,Bus([]),OUTPUT)
+        m.call('settings_load');m.call('setup_defaults');m.draft()
+        for field,value in (('U_HALT',1),('U_BOOT',4),('U_BOOT_SECOND',0),('U_BOOT_THIRD',0),('U_BOOT_FOURTH',0)):m.put(field,bytes((value,)))
+        policy=bytearray(15);policy[14]=1;m.put('U_PNP',policy);assert m.call('settings_save')
+        if port!='m919':m.call('pnp_journal_release')
+        m.call('pnp_early')
+        prefix=m.cpu.mem_read(m.base,1)[0]*1024
+        stage=(prefix+60+3*24+1023)&~1023
+        failure_ceiling=64+stage//1024-1
+        reserve=runtime_assemble(port,'reserve-between-records-'+str(fit),f"""bits 16
+org 100h
+pushad
+push ds
+push es
+xor ax,ax
+mov ds,ax
+mov bx,[413h]
+mov [6D0h],bx
+mov dx,bx
+{'sub bx,8' if fit else f'mov bx,{failure_ceiling}'}
+mov [6D2h],bx
+mov [413h],bx
+sub dx,bx
+mov ax,bx
+shl ax,6
+mov es,ax
+xor di,di
+.block:
+mov ax,6D6Dh
+mov cx,512
+rep stosw
+mov ax,es
+add ax,40h
+mov es,ax
+xor di,di
+dec dx
+jnz .block
+pop es
+pop ds
+popad
+xor ax,ax
+retf
+""")
+        raw=bytearray(runtime_rom(0,status=0));raw[0x100:0x100+len(reserve)]=reserve;raw[-1]=0;raw[-1]=(-sum(raw))&255
+        for segment,image in ((0xC800,raw),(0xC900,runtime_provider(port,1,'cf')),(0xCA00,runtime_provider(port,2))):m.cpu.mem_write(segment<<4,bytes(image))
+        m.call('option_rom_discovery')
+        high,low=struct.unpack('<HH',m.cpu.mem_read(0x6D0,4));owner=(low*1024,high*1024)
+        assert high>low and m.cpu.mem_read(owner[0],owner[1]-owner[0])==b'\x6D'*(owner[1]-owner[0])
+        pointer=int.from_bytes(m.cpu.mem_read(m.base+0x334,4),'little');links=[];payload=[];seen=set()
+        while pointer:
+            assert pointer not in seen;seen.add(pointer)
+            row=bytes(m.cpu.mem_read(pointer,28));links.append((pointer,int.from_bytes(row[:4],'little')))
+            payload.append(row[4:]);pointer=links[-1][1]
+        assert len(links)==3 and any(abs(a-b)>28 for a,b in links if b),links
+        old=m.base;before=bytes(m.cpu.mem_read(old,prefix));saved=m.snapshot()
+        m.call('pnp_finish_entry')
+        base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4
+        after=bytes(m.cpu.mem_read(base,prefix))
+        allowed={0,m.state['C_ERROR'],m.state['C_PNP']+14}|set(range(0x320,0x33C))
+        differences=[n for n,(a,b) in enumerate(zip(before,after)) if a!=b]
+        assert not set(differences)-allowed,(port,fit,differences)
+        assert after[m.state['C_ERROR']]==before[m.state['C_ERROR']]|(0 if fit else 0x40)
+        assert after[0x328:0x32A]==before[0x328:0x32A]
+        assert m.cpu.mem_read(owner[0],owner[1]-owner[0])==b'\x6D'*(owner[1]-owner[0])
+        assert not any(m.cpu.mem_read(base+0x320,8)) and not any(m.cpu.mem_read(base+0x338,4))
+        relative=int.from_bytes(m.cpu.mem_read(base+0x334,4),'little')
+        if fit:
+            assert relative==prefix and base+(m.cpu.mem_read(base,1)[0]*1024)==owner[0]
+            header=bytes(m.cpu.mem_read(base+relative,60))
+            assert m.cpu.mem_read(base,1)[0]*1024==stage
+            assert header[19]==prefix//1024
+            assert struct.unpack_from('<HHHB',header,40)==(int.from_bytes(before[0x328:0x32A],'little'),low,base>>4,stage//1024)
+            assert int.from_bytes(header[50:52],'little')==base>>4
+            assert int.from_bytes(header[4:8],'little')==3 and header[8:19]==bytes(11)
+            packed=bytes(m.cpu.mem_read(base+relative+60,72));assert packed==b''.join(reversed(payload))
+            assert m.cpu.mem_read(base+m.state['C_PNP']+14,1)==b'\0'
+            m.base=base
+            runtime_attach_interrupts(m)
+            # As in runtime_native_device, install the real resident BIOS disk
+            # vector in this allocator-entry fixture. No native device/count is
+            # fabricated; the actual reset service handles its absent drive.
+            m.cpu.mem_write(0x4C,struct.pack('<HH',m.listing.symbol('int13'),0xF000))
+            calls=[];interrupt=m.runtime_interrupt
+            def observed_interrupt(cpu,vector):
+                calls.append((vector,bytes(cpu.mem_read(vector*4,4)).hex(),cpu.reg_read(x.UC_X86_REG_CS),cpu.reg_read(x.UC_X86_REG_IP)))
+                return interrupt(cpu,vector)
+            m.runtime_interrupt=observed_interrupt
+            try:boot=runtime_execute_boot(m)
+            except Exception as error:
+                pc=(m.cpu.reg_read(x.UC_X86_REG_CS)<<4)+m.cpu.reg_read(x.UC_X86_REG_IP)
+                raise AssertionError('noncontiguous boot',port,owner,base,hex(pc),bytes(m.cpu.mem_read(pc,16)).hex(),
+                    {r:m.cpu.reg_read(getattr(x,'UC_X86_REG_'+r)) for r in ('CS','IP','SS','SP','FS','GS')},links,calls) from error
+            assert boot['terminal']=='loader' and m.cpu.mem_read(0x6F0,2)==b'\x03\0'
+            assert m.cpu.mem_read(owner[0],owner[1]-owner[0])==b'\x6D'*(owner[1]-owner[0])
+        else:
+            assert base==old and relative==0 and m.get('C_ERROR')[0]&0x40
+            assert m.get('C_PNP',15)[14]==1 and m.snapshot()==saved
+            boot=None
+        ceiling=int.from_bytes(m.cpu.mem_read(0x413,2),'little')
+        assert ceiling==(base>>10 if fit else low)
+        expected=bytearray(policy);expected[14]=int(not fit)
+        assert decode_saved(m)[0]['C_PNP']==expected
+        results.append({'runtime_fit':fit,'real_returning_ROM_external_interval':owner,'owner_bytes':owner[1]-owner[0],
+            'noncontiguous_links':links,'complete_payloads_in_encounter_order':[r.hex() for r in reversed(payload)],
+            'whole_prefix_sha256':hashlib.sha256(before).hexdigest(),'whole_prefix_actual_differences':differences,
+            'only_explicit_publication_fields_changed':True,'full_external_owner_and_boundary_canaries_preserved':True,
+            'actual_available_KiB':ceiling,'final_base':base,'pending_Clear':int(not fit),'boot':boot})
+    return results
+
+def runtime_clock_restart(port,rows=None):
+    if port!='pb430':return {'private_clock_relocation':'not-applicable'}
+    import importlib
+    from shared.tools.isa_pnp_proof import Bus
+    sys.path.insert(0,str(ROOT/port/'tools'))
+    suite=importlib.import_module('test-port');scenario=importlib.import_module('scenarios')
+    image=ROOT/port/OUTPUT/'production/baios-pb430.bin'
+    if rows is None:rows=scenario.clock(image,suite.nvram,post_only=True)
+    n=suite.nvram();n[0x38]=0;n[0x0E]=0x80
+    m=scenario.ACC(image,n,isa_bus=Bus([]))
+    m.call('pnp_early')
+    m.script=[0x20] # Fresh D chooses the existing verified defaults transaction.
+    address=0xF0000+m.listing.symbol('controlled_defaults_restart');entered=[]
+    h=m.cpu.hook_add(UC_HOOK_CODE,lambda u,a,z,v:entered.append(a),None,address,address)
+    try:
+        u=m.cpu
+        for reg,value in dict(CS=0xF000,IP=m.listing.symbol('post_clock_alert'),DS=0,ES=0,FS=m.base>>4,SS=0,SP=0x7000,EFLAGS=0x202).items():
+            u.reg_write(getattr(x,'UC_X86_REG_'+reg),value)
+        u.mem_write(0x7000,b'\xFF\xFF')
+        u.emu_start(0xF0000+m.listing.symbol('post_clock_alert'),0xFFFFF,count=12000000)
+    finally:m.cpu.hook_del(h)
+    assert entered==[address] and m.reset_pending,(entered,m.reset_pending,hex(m.cpu.reg_read(x.UC_X86_REG_IP)),m.console)
+    assert m.cmos[0x33:0x35]==b'N\x06' and m.cmos[0x0F]==0
+    checked=settings.Settings(port,OUTPUT);checked.cmos[:]=m.cmos;checked.call('settings_load')
+    assert checked.get('C_VALID')==b'\x01';decode_saved(checked);settings.at_checksum(checked.cmos)
+    return {'existing_valid_invalid_clock_Save_reset':rows,'actual_private_invalid_settings_defaults_restart':True,
+            'resident_restart_before_actual_reset_pulse':entered,'verified_NV6_defaults':True}
+
+def boot_continuation(port):
+    post=runtime_startup_snapshot(port)
+    return {'promotion':runtime_promotion(port),'media_and_disk_ownership':runtime_media(port,post),
+            'relocated_actual_disk_ownership':runtime_disk_ownership(port,post),
+            'native_loader_INT19':runtime_handoff_native(port,runtime_clone_post(post),'int19'),
+            'relocated_real_buffer_APIs':runtime_relocated_buffer_apis(port,post),
+            'saved_category_priority':runtime_saved_priority(port,post),
+            'relocated_clock_owner':runtime_clock_restart(port),
+            'external_continuation':{a:runtime_handoff_external(port,a) for a in ('cf','unsigned','int18','int19')},
+            'strict_CHS_other':runtime_strict_chs(port),
+            'BEV':runtime_bev(port),'legacy_chain':runtime_legacy(port),'legacy_coexistence':runtime_legacy_coexistence(port),'relocation':runtime_relocation(port),
+            'stale_and_fresh_retry':runtime_retry(port),'actual_CAD_and_repeated_warm':runtime_reset(port,cad=True,used=True),
+            'natural_new_stage_capacity':runtime_capacity(port,post),'noncontiguous_full_prefix':runtime_noncontiguous_pack(port),
+            'APM':{name:runtime_apm(port,mode) for name,mode in (('real',1),('pm16',2),('pm32',3))}}
 def composed_resources(port):
     result={'joint_and_dependent':dependent_alternatives(port,OUTPUT),'map':onboard_map(port,OUTPUT),
             'policy_and_release':allocation_policy(port,OUTPUT),'retirement':clear_retirement(port,OUTPUT),
@@ -3150,7 +5328,7 @@ def check_causal_routing(port,result):
 def image_contract(port,output=None):
     c=Caller(port) if output is None else settings.Settings(port,output)
     image=c.image.parent/'production'/c.image.name if output is None else c.image
-    assert not scan(image.read_bytes())
+    assert len(scan(image.read_bytes()))==int(port!='mp386')
     raw=image.read_bytes();rom=raw[-65536:]
     listing=settings.Listing(image.with_suffix('.lst'))
     if port!='presario-800':verify(port,image)
@@ -3175,6 +5353,8 @@ def image_contract(port,output=None):
         # E0 is generated APM/SMM code, not a retained vendor input. Test-only
         # discovery cannot alter it; its independent region checksum also holds.
         assert sum(raw[:65536])&255==0
+        frozen=json.loads((ROOT/'shared/tests/fixtures/pnp-placement-p1.json').read_text())['ports'][port]
+        assert hashlib.sha256(raw[:0x1600]).hexdigest()==frozen['retained_sha256']
         if output is None:assert raw[:0x1600]==c.image.read_bytes()[:0x1600]
     placement={}
     if port in ('m919','pb430','presario-800'):
@@ -3192,7 +5372,8 @@ def image_contract(port,output=None):
         if re.search(r'\btimes\s+(?:0xF065|0xFFF0|CFG_ROM_CHECKSUM_OFFSET)',line) and 'db 0xFF' in line:
             match=re.match(r'\s*\d+\s+([0-9A-F]{8})\s+FF<rep ([0-9A-F]+)h>',line)
             if match:regions.append((int(match[1],16),int(match[2],16)))
-    return {'normal_installation_absent':True,'placement':placement,'sha256':hashlib.sha256(full).hexdigest(),
+    partial=prepare_partial(port) if port!='mp386' and output is None else None
+    return {'normal_complete_installation':port!='mp386','partial_composition':partial,'placement':placement,'sha256':hashlib.sha256(full).hexdigest(),
             'size':len(full),'sum32':f'{sum(full):08X}',
             'system_sha256':hashlib.sha256(rom).hexdigest(),
             'free_system_bytes':sum(n for at,n in regions if at<0xFFF0),'padding_regions':regions}
@@ -3271,7 +5452,7 @@ if __name__=='__main__':
     parser.add_argument('--port',choices=('all','mp386')+PORTS,default='all')
     parser.add_argument('--case',choices=('all','abi','information-services','nodes','set-node','image-contract','mp-negative',
         'isolation','resource-reopen','logical-devices','memory-and-streams','resource-semantics',
-        'dependent-alternatives','composed-resources','option-roms','placement'))
+        'dependent-alternatives','composed-resources','option-roms','boot-continuation','placement'))
     parser.add_argument('--startup-causal',action='store_true')
     parser.add_argument('--startup-cmos')
     parser.add_argument('--startup-nv',default='')
@@ -3282,11 +5463,11 @@ if __name__=='__main__':
         raise SystemExit
     assert args.case,'--case is required'
     if args.case in ('isolation','resource-reopen','logical-devices','memory-and-streams','resource-semantics',
-        'dependent-alternatives','composed-resources','option-roms','placement'):
-        OUTPUT='build/tests/pnp-allocation'
+        'dependent-alternatives','composed-resources','option-roms','boot-continuation','placement'):
+        OUTPUT='build/tests/pnp-runtime'
     if args.case=='mp-negative':
         assert args.port in ('all','mp386')
-        subprocess.run([sys.executable,'-B',str(ROOT/'mp386/tools/build.py'),'--output','build/tests/pnp-allocation'],check=True,cwd=ROOT)
+        subprocess.run([sys.executable,'-B',str(ROOT/'mp386/tools/build.py'),'--output','build/tests/pnp-runtime'],check=True,cwd=ROOT)
         print(json.dumps({'mp386':mp_negative()},indent=2))
         raise SystemExit
     assert args.port!='mp386','MP does not adopt PnP; select --case mp-negative'
@@ -3305,7 +5486,7 @@ if __name__=='__main__':
         prepare(port)
         cases=('abi','information-services','nodes','set-node','image-contract','isolation','resource-reopen',
                'logical-devices','memory-and-streams','resource-semantics','dependent-alternatives',
-               'composed-resources','option-roms','placement') if args.case=='all' else (args.case,)
+               'composed-resources','option-roms','boot-continuation','placement') if args.case=='all' else (args.case,)
         results[port]={case:globals()[case.replace('-','_')](port) for case in cases}
         if args.case in ('all','set-node'):results[port]['affected_settings']=settings_regressions(port)
     print(json.dumps(results,indent=2))

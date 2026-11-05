@@ -63,7 +63,9 @@ class Settings:
         self.cpu.mem_write(0x100000-len(raw), raw)
         self.base = 0x80000
         self.allocated = 1024 if port == 'presario-800' else 8192
+        self.cpu.mem_write(self.base,bytes((self.allocated//1024,)))
         self.cpu.mem_write(0x40E, struct.pack('<H', self.base >> 4))
+        self.cpu.mem_write(0x413, struct.pack('<H', self.base >> 10))
         self.cmos, self.nvram = bytearray(128), bytearray(0x10000)
         self.cmos[0xD], self.cmos[0xB], self.cmos[0x32] = 0x80, 2, 0x20
         self.cmos[7:10] = bytes((1,1,0x26))
@@ -81,6 +83,7 @@ class Settings:
         self.cpu.hook_add(UC_HOOK_MEM_WRITE, self.bounds)
 
     def bounds(self, cpu, access, address, size, value, _):
+        if any(lo<=address and address+size<=hi for lo,hi in getattr(self,'caller_buffers',())):return
         assert not self.base+self.allocated <= address < self.base+0x2000, ('EBDA overflow',hex(address))
 
     def inp(self, cpu, port, size, _):
@@ -156,12 +159,15 @@ class Settings:
         before=self.snapshot()
         write_start=len(self.writes)
         try:
-            cpu.emu_start(0xF0000+self.listing.symbol(name), 0xFFFFF, count=20000000 if name in ('setup_main','pnp_resource_next','pnp_census','pnp_post_invoke') else 2000000)
+            cpu.emu_start(0xF0000+self.listing.symbol(name), 0xFFFFF, count=20000000 if name in ('setup_main','pnp_resource_next','pnp_census','pnp_post_invoke','pnp_early','option_rom_discovery','pnp_finish_entry') else 2000000)
         finally:
             if name in ('settings_save','setup_main','ide_settings_save','ports_settings_save',
                         'chipset_settings_save','settings_recovery_publish'):
                 self.check_mutation(before,self.writes[write_start:],name)
         assert cpu.reg_read(x.UC_X86_REG_IP) == 0xFFFF, (name, hex(cpu.reg_read(x.UC_X86_REG_IP)))
+        if name=='pnp_finish_entry':
+            self.base=int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4
+            self.allocated=cpu.mem_read(self.base,1)[0]*1024
         return not cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
 
     def check_mutation(self,before,writes,owner):

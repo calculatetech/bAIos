@@ -1123,22 +1123,39 @@ load_bios_state:
 ; Both callers have already checked that the buffer does not wrap at 64 KiB.
 check_disk_buffer:
     push ebx
+%ifdef BOARD_PNP_SUPPORT
+    push ecx
+%endif
     push fs
     call load_bios_state     ; FS may select the secondary disk record.
+%ifdef BOARD_PNP_SUPPORT
+    movzx ecx,byte [fs:0]
+    shl ecx,10
+%endif
     xor ebx, ebx
     mov bx, fs
     pop fs
     shl ebx, 4
     cmp edx, ebx
     jbe .good
+%ifdef BOARD_PNP_SUPPORT
+    add ebx,ecx
+%else
     add ebx, CFG_PLATFORM_STATE_KIB*1024
+%endif
     cmp eax, ebx
     jb .bad
 .good:
+%ifdef BOARD_PNP_SUPPORT
+    pop ecx
+%endif
     pop ebx
     clc
     ret
 .bad:
+%ifdef BOARD_PNP_SUPPORT
+    pop ecx
+%endif
     pop ebx
     stc
     ret

@@ -14,7 +14,7 @@ Non-executing VGA selection and staging establish fixed C000 ownership after ISA
 
 Complete verified Save migrates legacy extensions to the [shared NV6 format](../../../docs/development/firmware.md). It preserves all 24 chipset bytes, two-position IDE geometry and peripheral choices. CMOS 37h remains outside the payload for the existing advanced-timing trial and restore sequence. Recovery 69h remains independent of the payload checksum. Component saves update only their own slice after migration.
 
-Version 0.2.0 uses the shared PIO0–4 service with automatic mode selection and restoration after channel reset. The current port ceiling is4. The generic path retains host strobes and requires an ATA controller that honors IORDY. Faster physical timing remains unqualified. See [the shared ATA contract](../../../shared/README.md).
+Version 0.2.0 uses the shared PIO0â€“4 service with automatic mode selection and restoration after channel reset. The current port ceiling is4. The generic path retains host strobes and requires an ATA controller that honors IORDY. Faster physical timing remains unqualified. See [the shared ATA contract](../../../shared/README.md).
 
 The user reports a **24% average benchmark improvement** over the stock BIOS. The separate RAM throughput result improved from **13.6 to 17.3 MB/sec**, with effective read/write access times of **242/121 ns**. These are physical observations, not emulator measurements. The complete winning settings and benchmark set are not yet recorded.
 
@@ -82,3 +82,5 @@ powershell -NoProfile -File pb430/tools/clean-build.ps1 -WhatIf
 ```
 
 The port retention policy keeps current ROMs, listings, dependencies, captures, failed diagnostics and the nested task worktree. It removes completed disposable VMs and media only after their consumers finish. A `.retain-diagnosis` file protects an active failed case. Original references remain unchanged.
+
+Video initialization, peripheral discovery and the clock alert use POST-only code through resident F000 bridges. The private finalizer returns before the complete runtime EBDA is published. Warm startup restores the original EBDA prefix and conventional-memory budget after the unchanged stock cache return and before the fixed private-bank reader. Public services follow the current BDA pointer after relocation.

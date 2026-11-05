@@ -30,7 +30,16 @@ pnp_module_node:
 %undef PNP_NODE_LOAD
 %include "firmware/pnp-allocation.inc"
 %include "firmware/pnp-rom-resources.inc"
-%include "firmware/settings-nv6-retire.inc"
+%include "firmware/pnp-rom.inc"
+%include "firmware/pnp-pack.inc"
+%include "firmware/pnp-peripheral-post.inc"
+%ifdef PB430_PORT
+%include "hardware/pnp-video.inc"
+%include "firmware/pnp-post-clock.inc"
+%endif
+%ifdef M919_BOARD_DEFINITION
+%include "firmware/pnp-pci-rom.inc"
+%endif
 %ifdef PNP_EXTERNAL_JOURNAL
 pnp_module_allocate:
     call CFG_ROM_CODE_SEGMENT:pnp_allocate_callback

@@ -10,7 +10,7 @@ import re
 import zlib
 from pathlib import Path
 
-from unicorn import UC_HOOK_CODE, UC_HOOK_INSN, UC_HOOK_MEM_WRITE
+from unicorn import UC_HOOK_CODE, UC_HOOK_INSN, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
 from unicorn import x86_const as x
 
 rtc = importlib.import_module('test-rtc')
@@ -263,16 +263,16 @@ class Setup(rtc.Clock):
                  cpu.reg_read(x.UC_X86_REG_CS) * 16 + cpu.reg_read(x.UC_X86_REG_IP) ==
                  getattr(self, 'post_terminal', -1))), 'setup did not reach terminal return'
 
-    def scans(self, scans):
+    def scans(self, scans,guest=0x90000):
         for scan in scans:
             self.pending.append(scan)
-            self.cpu.reg_write(x.UC_X86_REG_CS, 0x9000)
+            self.cpu.reg_write(x.UC_X86_REG_CS, guest>>4)
             self.cpu.reg_write(x.UC_X86_REG_IP, 0)
             self.cpu.reg_write(x.UC_X86_REG_SS, 0)
             self.cpu.reg_write(x.UC_X86_REG_SP, 0x7000)
             self.cpu.reg_write(x.UC_X86_REG_EFLAGS, 0x202)
-            self.cpu.mem_write(0x90000, b'\xcd\x09\x90')
-            self.cpu.emu_start(0x90000, 0x90002, count=100000)
+            self.cpu.mem_write(guest, b'\xcd\x09\x90')
+            self.cpu.emu_start(guest, guest+2, count=100000)
             if self.warm:
                 break
 
@@ -2335,6 +2335,21 @@ def production_post_model(kinds=None, peripherals=False, isa_bus=None):
             if physical.exists():
                 raw=physical.read_bytes()
                 if raw[0xC000:0xC008]==b'BAIPNP2\0':
+                    # CAXS CLEAR/FILL/RUN distinguish the retained ROM from
+                    # system shadow RAM. Execute the real zero/fill/copy owner.
+                    self.retained_vga=raw[:0x8000]
+                    self.vga_shadow=bytearray(0x8000)
+                    def vga_read(cpu,access,address,size,value,unused):
+                        offset=address-0xC0000
+                        mode=self.chipset.get(0x0F,0)>>((offset//0x4000)*2)&3
+                        source=self.vga_shadow if mode&2 else self.retained_vga
+                        cpu.mem_write(address,bytes(source[offset:offset+size]))
+                    def vga_write(cpu,access,address,size,value,unused):
+                        offset=address-0xC0000
+                        mode=self.chipset.get(0x0F,0)>>((offset//0x4000)*2)&3
+                        if mode&1:self.vga_shadow[offset:offset+size]=value.to_bytes(size,'little')
+                    self.cpu.hook_add(UC_HOOK_MEM_READ,vga_read,None,0xC0000,0xC7FFF)
+                    self.cpu.hook_add(UC_HOOK_MEM_WRITE,vga_write,None,0xC0000,0xC7FFF)
                     # D824's actual256KiB CPU-top mapping repeats the128KiB image.
                     self.cpu.mem_map(0xFFFC0000,0x40000)
                     self.cpu.mem_write(0xFFFC0000,raw+raw)

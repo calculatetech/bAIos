@@ -435,15 +435,17 @@ def chipset(image,seed):
     return rows
 
 
-def clock(image,seed):
+def clock(image,seed,post_only=False):
+    from shared.tools.isa_pnp_proof import Bus
     rows=[]
     for invalid in (False,True):
         import importlib
         n=seed();n[0x3B]=(n[0x3B]&~0x18)|8;n[0xE]=0x80 if invalid else 0
         importlib.import_module('test-port').repair_checksum(n)
-        m=ACC(image,n);m.continue_reset=True
+        m=ACC(image,n,isa_bus=Bus([]));m.continue_reset=True
         m.stop_address=0xF0000+m.listing.symbol('.wait','boot_retry')
         m.open([0x44,28])
+        m.base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4;m.segment=m.base>>4
         assert m.posts[-1]==0xE4
         notice='WARNING: CMOS date/time not set.'
         assert (notice in m.console)==invalid,(invalid,m.console)
@@ -451,6 +453,7 @@ def clock(image,seed):
         assert tuple(m.cpu.mem_read(m.base+i,1)[0] for i in (0x172,0x189,0x18A,0x1F6))==(2,1,0,0)
         assert bool(m.invoke(4)[0])==invalid
         rows.append({'post_clock_invalid':invalid,'visible_notice':notice if invalid else None,'valid_settings_preserved':True,'terminal':0xE4,'public_clock_invalid':invalid})
+    if post_only:return rows
     n=seed();n[0xE]=0x80;m=ACC(image,n)
     original_date=bytes(m.cmos[7:10])
     m.open([15,0x50,28]+setup.keys('120000p\r')+[1,1,28])

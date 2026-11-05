@@ -98,24 +98,7 @@ pnp_journal_allocate:
     stc
     ret
 
-pnp_journal_release:
-    pushad
-    push ds
-    call PNP_STATE_LOAD
-    xor ax,ax
-    mov ds,ax
-    mov eax,[fs:PNP_JOURNAL_CURSOR]
-    shr eax,10
-    cmp [0x413],ax
-    jb .external             ; Preserve a last returning consumer's reservation.
-    mov ax,[fs:PNP_JOURNAL_EXTERNAL_KIB]
-    mov [0x413],ax
-.external:
-    mov dword [fs:PNP_JOURNAL_FIRST],0
-    mov dword [fs:PNP_JOURNAL_COUNT],0
-    mov dword [fs:PNP_JOURNAL_CURSOR],0
-    mov dword [fs:PNP_JOURNAL_END],0
-    pop ds
-    popad
-    ret
+%ifndef M919_BOARD_DEFINITION
+%include "firmware/pnp-post-release.inc"
+%endif
 pnp_post_code_end:

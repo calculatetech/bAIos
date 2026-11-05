@@ -13,6 +13,43 @@ pnp_release_callback:
 pnp_video_callback:
     call board_video_prepare
     retf
+pnp_acc_read_callback:
+    call acc_read
+    retf
+pnp_acc_write_callback:
+    call acc_write
+    retf
+pnp_video_failed_callback:
+    pb_stage 0xE5
+    retf
+
+pnp_clock_load_bios_state_callback:
+    call load_bios_state
+    retf
+pnp_clock_post_message_cursor_callback:
+    call post_message_cursor
+    retf
+pnp_clock_print_string_callback:
+    call print_string
+    retf
+pnp_clock_post_error_tone_callback:
+    call post_error_tone
+    retf
+pnp_clock_post_notice_wait_callback:
+    call post_notice_wait
+    retf
+pnp_clock_rtc_read_callback:
+    call rtc_read
+    retf
+pnp_clock_setup_defaults_callback:
+    call setup_defaults
+    retf
+pnp_clock_settings_save_callback:
+    call settings_save
+    retf
+pnp_clock_settings_load_callback:
+    call settings_load
+    retf
 
 pnp_module_install:
     pushad

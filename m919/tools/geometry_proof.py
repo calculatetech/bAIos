@@ -112,6 +112,9 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     u.mem_write(0xFFFE0000,rom_bytes)
     d=memory if memory is not None else DRAM(modules,flat,alias,fault,revision,outside_wrap)
     original_data=dict(d.data)
+    entry_ebda=int.from_bytes(d.read(0x40E,2),'little')<<4
+    entry_ebda_size=d.read(entry_ebda,1)[0]*1024 if 0x10000<=entry_ebda<0xA0000 else 0
+    assert not entry_ebda_size or entry_ebda+entry_ebda_size<=0xA0000
     if memory is not None:memory.machine=u
     cmos=bytearray(getattr(memory,'initial_cmos',bytes(128)));index=0;config_address=0;terminal=[];remapping=[True]
     other_pci={}
@@ -239,6 +242,9 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     assert total==expected*0x100000,(modules,total//0x100000,expected,d.registers)
     firmware_keys={d.physical(a) for a in range(0x10000)}
     firmware_keys.update(d.physical(a) for a in range(begin_state,0xA0000))
+    # A warm entry may follow a legal OS relocation. Early firmware still owns
+    # that complete advertised prefix until the normal memory producer replaces it.
+    firmware_keys.update(d.physical(a) for a in range(entry_ebda,entry_ebda+entry_ebda_size))
     for key in d.touched:
         if key not in firmware_keys:
             assert d.data.get(key,d.initial(key))==original_data.get(key,d.initial(key)),(key,d.data[key],original_data.get(key,d.initial(key)))

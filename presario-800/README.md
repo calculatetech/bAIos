@@ -14,6 +14,8 @@ The BIOS supports the primary IDE master and slave. Auto selects a supported tra
 
 The [SL-enhanced processor guide](../docs/sl486-support.md) explains CPU naming and DOS idle power saving. CPU identification alone does not promise every motherboard power-management function.
 
+Setup > Plug and Play assigns resources to compatible expansion cards. Read the [Plug and Play guide](../docs/plug-and-play.md) for BIOS/operating-system policy and manual reservations for older cards.
+
 ## Memory and video
 
 Memory support depends on the installed modules and bank arrangement. Configurations above 64 MiB remain unresolved. Read the developer memory notes before using a configuration outside the established range.

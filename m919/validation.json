@@ -246,9 +246,78 @@
         "--output",
         "m919/build/tests/production-ide-channels.json"
       ]
+    },
+    {
+      "id": "shared-pnp",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-pnp.py",
+        "--case",
+        "all",
+        "--port",
+        "m919"
+      ]
+    },
+    {
+      "id": "shared-pnp-settings",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-pnp-settings.py",
+        "--port",
+        "m919"
+      ]
+    },
+    {
+      "id": "shared-ui-text",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-ui-text.py",
+        "--port",
+        "m919"
+      ]
     }
   ],
-  "case_sets": [],
+  "case_sets": [
+    {
+      "script": "shared/tests/test-pnp.py",
+      "argument": "--case",
+      "exclude": [
+        "mp-negative"
+      ],
+      "covered_by": {
+        "all": "shared-pnp",
+        "abi": "shared-pnp",
+        "information-services": "shared-pnp",
+        "nodes": "shared-pnp",
+        "set-node": "shared-pnp",
+        "image-contract": "shared-pnp",
+        "isolation": "shared-pnp",
+        "resource-reopen": "shared-pnp",
+        "logical-devices": "shared-pnp",
+        "memory-and-streams": "shared-pnp",
+        "resource-semantics": "shared-pnp",
+        "dependent-alternatives": "shared-pnp",
+        "composed-resources": "shared-pnp",
+        "option-roms": "shared-pnp",
+        "boot-continuation": "shared-pnp",
+        "placement": "shared-pnp"
+      }
+    },
+    {
+      "script": "shared/tests/test-ui-text.py",
+      "argument": "--case",
+      "covered_by": {
+        "strings": "shared-ui-text",
+        "renderer": "shared-ui-text",
+        "setup": "shared-ui-text",
+        "compatibility": "shared-ui-text",
+        "image-contract": "shared-ui-text"
+      }
+    }
+  ],
   "historical_checks": [],
   "candidates": [
     {

@@ -400,7 +400,8 @@ class POSTHardware(SRAM):
         self.ram_done=0xF0000+listing.symbol('.done','chipset_visible_ram_test')
         self.ram_entry_policy=None
         # The VGA expansion ROM is an external device, not bAIos code.
-        folder=PORT/'build/hardware-tests/cache-guests';folder.mkdir(parents=True,exist_ok=True)
+        folder=(self.rom_image.parent/'runtime-fixtures/cache-guests' if hasattr(self,'rom_image') else
+                PORT/'build/hardware-tests/cache-guests');folder.mkdir(parents=True,exist_ok=True)
         source=folder/'vga-seam.asm';image=folder/'vga-seam.bin'
         source.write_text('bits 16\norg 0\ndw 0xAA55\ndb 1\n'
                           'push ax\npush es\nxor ax,ax\nmov es,ax\nmov word [es:0x40],handler\n'
@@ -530,7 +531,8 @@ def composed(kib=64,l2=0,l1=0,record='valid',keys=(),memory=None,missing_late=Fa
     d.stop=None;d.keys=list(keys);d.keys_sent=[];d.key_log=[];d.queue=[];d.escaped=False;d.setup_requested=False;d.defaults_requested=False
     d.post_visits=[];d.ui_snapshots=[];d.enable_attempts=0;d.reset_requests=[];d.require_late=True
     d.prime_reads={'before':0,'after':0};d.cache_interval_instructions=0;d.qualification_policies=set()
-    row,fixture=mapped(d.modules,expected=d.modules[0][0],memory=d,cpu_signature=cpu_signature)
+    row,fixture=mapped(d.modules,expected=d.modules[0][0],memory=d,cpu_signature=cpu_signature,
+                       rom_image=getattr(d,'rom_image',None))
     u,d,listing,state,cmos,step=fixture;code=u.reg_read(x.UC_X86_REG_CS)<<4
     d.state=state;d.active_cmos=cmos;d.qualifying=False
     if rom_change:
@@ -558,7 +560,9 @@ def composed(kib=64,l2=0,l1=0,record='valid',keys=(),memory=None,missing_late=Fa
     # Preserve the startup's existing return frame; execute the caller, not helpers.
     extra=d.modules[0][0]*0x100000*3 if cmos[0x69]==0x56 and cmos[0x71]&1 else 0
     if not d.ram_escape:extra+=d.modules[0][0]*0x100000*20
-    u.emu_start(code+u.reg_read(x.UC_X86_REG_IP),code+0xFFFF,count=2000000+d.capacity*40+extra)
+    budget=2000000+d.capacity*40+extra
+    if hasattr(d,'rom_image'):step.execute(code+u.reg_read(x.UC_X86_REG_IP),code+0xFFFF,budget)
+    else:u.emu_start(code+u.reg_read(x.UC_X86_REG_IP),code+0xFFFF,count=budget)
     assert d.stop or d.reset_requests or d.ports.get(0x80)==0xE7,(u.reg_read(x.UC_X86_REG_IP),d.post_visits,d.ports.get(0x80),d.keys,d.key_log)
     d.saved_cmos=bytes(cmos)
     row.update(measured_code=d.read((state_seg:=u.reg_read(x.UC_X86_REG_FS)<<4)+0x1036,1)[0],

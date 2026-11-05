@@ -9,6 +9,15 @@ pnp_publish_finish:
     call pnp_publish
     jmp pnp_finish_entry
 
+; Actual caller-selected image, before its first device use. Private POST code
+; validates/initializes once and connects a selected display before INT10.
+pnp_rom_enter:
+    push bx
+    mov bx,pnp_initialize_image
+    call pnp_post_invoke
+    pop bx
+    ret
+
 pnp_early:
     pushf
     pushad
@@ -55,6 +64,22 @@ pnp_finish_entry:
     call load_bios_state
     mov bx,pnp_finish
     call pnp_post_invoke
+    jc .incomplete
+    ; The private epilogue and RETF have completed before this first copy.
+    call pnp_promote_runtime
+    jc .incomplete
+    cmp byte [fs:C_PNP+PNP_CLEAR],0
+    je .release
+    call settings_nv6_retire
+    jmp .release
+.incomplete:
+    call CFG_ROM_CODE_SEGMENT:pnp_incomplete_callback
+.release:
+    mov dword [fs:PNP_MODULE_POINTER],0
+    call pnp_journal_release
     popad
     popf
     ret
+
+%include "firmware/pnp-promote.inc"
+%include "firmware/settings-nv6-retire.inc"

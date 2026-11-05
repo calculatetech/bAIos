@@ -17,10 +17,27 @@
     }
   ],
   "checks": [
-    {"id": "cache-lifecycle", "argv": ["python", "-B", "shared/tests/test-cache-transitions.py", "--port", "mp386"]},
+    {
+      "id": "cache-lifecycle",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-cache-transitions.py",
+        "--port",
+        "mp386"
+      ]
+    },
     {
       "id": "port-cpu",
-      "argv": ["python", "-B", "mp386/tools/test-port.py", "--image", "mp386/build/baios-mp386.bin", "--case", "cpu"]
+      "argv": [
+        "python",
+        "-B",
+        "mp386/tools/test-port.py",
+        "--image",
+        "mp386/build/baios-mp386.bin",
+        "--case",
+        "cpu"
+      ]
     },
     {
       "id": "shared-ata-pio",
@@ -335,6 +352,28 @@
         "--output",
         "mp386/build/tests/pipeline-dma-cascade/proof.json"
       ]
+    },
+    {
+      "id": "pnp-exclusion",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-pnp.py",
+        "--case",
+        "mp-negative",
+        "--port",
+        "mp386"
+      ]
+    },
+    {
+      "id": "shared-ui-text",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-ui-text.py",
+        "--port",
+        "mp386"
+      ]
     }
   ],
   "case_sets": [
@@ -364,6 +403,42 @@
     {
       "script": "mp386/tools/test-shadow.py",
       "argument": "--case"
+    },
+    {
+      "script": "shared/tests/test-pnp.py",
+      "argument": "--case",
+      "exclude": [
+        "all",
+        "abi",
+        "information-services",
+        "nodes",
+        "set-node",
+        "image-contract",
+        "isolation",
+        "resource-reopen",
+        "logical-devices",
+        "memory-and-streams",
+        "resource-semantics",
+        "dependent-alternatives",
+        "composed-resources",
+        "option-roms",
+        "boot-continuation",
+        "placement"
+      ],
+      "covered_by": {
+        "mp-negative": "pnp-exclusion"
+      }
+    },
+    {
+      "script": "shared/tests/test-ui-text.py",
+      "argument": "--case",
+      "covered_by": {
+        "strings": "shared-ui-text",
+        "renderer": "shared-ui-text",
+        "setup": "shared-ui-text",
+        "compatibility": "shared-ui-text",
+        "image-contract": "shared-ui-text"
+      }
     }
   ],
   "historical_checks": [

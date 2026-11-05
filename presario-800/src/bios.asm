@@ -602,7 +602,10 @@ startup:
     call pnp_early
 
     ; This retained component owns the Cirrus video initialization and INT 10h.
-    call VGA_SEGMENT:VGA_ENTRY
+    mov ax,0xFFFF
+    mov dx,VGA_SEGMENT
+    mov cl,2
+    call pnp_rom_enter
     xor ax, ax
     mov es, ax
     ; Keep the public entry installed by the VGA ROM (including its STI).
@@ -2208,22 +2211,27 @@ load_bios_state:
 ; Both callers have already checked that the buffer does not wrap at 64 KiB.
 check_disk_buffer:
     push ebx
+    push ecx
     push fs
     call load_bios_state     ; FS may select the secondary disk record.
+    movzx ecx,byte [fs:0]
+    shl ecx,10
     xor ebx, ebx
     mov bx, fs
     pop fs
     shl ebx, 4
     cmp edx, ebx
     jbe .good
-    add ebx, 1024
+    add ebx,ecx
     cmp eax, ebx
     jb .bad
 .good:
+    pop ecx
     pop ebx
     clc
     ret
 .bad:
+    pop ecx
     pop ebx
     stc
     ret
@@ -3320,7 +3328,6 @@ db 0
 
 ; Newly owned private POST bank; the builder packs it into lower-ROM C000h.
 section post_payload start=0x10000 vstart=0
-%define CFG_ROM_CODE_SEGMENT 0xF000
 %define PNP_EXTERNAL_JOURNAL
 presario_shared "firmware/pnp-module.inc"
 %undef PNP_EXTERNAL_JOURNAL

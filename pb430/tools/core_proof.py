@@ -225,19 +225,19 @@ class ACC(setup.Setup):
             return
         super().interrupt(cpu,vector,unused)
 
-    def irq_scans(self,scans):
+    def irq_scans(self,scans,guest=0x90000):
         """Opaque PIC/8042 raises IRQ1; guest executes the installed IRQ owner."""
         for scan in scans:
             self.pending.append(scan)
             u=self.cpu
-            u.reg_write(x.UC_X86_REG_CS,0x9000);u.reg_write(x.UC_X86_REG_IP,0)
+            u.reg_write(x.UC_X86_REG_CS,guest>>4);u.reg_write(x.UC_X86_REG_IP,0)
             u.reg_write(x.UC_X86_REG_SS,0);u.reg_write(x.UC_X86_REG_SP,0x7000);u.reg_write(x.UC_X86_REG_EFLAGS,0x202)
-            u.mem_write(0x90000,b'\x90')
+            u.mem_write(guest,b'\x90')
             rtc.Clock.interrupt(self,u,9,None)
             begin=u.reg_read(x.UC_X86_REG_CS)*16+u.reg_read(x.UC_X86_REG_IP)
-            u.emu_start(begin,0x90000,count=1000000) # CAD now executes the stock131064-read teardown.
+            u.emu_start(begin,guest,count=1000000) # CAD executes the stock131064-read teardown.
             if self.reset_pending:break
-            assert u.reg_read(x.UC_X86_REG_CS)==0x9000 and u.reg_read(x.UC_X86_REG_IP)==0
+            assert u.reg_read(x.UC_X86_REG_CS)==guest>>4 and u.reg_read(x.UC_X86_REG_IP)==0
 
     def irq_current(self,scan):
         """Deliver an external IRQ1 while preserving the production continuation."""

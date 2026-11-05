@@ -14,6 +14,8 @@ Fast Boot shortens the visible RAM test without reducing detected memory. Pause 
 
 External cache requires enabled processor cache and a known cache capacity. `Present / unknown` means the BIOS cannot safely select its cache configuration. A valid saved cache choice remains authoritative.
 
+Setup > Plug and Play assigns resources to compatible expansion cards. Read the [Plug and Play guide](../docs/plug-and-play.md) for BIOS/operating-system policy and manual reservations for older cards.
+
 ## Video and compatibility
 
 The default image uses the 60 MHz video-memory-clock variant. A matching50 MHz variant is also available. This choice concerns video memory, not the processor clock.

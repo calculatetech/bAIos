@@ -4,6 +4,7 @@ param(
     [switch]$MouseDiagnostic,
     [switch]$KeyboardDiagnostic,
     [switch]$PnpInterfaceTest,
+    [switch]$PnpPartialTest,
     [switch]$Vga141,
     [switch]$VgaBus07,
     [ValidateSet(50, 60)][int]$VgaClockMHz = 60,
@@ -106,6 +107,7 @@ $diagnosticDefine = if ($FloppyDiagnostic) { '-D FLOPPY_DIAGNOSTIC' } else { '' 
 if ($MouseDiagnostic) { $diagnosticDefine += ' -D MOUSE_DIAGNOSTIC' }
 if ($KeyboardDiagnostic) { $diagnosticDefine += ' -D KEYBOARD_DIAGNOSTIC' }
 if ($PnpInterfaceTest) { $diagnosticDefine += ' -D EMULATOR_PNP_TEST' }
+if ($PnpPartialTest) { $diagnosticDefine += ' -D EMULATOR_PNP_PARTIAL' }
 if ($Vga141) { $diagnosticDefine += ' -D VGA_BIOS_141' }
 $listing = Join-Path $out 'baios-presario800-system.lst'
 $testInclude = (Join-Path $root 'tests').TrimEnd('\') + '/'
