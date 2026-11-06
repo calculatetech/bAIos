@@ -147,6 +147,9 @@ pnp_normalize_event:
     je .memory
     jmp .good
 .io:
+    mov byte [gs:si],2
+    cmp byte [es:di+10],0   ; Clarification6.2.2.8: null ignores every other field.
+    je .null_range
     mov al,[es:di+4]
     test al,0xFE
     jnz .bad

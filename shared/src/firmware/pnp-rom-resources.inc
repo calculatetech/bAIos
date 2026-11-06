@@ -78,6 +78,14 @@ pnp_rom_resources:
     mov ax,0x0100
     call pnp_reserve
     jc .failed
+%ifdef M919_BOARD_DEFINITION
+    cmp word [ss:bp+P_O_SEGMENT],0xC000
+    jne .next
+    cmp word [fs:M_VGA_BDF],0xFFFF
+    jne .next
+    call pnp_reserve_vga      ; Actual validated C000 ISA fallback, before solve.
+    jc .failed
+%endif
     jmp .next               ; The extent pass never recalls a static vector.
 .static_headers:
     mov ecx,[ss:bp+P_O_LENGTH]

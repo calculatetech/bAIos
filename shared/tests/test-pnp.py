@@ -849,6 +849,60 @@ def pci_precedence(output='build/tests/pnp-runtime'):
     return {'required_before_relocatable_PCI':results,'whole_initializer_reorder_would_steal_required_resource':True}
 
 
+def selected_vga_resources(output='build/tests/pnp-runtime'):
+    from shared.tools.isa_pnp_proof import Bus,Card,serial
+    from shared.tools.pci_proof import PCI,Endpoint
+    results=[]
+    for name,display,rom_kind in (('absent',False,'absent'),('selected_PCI',True,'valid'),
+                                 ('selected_ISA',False,'valid'),('invalid_ISA',False,'invalid'),
+                                 ('PCI_without_ROM',True,'absent')):
+        device=b'\x15\x41\xD0\x05\0\x01'
+        io=lambda lo,hi,align,length:b'\x47\x01'+struct.pack('<HHBB',lo,hi,align,length)
+        memory=b'\x85\x11\0\0'+struct.pack('<IIII',0xA0000,0xD0000,0x10000,0x10000)
+        stream=b'\x0A\x10\0\x82\x03\0ISA'+device+io(0x7C0,0x7E0,16,8)+device+io(0x3B8,0x3BC,4,4)+device+memory+b'\x79\0'
+        card=Card(serial(b'\x41\xD0\xFF\xFF',1),stream,ldns=3)
+        endpoint=Endpoint(cls=0x030000,rom_mask=0xFFFF8000)
+        bus=Bus([card]);bus.pause=False;bus.pci=PCI({0x60:endpoint} if display else {});bus.pci_address=0
+        m=isa_machine('m919',bus,output)
+        # Execute the real RAM-ready state/IVT owner, including its FFFF VGA
+        # sentinel. Stop before unrelated SMM/cache/POST hardware owners.
+        for reg,value in dict(CS=0xF000,ESP=0x486,EBP=0x800000,EFLAGS=2).items():m.cpu.reg_write(getattr(x,'UC_X86_REG_'+reg),value)
+        entry=0xF0000+m.listing.symbol('.ram_ready','startup');end=0xF0000+m.listing.symbol('board_smm_startup')
+        m.cpu.emu_start(entry,end,count=30000)
+        assert (m.cpu.reg_read(x.UC_X86_REG_CS)<<4)+m.cpu.reg_read(x.UC_X86_REG_IP)==end
+        m.base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4;m.allocated=m.cpu.mem_read(m.base,1)[0]*1024
+        assert m.cpu.mem_read(m.base+0x1000,2)==b'\xFF\xFF'
+        m.call('init_pic_pit');m.call('settings_load');m.call('setup_defaults');m.draft();assert m.call('settings_save')
+        rom=bytearray(32768);rom[:4]=b'\x55\xAA\x40\xCB';rom[-1]=(-sum(rom))&255
+        if rom_kind=='invalid':rom[-1]^=1
+        observed=[]
+        def mapped(cpu,access,address,size,value,unused):
+            decoded=rom_kind!='absent' and (not display or bool(endpoint.read(4,2)&2 and endpoint.read(0x30,4)&1))
+            observed.append(decoded);cpu.mem_write(address,bytes(rom[address-0xC0000:address-0xC0000+size]) if decoded else b'\xFF'*size)
+        hook=m.cpu.hook_add(UC_HOOK_MEM_READ,mapped,None,0xC0000,0xC7FFF)
+        try:m.call('pnp_early')
+        finally:m.cpu.hook_del(hook)
+        actual=int.from_bytes(m.cpu.mem_read(m.base+0x1000,2),'little');assert actual==(0x60 if display else 0xFFFF)
+        assert any(op[:4]==('read',0x60,8,4) for op in bus.pci.accesses),'Actual PCI class discovery missing'
+        active=display or rom_kind=='valid'
+        expected_io=(0x7E0,0x3BC) if active else (0x7C0,0x3B8)
+        actual_io=tuple(card.registers[n][0x60]<<8|card.registers[n][0x61] for n in (0,1))
+        actual_memory=int.from_bytes(bytes(card.registers[2][at] for at in range(0x76,0x7A)),'big')
+        expected_memory=(0xD0000 if rom_kind=='valid' else 0xC0000) if active else 0xA0000
+        assert actual_io==expected_io and actual_memory==expected_memory,(name,actual,actual_io,actual_memory)
+        assert all(card.registers[n][0x30]==1 for n in range(3))
+        root=int.from_bytes(m.cpu.mem_read(m.base+0x330,4),'little');pointer=int.from_bytes(m.cpu.mem_read(root,4),'little');claims=[]
+        while pointer:
+            row=bytes(m.cpu.mem_read(pointer,32));claims.append((row[0],row[2],int.from_bytes(row[20:24],'little'),int.from_bytes(row[16:20],'little'),int.from_bytes(row[28:32],'little')))
+            pointer=int.from_bytes(row[24:28],'little')
+        legacy=[row for row in claims if row in ((2,0,0x3B0,12,1),(2,0,0x3C0,32,1),(1,0,0xA0000,0x20000,1))]
+        assert len(legacy)==(3 if active else 0),(name,legacy)
+        results.append({'case':name,'real_initial_sentinel':0xFFFF,'actual_selected_BDF':actual,'actual_legacy_claims':legacy,
+                        'actual_IO_bases':actual_io,'actual_memory_base':actual_memory,'all3_LDNs_active':True,
+                        'actual_VGA_ROM_decode':any(observed),'actual_PCI_writes':endpoint.writes})
+    return results
+
+
 def pci_fixed_rom(output='build/tests/pnp-runtime'):
     """ROM visibility follows actual PCI command/ROM BAR writes, before ISA."""
     from shared.tools.isa_pnp_proof import Bus,Card,serial
@@ -1442,17 +1496,36 @@ def allocation_causal(port,groups=None):
         results['M6']=tested
     if 'ordinals' in selected:
         tested=[]
-        for filler in (False,True):
-            null=b'\x47\x01'+bytes(6)+b'\x23\0\0\xFF\x2A\0\xFF' if filler else b''
+        for null_form in ('none','general_ignored_fields','fixed_valid_base'):
+            filler=null_form!='none'
+            # Clarification6.2.2.8: length0 ignores information, inverted
+            # min/max and alignment. The fixed4Bh contrast retains its valid
+            #10-bit base; no unqualified reserved-base exception is assumed.
+            io_null=(variable(0xFFFF,0,255,0,255) if null_form=='general_ignored_fields' else fixed(0x3E0,0))
+            null=io_null+b'\x23\0\0\xFF\x2A\0\xFF' if filler else b''
             c=card(1,device()+null+fixed(0x388)+b'\x22\0\x08\x2A\x02\x08'+
                    b'\x1C\x41\xD0\x05\0'+device()+fixed(0x3E0),ldns=2)
             m,bus=allocation_fixture(port,[c]);r=c.registers[0];ordinal=int(filler)
-            assert r[0x30]==c.registers[1][0x30]==1 and io(r,ordinal)==0x388
+            assert r[0x30]==c.registers[1][0x30]==1 and io(r,ordinal)==0x388,(port,null_form,rows([c]))
             assert r[0x70+ordinal*2]==11 and r[0x74+ordinal]==1
-            if filler:assert io(r)==0 and r[0x70]==0 and r[0x74]==4
+            if filler:
+                assert io(r)==0 and r[0x70]==0 and r[0x74]==4
+                assert all((c.csn,0,at,0) in bus.config_writes for at in (0x60,0x61))
             assert io(c.registers[1])==0x3E0
-            tested.append({'null_fillers':filler,'actual_registers':rows([c])})
+            tested.append({'null_fillers':filler,'null_form':null_form,'raw_IO_descriptor':io_null.hex() if filler else None,
+                           'actual_registers':rows([c]),'actual_resource_stream_bytes':bus.resource_reads,
+                           'actual_IO_program_writes':[r for r in bus.config_writes if 0x60<=r[2]<=0x63]})
         results['M5']=tested
+        invalid=[]
+        for name,bad in (('general_reserved_information',variable(0x300,0x300,16,8,255)),
+                         ('general_inverted_range',variable(0x310,0x300)),
+                         ('fixed_reserved_base_nonnull',fixed(0xFFFF))):
+            c=card(1,device()+bad+fixed(0x388)+device()+fixed(0x3E0),ldns=2,powerup_active=True)
+            m,bus=allocation_fixture(port,[c])
+            assert all(not c.registers[n][0x30] for n in (0,1)),(port,name,rows([c]))
+            assert not any(0x60<=r[2]<=0x6F for r in bus.config_writes),bus.config_writes
+            invalid.append({'case':name,'nonnull_still_rejected_before_program':True,'actual_registers':rows([c])})
+        results['M5_nonnull_IO_validation']=invalid
     if 'io' in selected:
         tested=[]
         # All exclusions come through actual saved manual policy and pnp_seed.
@@ -1862,7 +1935,7 @@ def decode(node):
     blocks=[]
     at=12
     while at<len(node):
-        block=[]
+        block=[];dependent=False;closed=False;starts=0
         while True:
             tag=node[at]
             if tag&128:
@@ -1872,6 +1945,12 @@ def decode(node):
             assert end<=len(node),(identity,at,tag,length,len(node))
             block.append((tag,node[at+head:end]))
             data=node[at+head:end]
+            if tag in (0x30,0x31):
+                assert len(blocks)==1 and not closed,'Dependent alternatives must be consecutive Starts and one final End'
+                dependent=True;starts+=1
+            elif tag==0x38:
+                assert dependent and not closed,'Unexpected/repeated EndDependent'
+                dependent=False;closed=True
             if tag==0x4B:assert int.from_bytes(data[:2],'little')<0x400,'FixedLocationIO reserved address bits'
             if tag==0x47:
                 assert len(data)==7 and data[0] in (0,1)
@@ -1879,7 +1958,9 @@ def decode(node):
                 assert minimum==maximum and data[5]==0
                 if minimum or data[6]:assert data[0]==1,'16-bit IO decode capability'
             at=end
-            if tag==0x79:break
+            if tag==0x79:
+                assert not dependent and closed==bool(starts),'Missing final EndDependent'
+                break
         blocks.append(block)
     assert len(blocks)==3,(identity,blocks)
     return identity,int.from_bytes(node[10:12],'little'),blocks
@@ -2225,7 +2306,7 @@ def complete_nodes(port):
         assert c.far(0,[0x100,c.buffer,0x108,c.buffer,c.bios])==0
         assert c.cpu.mem_read(0x20100,1)[0]==len(identities)
         assert bytes(c.cpu.mem_read(0x20101,7))==b'\xCC'*7
-        assert int.from_bytes(c.cpu.mem_read(0x20108,2),'little')=={'m919':76,'mp386':42,'pb430':61,'presario-800':61}[port]
+        assert int.from_bytes(c.cpu.mem_read(0x20108,2),'little')=={'m919':75,'mp386':42,'pb430':58,'presario-800':58}[port]
         handle=0
         for at,(identity,expected) in enumerate(zip(identities,resources)):
             status,node,handle=get_node(c,at,view)
@@ -2279,6 +2360,82 @@ def complete_nodes(port):
     return {'exact_inventory_count_ids_all_allocated_resources':tested,'RAM_extent_source':7168}
 
 
+def dependent_node_groups(port):
+    fixture=json.loads((ROOT/'shared/tests/fixtures/pnp-legacy-settings.json').read_text())['ports'][port]
+    saved_ports=bytearray.fromhex(fixture['expected']['C_PORTS'])
+    saved_dma=bool(bytes.fromhex(fixture['expected']['C_CHIP'])[22]&2) if port=='m919' else False
+    producer=settings.Settings(port,OUTPUT)
+    producer.cmos[:]=bytes.fromhex(fixture['cmos']);producer.nvram[0x200:0x240]=bytes.fromhex(fixture['nvram_0200_023f'])
+    producer.call('settings_load');producer.draft();assert producer.call('settings_save')
+    persistent=producer.snapshot()
+    lpt=9 if port=='presario-800' else 10;fdc=lpt+1
+    routes={8:(0,(1,3) if port=='m919' else (1,2,3,4)),
+            lpt:(3,(2,3) if port=='m919' else (1,2,3)),fdc:(5,(1,))}
+    if port!='presario-800':routes[9]=(1,(2,4) if port=='m919' else (1,2,3,4))
+    if port in ('pb430','presario-800'):routes[len(inventory(port))-1]=(6,(1,))
+    cases=[(pair,mode,dma,True) for pair in (0,1)
+           for mode in (range(3) if port=='m919' else (saved_ports[4],))
+           for dma in ((0,2) if port=='m919' else (0,))]
+    cases.append((saved_ports[2],saved_ports[4],2*saved_dma,False))
+    outputs=[]
+    for pair,mode,dma,enabled in cases:
+        active_ports=bytearray(saved_ports);active_ports[2]=pair;active_ports[4]=mode
+        if not enabled:
+            for at in (0,1,3,5,6):active_ports[at]=0
+        def active(m):
+            m.put('C_PORTS',active_ports)
+            if port=='m919':
+                chip=bytearray(m.get('C_CHIP',24));chip[22]=(chip[22]&~2)|dma;m.put('C_CHIP',chip)
+        c=Caller(port,'ss32',persistent=persistent,active=active);maximum_seen=0;count=0
+        for view,ports,dmachoice in ((1,active_ports,bool(dma)),(2,saved_ports,saved_dma)):
+            for handle in range(len(inventory(port))):
+                status,node,next_handle=get_node(c,handle,view);assert status==0
+                identity,attrs,blocks=decode(node)
+                possible=[]
+                if handle in routes:
+                    field,choices=routes[handle]
+                    for value in choices:
+                        candidate=bytearray(ports);candidate[field]=value
+                        expected=resource_oracle(port,candidate,True,dma1=dmachoice)[handle]
+                        possible.append((0x30,b''));possible.extend(expected)
+                    possible.append((0x38,b''))
+                possible.append((0x79,b'\0'))
+                assert blocks[1]==possible,(port,view,handle,pair,mode,dma,enabled,blocks[1],possible)
+                length=12+sum((3 if tag&128 else 1)+len(data) for block in blocks for tag,data in block)
+                assert len(node)==length and node[2]==handle
+                maximum_seen=max(maximum_seen,len(node));count+=1
+        c.cpu.mem_write(0x20100,b'\xCC'*12)
+        assert c.far(0,[0x100,c.buffer,0x108,c.buffer,c.bios])==0
+        reported=int.from_bytes(c.cpu.mem_read(0x20108,2),'little')
+        assert reported==maximum_seen==({'m919':75,'pb430':58,'presario-800':58}[port])
+        outputs.append({'pair':pair,'LPT_mode':mode,'DMA_choice':dma,'enabled':enabled,
+                        'actual_public01_nodes_and_views':count,'actual_maximum':reported})
+    # Exercise real public static Set/reload for every advertised routing choice.
+    # Disable peers first through that same API, so a serial choice does not
+    # collide with the other UART's independently saved resource.
+    c=Caller(port,'ss32');next_ports=bytearray(saved_ports);roundtrips=[]
+    def wire(items):
+        return b''.join(bytes((tag,))+(struct.pack('<H',len(data)) if tag&128 else b'')+data for tag,data in items)
+    def save(handle,value):
+        field,choices=routes[handle];candidate=bytearray(next_ports);candidate[field]=value
+        expected=resource_oracle(port,candidate,True,dma1=saved_dma)[handle]
+        current=get_node(c,handle,1)[1];node=bytearray(get_node(c,handle,2)[1]);encoded=wire(expected)
+        node[12:12+len(encoded)]=encoded;c.cpu.mem_write(0x20200,bytes(node))
+        assert c.far(2,[handle,0x200,c.buffer,2,c.bios])==0,(port,handle,value)
+        next_ports[field]=value
+        actual=get_node(c,handle,2)[1]
+        assert decode(actual)[2][0]==expected+[(0x79,b'\0')]
+        assert get_node(c,handle,1)[1]==current
+        assert decode_saved(c)[0]['C_PORTS'][field]==value
+        roundtrips.append((handle,value))
+    for handle in routes:save(handle,0)
+    for handle,(field,choices) in routes.items():
+        for value in choices:save(handle,value)
+        save(handle,0)
+    return {'complete_public_possible_blocks':outputs,'all_public_static_route_roundtrips':roundtrips,
+            'one_final_EndDependent_per_nonempty_set':True,'Current_unchanged_by_static_Set':True}
+
+
 def nodes(port):
     c=Caller(port,'ss32')
     c.cpu.mem_write(0x20100,b'\xCC'*12)
@@ -2319,7 +2476,8 @@ def nodes(port):
     irq=keyboard(real)
     assert [get_node(real,h)[1] for h in range(count)]==before
     routing=m919_resources(c) if port=='m919' else {}
-    return {'count':count,'maximum':maximum,'identities':ids,'three_descriptor_blocks':True,'complete_independent_nodes':complete_nodes(port),**irq,**routing}
+    return {'count':count,'maximum':maximum,'identities':ids,'three_descriptor_blocks':True,'complete_independent_nodes':complete_nodes(port),
+            'dependent_groups':dependent_node_groups(port),**irq,**routing}
 
 
 def public_commit_contracts(port):
@@ -5276,6 +5434,7 @@ def composed_resources(port):
             'finish_unverifiable_rollback':finish_retirement_unverifiable(port)}
     if port=='pb430':result['actual_fixed_video']=pb_fixed_video(OUTPUT)
     if port=='m919':result.update(PCI_precedence=pci_precedence(OUTPUT),PCI_fixed_ROM=pci_fixed_rom(OUTPUT),
+                                  selected_VGA_legacy=selected_vga_resources(OUTPUT),
                                   PCI_VGA_first_use=pci_vga_first_use(OUTPUT),
                                   final_routing=pci_final_routing(OUTPUT),PCI_manual_windows=pci_manual_windows(OUTPUT))
     result['actual_normal_capacity']=composed_capacity(port,result['actual_startup'])

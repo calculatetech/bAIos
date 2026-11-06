@@ -213,6 +213,13 @@ pnp_seed:
     inc bx
     cmp bx,PNP_NODE_COUNT
     jb .node
+%ifdef M919_BOARD_DEFINITION
+    cmp word [fs:M_VGA_BDF],0xFFFF
+    je .manual_policy
+    call pnp_reserve_vga
+    jc .bad
+.manual_policy:
+%endif
     mov esi,2               ; Manual policy is a distinct owner.
     xor edx,edx
 .irq:
@@ -293,6 +300,25 @@ pnp_seed:
 pnp_map_code_end:
 
 %ifdef M919_BOARD_DEFINITION
+; Same legacy decode as the embedded-VGA encoder. ESI=existing owner1.
+; PCI selection seeds it early; a validated ISA C000 extent supplies fallback.
+pnp_reserve_vga:
+    mov ax,0x0200
+    mov edx,0x3B0
+    mov ecx,12
+    call pnp_reserve
+    jc .done
+    mov dl,0xC0
+    mov cl,32
+    call pnp_reserve
+    jc .done
+    mov ah,1
+    mov edx,0xA0000
+    mov ecx,0x20000
+    jmp pnp_reserve
+.done:
+    ret
+
 pnp_pci_candidate_core:
     pushad
     mov edx,ecx

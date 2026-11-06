@@ -15,10 +15,11 @@ PNP_WORK equ PNP_PORTS-74
 %ifdef BOARD_SETUP_READONLY_PAGES
 PNP_MAX_SIZE equ 42
 %elif BOARD_ATA_DEVICE_COUNT = 4
-PNP_MAX_SIZE equ 76
+PNP_MAX_SIZE equ 75
 %else
-PNP_MAX_SIZE equ 61
+PNP_MAX_SIZE equ 58
 %endif
+times -(PNP_MAX_SIZE > PNP_NODE_MAX) db 0
 PNP_CHIP equ PNP_WORK-24
 PNP_VIEW equ PNP_CHIP-1
 %ifdef PB430_PORT
@@ -403,6 +404,8 @@ pnp_build_node:
     ; UM8663 has fixed primary/secondary UART identity and no3BC LPT decode.
     cmp bl,PNP_LPT
     je .lpt_choice
+    cmp bl,PNP_FDC
+    je .choice_ok
     mov al,[ss:esi]
     xor al,bl
     test al,1
@@ -427,10 +430,10 @@ pnp_build_node:
     loop .resource_copy
     pop ecx
     pop edx
-    mov byte [ss:edi],0x38
-    inc edi
     jmp .alternative
 .alternatives_done:
+    mov byte [ss:edi],0x38      ; One End closes all consecutive alternatives.
+    inc edi
     mov dword [ss:edi],0x00790079
     add edi,4
     sub edi,ebp
