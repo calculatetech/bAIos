@@ -1,5 +1,6 @@
 """Execute the production settings owners against physical RTC/NVRAM adapters."""
 import argparse
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -159,7 +160,7 @@ class Settings:
         before=self.snapshot()
         write_start=len(self.writes)
         try:
-            cpu.emu_start(0xF0000+self.listing.symbol(name), 0xFFFFF, count=20000000 if name in ('setup_main','pnp_resource_next','pnp_census','pnp_post_invoke','pnp_early','option_rom_discovery','pnp_finish_entry') else 2000000)
+            cpu.emu_start(0xF0000+self.listing.symbol(name), 0xFFFFF, count=20000000 if name in ('setup_main','pnp_resource_next','pnp_census','pnp_post_invoke','pnp_early','option_rom_discovery','pnp_finish_entry','post_summary_pause') else 2000000)
         finally:
             if name in ('settings_save','setup_main','ide_settings_save','ports_settings_save',
                         'chipset_settings_save','settings_recovery_publish'):
@@ -191,6 +192,8 @@ class Settings:
             self.put(draft, self.get(active,size))
 
     def ui(self, keys):
+        from shared.tools.post_fixture import ensure_module
+        ensure_module(self.listing,'setup_main',self.cpu.mem_read,lambda owner:self.call(owner))
         self.keys = list(keys)
         self.reset = False
         def reset(cpu,address,size,_):
@@ -209,10 +212,23 @@ class Settings:
         assert not self.keys, self.keys
 
 
+def ui_model(port,build_directory='build/tests/pnp-settings'):
+    """UI fixtures enter the real installed transport; storage-only models stay raw."""
+    if port=='mp386':return Settings(port,build_directory)
+    module=sys.modules.get('shared_pnp_ui_transport')
+    if module is None:
+        spec=importlib.util.spec_from_file_location('shared_pnp_ui_transport',Path(__file__).with_name('test-pnp.py'))
+        module=importlib.util.module_from_spec(spec)
+        sys.modules[spec.name]=module
+        spec.loader.exec_module(module)
+    from shared.tools.isa_pnp_proof import Bus
+    return module.isa_machine(port,Bus(),build_directory)
+
+
 def migration(port):
     fixture = json.loads((Path(__file__).parent/'fixtures/pnp-legacy-settings.json').read_text())['ports'][port]
     expected = {key:bytes.fromhex(value) for key,value in fixture['expected'].items()}
-    new=Settings(port)
+    new=ui_model(port)
     new.cmos[:]=bytes.fromhex(fixture['cmos'])
     new.nvram[0x200:0x240]=bytes.fromhex(fixture['nvram_0200_023f'])
     before=new.snapshot()
@@ -244,29 +260,28 @@ def ui_checks(s):
     s.cpu.mem_write(s.base+s.allocated,b'AFTER-PNP-STATE!')
     def edit(text):
         return [enter]+list(map(ord,text))+[enter]
-    keys=[down]*5+[tab,enter]+[down]*7+[right,esc]
-    keys+=[down,enter]+[down]*7+[enter,right,enter,0x3B00,esc,esc]
+    keys=[down]*5+[tab,enter]+[down]*4+[right]+[down]*6+[enter,right,enter,0x3B00,esc,esc]
     keys+=[down,enter]+[down]*7+[right,esc]
-    keys+=[down,enter]+edit('65535')+[down]+edit('2')+[esc]+edit('1')
-    keys+=[down]+edit('768')+[down]+edit('0')+[esc]
+    keys+=[down,enter]+edit('FFFF')+[down]+edit('2')+[esc]+edit('1')
+    keys+=[down]+edit('3a0')+[down]+edit('0')+[esc]
     keys+=[down,enter]+[down]*11+[right,esc]
     keys+=[down,enter,right,enter,down,enter,right,enter,0x4400,enter]
     s.ui(keys)
     assert s.reset
-    expected=struct.pack('<HBHHHHHBB',0x8080,0x80,65535,1,768,0,0x800,1,1)
+    expected=struct.pack('<HBHHHHHBB',0x8080,0x80,65535,1,0x3A0,0,0x800,1,1)
     s.call('settings_load')
     assert s.get('C_PNP',15)==expected,s.get('C_PNP',15).hex()
     assert s.cpu.mem_read(s.base+0x27A,3)==b'\x03\x02\x02','Setup changed live APM state'
     assert s.cpu.mem_read(s.base-16,16)==b'BEFORE-PNP-STATE'
     assert s.cpu.mem_read(s.base+s.allocated,16)==b'AFTER-PNP-STATE!'
     # Last IRQ is a real rendered/navigated row, above the shared help panel.
-    assert any(b'IRQ 15' in screen[12*80:13*80] for screen in s.screen)
+    assert any(b'IRQ 15' in screen[15*80:16*80] for screen in s.screen)
     assert any(b'EC000h (16 KiB)' in screen[16*80:17*80] for screen in s.screen)
-    assert any(b'Available (Default)' in screen and b'Reserved' in screen for screen in s.screen)
+    assert any(b'Available' in screen and b'Reserved' in screen for screen in s.screen)
     saved=s.snapshot()
     s.writes.clear()
     # Discard a changed pending-clear draft; the persisted request must survive.
-    s.ui([down]*5+[tab]+[down]*6+[0x4B00,esc,esc,enter])
+    s.ui([down]*5+[tab]+[down]*5+[0x4B00,esc,esc,enter])
     assert not s.reset and s.snapshot()==saved and not s.writes
     s.ui([down]*5+[tab,0x4300,enter,esc,esc,enter])
     assert s.get('U_PNP',15)==bytes(15)
@@ -278,34 +293,78 @@ def ui_checks(s):
     s.call('settings_load')
     assert s.get('C_PNP',15)==expected
     # Release one saved resource through the same real choice/commit/save owner.
-    s.ui([down]*5+[tab,down,enter]+[down]*7+[0x4B00,0x4400,enter])
+    s.ui([down]*5+[tab,enter]+[down]*10+[0x4B00,0x4400,enter])
     s.call('settings_load')
     expected=bytes((0x80,0))+expected[2:]
     assert s.get('C_PNP',15)==expected
-    groups=[['IRQ 0-7','IRQ 8-15','DMA Reservations','I/O Windows','Upper Memory','Configuration','Clear ESCD on Reset'],
-            *[[f'IRQ {i}' for i in range(start,start+8)] for start in (0,8)],
+    groups=[['IRQ Reservations','DMA Reservations','Reserved I/O Ports','Upper Memory','Configuration','Clear ESCD'],
+            [f'IRQ {i}' for i in (3,4,5,6,7,9,10,11,12,14,15)],
             [f'DMA {i}' for i in range(8)],
-            ['Window 1 Base','Window 1 Length','Window 2 Base','Window 2 Length'],
+            ['Range 1 Start','Range 1 Port Count','Range 2 Start','Range 2 Port Count'],
             [f'{0xC0000+i*0x4000:X}h (16 KiB)' for i in range(12)]]
     rendered=[]
     for screen in s.screen:
         if b'Plug and Play' in screen[3*80:4*80]:
             rendered.append([screen[row*80+24:row*80+48].strip().decode('ascii')
-                             for row in range(5,22) if screen[row*80+24:row*80+48].strip()])
+                             for row in range(5,17) if screen[row*80+24:row*80+48].strip()])
     assert all(group in rendered for group in groups),[group for group in groups if group not in rendered]
-    choices=[[b'Available (Default)',b'Reserved'],[b'BIOS (Default)',b'Operating System'],
-             [b'Keep (Default)',b'Request']]
+    mains=[screen for screen in s.screen if b'IRQ Reservations' in screen[5*80:6*80]]
+    assert mains and all(b'\x1a' in mains[-1][row*80+48:row*80+76] for row in range(5,9))
+    assert all(b'\x1a' not in mains[-1][row*80+48:row*80+78] for row in (9,10)),'values are not page links'
+    assert all(b'\x1a' not in screen[5*80:12*80][2:20] for screen in s.screen),'no top-level sidebar arrows'
+    assert b'\x1a' not in mains[-1][10*80+2:10*80+20],'no top-level sidebar hint'
+    assert any(b'FFFFh' in screen and b'03A0h' in screen for screen in s.screen),'hex starts preserve numeric values'
+    assert any(b'Invalid value' in screen for screen in s.screen),'interval overflow rejected'
+    choices=[[b'Available',b'Reserved'],[b'BIOS',b'Operating System'],
+             [b'Keep',b'Request']]
     popups=[[screen[row*80+26:row*80+78].strip() for row in range(10,22)
              if screen[row*80+26:row*80+78].strip()] for screen in s.screen]
     assert all(values in popups for values in choices),'PnP choice order/count/identity'
-    failed=Settings(s.port,str(s.image.parent.relative_to(ROOT/s.port)))
+    for screen in s.screen:
+        if b'SELECT VALUE' in screen[8*80:9*80]:
+            assert all(b'\x1a' not in screen[row*80+26:row*80+78] for row in range(10,22)),'no value popup arrows'
+    failed=ui_model(s.port,str(s.image.parent.relative_to(ROOT/s.port)))
     failed.cmos[:],failed.nvram[:]=s.snapshot()
     failed.call('settings_load')
     failed.fail=('cmos',0x3B)
     failed.ui([tab,down,down,right,0x4400,enter,esc,esc,enter])
     assert not failed.reset
     assert any(b'CMOS verification failed.' in screen[19*80:20*80] for screen in failed.screen)
+    # Old IRQ2-only records expose the effective IRQ9 without rewriting alias bits.
+    s.draft()
+    alias=bytearray(expected);alias[:2]=b'\x04\x00'
+    s.put('U_PNP',alias);assert s.call('settings_save');s.call('settings_load')
+    s.ui([down]*5+[tab,enter]+[down]*5+[0x4400,enter])
+    assert s.reset
+    s.call('settings_load');assert s.get('C_PNP',15)==alias
+    assert any(b'IRQ 9' in screen[10*80:11*80] and b'Reserved' in screen[10*80+48:11*80] for screen in s.screen)
+    s.ui([down]*5+[tab,enter]+[down]*5+[enter,enter,0x4400,enter])
+    s.call('settings_load');assert s.get('C_PNP',2)==b'\x04\x02','explicit Reserved retains the old alias'
+    s.ui([down]*5+[tab,enter]+[down]*5+[0x4B00,0x4400,enter])
+    s.call('settings_load');assert s.get('C_PNP',2)==b'\x00\x00'
+    start=len(s.screen)
+    s.ui([down]*5+[tab,enter]+[down]*5+[esc,esc,esc,enter])
+    assert not s.reset
+    assert any(b'IRQ 9' in screen[10*80:11*80] and b'Available' in screen[10*80+48:11*80] for screen in s.screen[start:])
+    # Restore this function's independently specified policy for startup callers.
+    s.draft();s.put('U_PNP',expected);assert s.call('settings_save');s.call('settings_load')
+    ui_number_checks(s)
     return expected
+
+
+def ui_number_checks(s):
+    """New hex overflow/cancel path and the unchanged IDE decimal editor."""
+    before=s.snapshot();start=len(s.screen)
+    s.ui([0x5000]*5+[9,0x5000,0x5000,13,13]+list(map(ord,'10000'))+[13,27,27,27,27,13])
+    assert not s.reset and s.snapshot()==before
+    assert any(b'Invalid value.' in row for row in s.screen[start:])
+    original=s.get('U_IDE',51 if s.port=='m919' else 25)
+    s.put('U_PAGE',[1]);s.put('U_FIELD',[2]);s.put('U_IDE_DEVICE',[0])
+    s.cpu.mem_write(s.base+s.state['U_IDE']+1,bytes([48]))
+    s.keys=list(map(ord,'A12'))+[13];s.call('ide_ui_number')
+    assert not s.keys and int.from_bytes(s.cpu.mem_read(s.base+s.state['U_IDE']+5,2),'little')==12
+    assert s.snapshot()==before
+    s.put('U_IDE',original)
 
 
 def startup_checks(port,cmos_hex,nv_hex,pnp_hex):

@@ -1,20 +1,6 @@
 ; UMC HB50/51 geometry and policy; HB5A.40 exposes SRAM for the shared test.
 %include "pc/cache-test.inc"
-%macro cache_write 2
-    mov eax,0x80000000 | (CFG_PLATFORM_HOST_PCI_DEVICE << 11) | ((%1) & 0xFC)
-    mov dx,0xCF8
-    out dx,eax
-    mov dx,0xCFC + ((%1) & 3)
-    mov al,%2
-    out dx,al
-%endmacro
-%macro cache_read 1
-    mov eax,0x80000000 | (CFG_PLATFORM_HOST_PCI_DEVICE << 11) | ((%1) & 0xFC)
-    mov dx,0xCF8
-    out dx,eax
-    mov dx,0xCFC + ((%1) & 3)
-    in al,dx
-%endmacro
+%include "hardware/cache-io.inc"
 ; 8810AIO 9D49/9DA0 end each access by clearing CF8's enable bit.
 ; AL is the result; callers pass write data in CL or BH, never AL/AH.
 %macro cache_reference_read 1

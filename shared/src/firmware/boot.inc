@@ -347,6 +347,10 @@ boot_external_call:
     mov [fs:R_SS], ss
     mov [fs:R_SP], sp
     mov ds, dx
+%ifdef BOARD_PNP_SUPPORT
+    test dx,dx                  ; Zero segment: selected legacy VGA keeps AX.
+    jz .prepared
+%endif
     test al,al
     jnz .prepared
     xor ax, ax
@@ -407,6 +411,8 @@ pnp_rom_callback:
     call boot_external_call
     retf
 pnp_initialize_callback:
+    cmp cl,2
+    je .legacy_video
     test cl,cl
     jz .legacy
 %ifndef EMULATOR_PNP_PARTIAL
@@ -419,6 +425,12 @@ pnp_initialize_callback:
     pop es
 %endif
     call boot_pnp_call
+    retf
+.legacy_video:
+    xor dx,dx
+    mov es,dx
+    xor di,di
+    call boot_external_call
     retf
 .legacy:
     mov dx,[fs:R_ENTRY+2]

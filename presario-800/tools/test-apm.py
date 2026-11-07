@@ -547,12 +547,8 @@ def native():
             system = vm / 'observed-system.rom'
             floppy.run_hidden([nasm, '-DVGA_BIOS_141', '-DEMULATOR_APM_TEST', '-f', 'bin', '-I', str(source) + '/',
                                '-o', str(system), str(source / 'bios.asm')], check=True)
-            binary = bytearray(system.read_bytes())
-            binary[-1] = -sum(binary[:-1]) & 255
             physical = (rtc.BUILD / 'baios-presario800-vga60.bin').read_bytes()
-            observed = physical[:65536] + binary
-            assert len(observed) == 131072 and sum(binary) & 255 == 0
-            wrapper.write_bytes(observed)
+            wrapper.write_bytes(floppy.fixture_rom(system, physical))
         print(f'START native {label}: original CPQ POWER provider, disposable VHD {vm}', flush=True)
         result = floppy.run_hidden([exe, '-P', str(vm), '-R', str(private_roms), '-L', str(vm / '86box.log'), '-N'], timeout=90)
         fat = Fat16(disk)

@@ -1,6 +1,19 @@
 ; Existing retry observation hook: real keys through8042/IRQ1 only.
 core_boot_retry_observe:
     inc byte [0x630]
+    cmp byte [0x630],1
+    jne .cursor
+    mov word [0x633],0
+.cursor:
+    cmp byte [0x451],2
+    jb .failed
+    cmp byte [0x451],24
+    jb .before_scroll
+    inc byte [0x633]
+    jmp .checks
+.before_scroll:
+    inc byte [0x634]
+.checks:
     cmp byte [fs:B_CURSOR],4
     jne .failed
     cmp byte [0x400+KB_POST_STATE],2
@@ -17,26 +30,16 @@ core_boot_retry_observe:
     push es
     mov ax,0xB800
     mov es,ax
-    movzx ax,byte [0x630]
-    dec ax
-    shl ax,1
-    add ax,13
-    cmp ax,22
-    jbe .row
-    mov ax,22
+    movzx ax,byte [0x451] ; Two real console lines immediately preceded this gate.
+    sub ax,2
 .row:
     mov bx,160
     mul bx
     mov di,ax
     mov si,.line1
     call .line
-    movzx ax,byte [0x630]
+    movzx ax,byte [0x451]
     dec ax
-    shl ax,1
-    add ax,14
-    cmp ax,23
-    jbe .row2
-    mov ax,23
 .row2:
     mov bx,160
     mul bx
@@ -69,6 +72,10 @@ core_boot_retry_observe:
     call emulator_exit
     jmp hard_halt
 .pass:
+    cmp byte [0x633],0
+    je .failed
+    cmp byte [0x634],0
+    je .failed
     mov al,0x71
     call emulator_exit
     jmp hard_halt

@@ -374,6 +374,30 @@
         "--port",
         "mp386"
       ]
+    },
+    {
+      "id": "shared-rom-footprint",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-rom-footprint.py",
+        "--port",
+        "mp386",
+        "--case",
+        "all"
+      ]
+    },
+    {
+      "id": "shared-post-options",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-post-options.py",
+        "--port",
+        "mp386",
+        "--case",
+        "all"
+      ]
     }
   ],
   "case_sets": [
@@ -438,6 +462,31 @@
         "setup": "shared-ui-text",
         "compatibility": "shared-ui-text",
         "image-contract": "shared-ui-text"
+      }
+    },
+    {
+      "script": "shared/tests/test-rom-footprint.py",
+      "argument": "--case",
+      "covered_by": {
+        "measurement": "shared-rom-footprint",
+        "private-ui": "shared-rom-footprint",
+        "startup": "shared-rom-footprint",
+        "setup-continuation": "shared-rom-footprint",
+        "roundtrip": "shared-rom-footprint",
+        "capacity": "shared-rom-footprint",
+        "popups": "shared-rom-footprint",
+        "lifetime": "shared-rom-footprint",
+        "all": "shared-rom-footprint"
+      }
+    },
+    {
+      "script": "shared/tests/test-post-options.py",
+      "covered_by": {
+        "settings": "shared-post-options",
+        "timer": "shared-post-options",
+        "keyboard": "shared-post-options",
+        "video": "shared-post-options",
+        "all": "shared-post-options"
       }
     }
   ],
@@ -514,7 +563,8 @@
     }
   ],
   "coverage_notes": [
-    "Every current firmware case and reproducible read-only ROM-window utility check is active. The two retired bench probes and the frozen a8d0542 whole-ROM equivalence case remain explicit historical checks. --historical attempts their original conditions without repinning."
+    "Every current firmware case and reproducible read-only ROM-window utility check is active. The two retired bench probes and the frozen a8d0542 whole-ROM equivalence case remain explicit historical checks. --historical attempts their original conditions without repinning.",
+    "Shared ROM footprint checks use the current normal builders, actual module transports and complete declared variants. Per-build rom-footprint.json separates resident, private and temporary RAM costs."
   ],
   "wrapped_tests": {
     "mp386/tools/test-cache-lifecycle.py": [

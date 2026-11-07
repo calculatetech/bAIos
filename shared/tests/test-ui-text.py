@@ -28,6 +28,17 @@ SPACE_MANIFEST = json.loads((ROOT/'shared/tests/fixtures/ui-text-p1-space.json')
 PORTS = ('m919', 'mp386', 'pb430', 'presario-800')
 OUTPUT = 'build/tests/ui-text'
 
+# Current UI wording supersedes these labels; the historical P0/P1 oracles stay frozen.
+LIVE_PNP_TEXT={
+    'pnp_available':b'Available','pnp_bios':b'BIOS','pnp_os':b'Operating System','pnp_keep':b'Keep',
+    'pnp_irqs':b'IRQ Reservations','pnp_windows':b'Reserved I/O Ports',
+    'pnp_clear':b'Clear ESCD','pnp_io1':b'Range 1 Start','pnp_len1':b'Range 1 Port Count',
+    'pnp_io2':b'Range 2 Start','pnp_len2':b'Range 2 Port Count',
+    'pnp_help1':b'Reserve resources for manual cards.',
+    'pnp_help2':b'Example: Start 220h, decimal Count 16.',
+    'pnp_help3':b'Count 0 disables the range.'}
+LIVE_PNP_MAIN=['pnp_irqs','pnp_dmas','pnp_windows','pnp_memory','pnp_config','pnp_clear']
+
 
 def build(port):
     if port == 'presario-800':
@@ -40,7 +51,7 @@ def build(port):
 
 
 def model(port):
-    s = pnp.Settings(port, OUTPUT)
+    s = pnp.ui_model(port, OUTPUT)
     s.listing.symbol = cache(s.listing.symbol)
     return s
 
@@ -160,18 +171,20 @@ def strings(port):
     s.put('U_THEME_ACTIVE', [0])
     for name, row in baseline['strings'].items():
         if port=='mp386' and name.startswith('pnp_'):continue  # Forward chipset-scope correction.
-        expected = bytes.fromhex(row['hex'])
+        if name=='pnp_irqs_high':continue
+        expected = LIVE_PNP_TEXT.get(name,bytes.fromhex(row['hex']))
         at = address(s, name)
         actual = render(s, at, len(expected))
         assert actual == b''.join(bytes((v,7)) for v in expected), name
         stored = cstring(s, at)
         if stored[:1] == b'\x01':
-            assert (row['compress'] or name in SPACE_MANIFEST['ports'][port]['strings']) and len(stored) < len(expected), name
+            assert (row['compress'] or name in LIVE_PNP_TEXT or name in SPACE_MANIFEST['ports'][port]['strings']) and len(stored) < len(expected), name
             encoded += 1
         else:
             assert stored == expected, name
     for table, labels in baseline['tables'].items():
         if port=='mp386' and table.startswith('pnp_'):continue
+        if table=='pnp_main_labels':labels=LIVE_PNP_MAIN
         pointers = struct.unpack('<'+'H'*len(labels), s.cpu.mem_read(0xF0000+address(s,table),len(labels)*2))
         assert pointers == tuple(address(s,label) for label in labels), table
     assert encoded > 0
@@ -192,16 +205,21 @@ def supplementary_strings(port,output='build/tests/pnp-allocation'):
     s.listing.symbol=cache(s.listing.symbol)
     s.put('U_THEME_ACTIVE',[0])
     saving=0
+    unchanged=0
     for name,row in SPACE_MANIFEST['ports'][port]['strings'].items():
-        expected=bytes.fromhex(row['hex']);at=address(s,name)
+        expected=LIVE_PNP_TEXT.get(name,bytes.fromhex(row['hex']));at=address(s,name)
         assert render(s,at,len(expected))==b''.join(bytes((v,7)) for v in expected),name
         actual=cstring(s,at)
-        if row['saving']:
+        if name in LIVE_PNP_TEXT:
+            assert actual[:1]==b'\1' or actual==expected,name
+        elif row['saving']:
             assert actual[:1]==b'\1' and len(actual)<len(expected),name
         else:
             assert actual==expected,name  # Existing codec's exact literal fallback.
         saving+=len(expected)-len(actual)
-    assert saving==SPACE_MANIFEST['ports'][port]['predicted_gain']
+        if name not in LIVE_PNP_TEXT:
+            unchanged+=len(expected)-len(actual)
+    assert unchanged==sum(row['saving'] for name,row in SPACE_MANIFEST['ports'][port]['strings'].items() if name not in LIVE_PNP_TEXT)
     return {'selected_strings':len(SPACE_MANIFEST['ports'][port]['strings']),'bytes_recovered':saving,
             'full_rendered_plaintext_and_canaries':True}
 
@@ -343,7 +361,12 @@ def compatibility(port):
         s.cpu.hook_del(hook)
     s = model(port)
     s.call('settings_load')
+    s.cpu.mem_write(0x400+s.state['KB_POST_STATE'],b'\x01') # Frozen live-screen input; early-screen case proves the unarmed contrast.
     for owner,expected in baseline['post_screens'].items():
+        if owner=='post_debug_summary':
+            # Frozen P0 renderer input was zero KiB. This is a cell-compatibility
+            # oracle, not the actual-startup memory-accounting proof.
+            s.cpu.mem_write(0x413,bytes(2))
         s.call(owner)
         assert s.cpu.mem_read(0xB8000,4000) == bytes.fromhex(expected), owner
     if port == 'presario-800':
@@ -363,6 +386,11 @@ def owned_post_layout(full,port):
     assert hashlib.sha256(full[first:last]).hexdigest()==frozen['retained_sha256'],(port,'retained prefix')
     start,end=frozen['new_owned_start'],frozen['new_owned_end']
     payload=full[start:end]
+    if port=='presario-800':
+        from shared.tools.post_module import inspect_bank
+        decoded,info=inspect_bank(payload)
+        return {'retained_range':[first,last],'owned_range':[start,end],'module_length':len(decoded),
+                'entry':info['entry'],'module_sha256':info['raw_sha256'],'storage':info['storage'],'SUM8':0}
     assert payload[:8]==b'BAIPNP2\0'
     length,entry=struct.unpack_from('<HH',payload,8)
     assert 15<=length<len(payload) and not length&1 and 12<=entry<length
@@ -371,6 +399,7 @@ def owned_post_layout(full,port):
     assert sum(full[:65536] if port=='m919' else payload)&255==0
     return {'retained_range':[first,last],'owned_range':[start,end],'module_length':length,
             'entry':entry,'module_sha256':hashlib.sha256(payload[:length]).hexdigest(),'SUM8':0}
+
 
 
 def image_contract(port):

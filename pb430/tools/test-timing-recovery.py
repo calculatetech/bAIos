@@ -17,6 +17,7 @@ def machine(fast_boot=1):
     chip[6] = fast_boot
     chip[14] = 1
     m = timing.model(IMAGE, chip)
+    m.ensure_post_ui('post_ram_start')
     m.cpu.mem_write(m.base + 0x78, struct.pack('<H', 15360))
     m.cpu.mem_write(m.base + 0x51, b'\x04')  # P_PHASE: existing POST row.
     m.cpu.mem_write(0x49E, b'\x01')          # Presario POST key handling stays open.
@@ -148,7 +149,7 @@ def run():
     class SaveMismatch(timing.ACC):
         def port_in(self, cpu, port, size, unused):
             value = super().port_in(cpu, port, size, unused)
-            if port == 0x71 and self.index == 0x3E and (0x38, 66) in self.writes:
+            if port == 0x71 and self.index == 0x3E and (0x38, 0) in self.writes:
                 return value ^ 255
             return value
     m = timing.model(IMAGE, cls=SaveMismatch)
@@ -159,7 +160,7 @@ def run():
         if 'CMOS verification failed.' in mm.text(19, 23, 46):
             assert mm.cmos[0x69] == 0xD2 and mm.cmos[0x36] == 0x1A
             assert (0x33, 0) in mm.writes and (0x34, 6) in mm.writes
-            assert (0x38, 66) in mm.writes and (0x69, 0xC2) not in mm.writes
+            assert (0x38, 0) in mm.writes and (0x38,66) not in mm.writes and (0x69, 0xC2) not in mm.writes
             assert mm.cmos[0x33] == 0
             assert not mm.reset_count
             errors.append(True)

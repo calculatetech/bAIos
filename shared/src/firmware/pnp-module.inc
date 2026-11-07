@@ -32,12 +32,16 @@ pnp_module_node:
 %include "firmware/pnp-rom-resources.inc"
 %include "firmware/pnp-rom.inc"
 %include "firmware/pnp-pack.inc"
+%include "firmware/pnp-post-table.inc"
 %include "firmware/pnp-peripheral-post.inc"
+%include "firmware/post-ui-private.inc"
 %ifdef PB430_PORT
 %include "hardware/pnp-video.inc"
 %include "firmware/pnp-post-clock.inc"
 %endif
 %ifdef M919_BOARD_DEFINITION
+%include "hardware/pnp-video.inc"
+%include "firmware/pnp-post-clock.inc"
 %include "firmware/pnp-pci-rom.inc"
 %endif
 %ifdef PNP_EXTERNAL_JOURNAL

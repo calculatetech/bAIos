@@ -362,6 +362,7 @@ startup:
     call initialize_video
     jc video_failed
     pb_stage 0x60
+    call post_ui_begin
     call init_keyboard
     pb_stage 0x48
     call arm_keyboard_runtime

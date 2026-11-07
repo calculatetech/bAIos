@@ -46,6 +46,8 @@ P_C_PRIORITY equ -75
 P_C_SCAN_PRIORITY equ -76
 P_C_ALT equ -80
 P_C_TAIL equ -84
+P_C_CANDIDATE equ -86
+P_C_RESPONSE equ -87
 P_C_NORMAL equ -128
 
 ; ECX=multiple-of-four object size. EAX address and GS:SI object start, CF.
@@ -78,18 +80,25 @@ pnp_census:
     pop es
     mov byte [ss:bp+P_C_CSN],0
     mov byte [ss:bp+P_C_PROBED],0
-    mov word [ss:bp+P_C_PORT],0x203
+    mov word [ss:bp+P_C_CANDIDATE],0
+    mov byte [ss:bp+P_C_RESPONSE],0
     mov dword [ss:bp+P_C_CARD],0
     call pnp_isa_reset
 .find:
     cmp byte [ss:bp+P_C_CSN],0
     jne .probe
+    mov si,[ss:bp+P_C_CANDIDATE]
+    mov dx,[cs:pnp_read_ports+si]
+    test dx,dx
+    jz .exhausted
+    mov [ss:bp+P_C_PORT],dx
     mov ax,0x0201
     movzx edx,word [ss:bp+P_C_PORT]
     mov ecx,1
     call pnp_claim_query
     jc .relocate
 .probe:
+    mov dword [ss:bp+P_C_CARD],0
     mov byte [ss:bp+P_C_PROBED],1
     mov dx,[ss:bp+P_C_PORT]
     call pnp_isa_wake_zero
@@ -97,12 +106,26 @@ pnp_census:
     lea di,[bp+P_C_SERIAL]
     call pnp_isa_isolate
     jnc .found
+    test ah,ah
+    jnz .response
     cmp byte [ss:bp+P_C_CSN],0
     jne .finish
+    cmp byte [ss:bp+P_C_RESPONSE],0
+    je .finish
+    jmp .relocate
+.response:
+    mov byte [ss:bp+P_C_RESPONSE],1
+    cmp byte [ss:bp+P_C_CSN],0
+    je .relocate
+    call pnp_census_bad        ; Never relocate an already assigned census.
+    jmp .finish
 .relocate:
-    add word [ss:bp+P_C_PORT],4
-    cmp word [ss:bp+P_C_PORT],0x3FF
-    jbe .find
+    add word [ss:bp+P_C_CANDIDATE],2
+    jmp .find
+.exhausted:
+    cmp byte [ss:bp+P_C_RESPONSE],0
+    je .finish
+    call pnp_census_bad
     jmp .finish
 .found:
     cmp byte [ss:bp+P_C_CSN],255
@@ -458,3 +481,9 @@ pnp_census_bad:
     popad
     ret
 pnp_census_code_end:
+; Identical read-port candidates in three Award ISA PnP implementations.
+; A silent first admitted identifier terminates absence; response/CRC conflict
+; may try another candidate before any CSN exists. No full-range fallback.
+pnp_read_ports:
+    dw 0x20B,0x20F,0x213,0x217,0x21B,0x21F,0x263,0x283,0x2A3
+    dw 0x2C3,0x2E3,0x323,0x343,0x363,0x383,0x3A3,0x3E3,0

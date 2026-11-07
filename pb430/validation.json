@@ -471,6 +471,78 @@
         "--port",
         "pb430"
       ]
+    },
+    {
+      "id": "shared-rom-footprint",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-rom-footprint.py",
+        "--port",
+        "pb430",
+        "--case",
+        "all"
+      ]
+    },
+    {
+      "id": "shared-post-options",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-post-options.py",
+        "--port",
+        "pb430",
+        "--case",
+        "all"
+      ]
+    },
+    {
+      "id": "shared-live-post-probes",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "pb430",
+        "--case",
+        "probes"
+      ]
+    },
+    {
+      "id": "shared-live-post-table",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "pb430",
+        "--case",
+        "table"
+      ]
+    },
+    {
+      "id": "shared-live-post-screen",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "pb430",
+        "--case",
+        "screen"
+      ]
+    },
+    {
+      "id": "shared-live-post-summary",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "pb430",
+        "--case",
+        "summary"
+      ]
     }
   ],
   "case_sets": [
@@ -516,6 +588,34 @@
         "compatibility": "shared-ui-text",
         "image-contract": "shared-ui-text"
       }
+    },
+    {
+      "script": "shared/tests/test-rom-footprint.py",
+      "argument": "--case",
+      "covered_by": {
+        "measurement": "shared-rom-footprint",
+        "private-ui": "shared-rom-footprint",
+        "startup": "shared-rom-footprint",
+        "setup-continuation": "shared-rom-footprint",
+        "roundtrip": "shared-rom-footprint",
+        "capacity": "shared-rom-footprint",
+        "popups": "shared-rom-footprint",
+        "lifetime": "shared-rom-footprint",
+        "all": "shared-rom-footprint"
+      }
+    },
+    {
+      "script": "shared/tests/test-post-options.py",
+      "covered_by": {
+        "settings": "shared-post-options",
+        "timer": "shared-post-options",
+        "keyboard": "shared-post-options",
+        "video": "shared-post-options",
+        "all": "shared-post-options"
+      }
+    },
+    {
+      "script": "shared/tests/test-live-post.py"
     }
   ],
   "historical_checks": [],
@@ -563,7 +663,8 @@
   ],
   "coverage_notes": [
     "--stock-vga retains the original OEM provider. The delivered 50/60 MHz pair uses the same VGA1.41 provider and system BIOS.",
-    "Builders execute their assembled diagnostic checks directly. The profile-build test also proves a fresh standalone diagnostic build."
+    "Builders execute their assembled diagnostic checks directly. The profile-build test also proves a fresh standalone diagnostic build.",
+    "Shared ROM footprint checks use the current normal builders, actual module transports and complete declared variants. Per-build rom-footprint.json separates resident, private and temporary RAM costs."
   ],
   "wrapped_tests": {
     "pb430/tools/test-cache-lifecycle.py": [

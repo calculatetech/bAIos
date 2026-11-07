@@ -74,6 +74,7 @@ start:
     cmp ax,TEST_RAM_KIB-1024
     jne bad
     ; Reuse the native terminal's complete text and original-font exports.
+%include "native-memory-result.inc"
     mov si,dump_packet
     mov ax,0x4300
     mov dl,0x80
@@ -86,7 +87,7 @@ start:
     pop ds
     mov [dump_packet+4],bp
     mov [dump_packet+6],es
-    mov dword [dump_packet+8],9
+    mov byte [dump_packet+8],9 ; Remaining LBA bytes are already zero.
     mov si,dump_packet
     mov ax,0x4300
     mov dl,0x80

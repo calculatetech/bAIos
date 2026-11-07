@@ -3,7 +3,7 @@
     "vendor": "Packard Bell",
     "model": "PB430",
     "revision": "1",
-    "version": "0.5.0",
+    "version": "0.8.0",
     "release_date": "10/31/2026"
   },
   "rom": {
@@ -21,7 +21,12 @@
         "length": 32768,
         "offset": 65535
       }
-    ]
+    ],
+    "post_module": {
+      "offset": 32768,
+      "bank_bytes": 32768,
+      "transport": "window-copy"
+    }
   },
   "platform": {
     "state_seg": 40448,

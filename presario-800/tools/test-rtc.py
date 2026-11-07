@@ -540,6 +540,9 @@ def check_clean_dos_speedsys():
 
 
 if __name__ == '__main__':
+    sys.path.insert(0, str(ROOT.parent))
+    from shared.tools.post_fixture import bind_rtc_candidate
+    bind_rtc_candidate(sys.modules[__name__], BUILD / 'baios-presario800-system.rom')
     check_ticks()
     check_formats()
     check_validation()

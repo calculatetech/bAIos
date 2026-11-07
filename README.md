@@ -29,6 +29,12 @@ F9 loads the default settings. F10 saves settings and restarts. Saved settings t
 
 The default boot order is CD-ROM, floppy disk, then hard disk. A boot device must contain a usable operating system or boot program.
 
+POST Delay in Boot pauses before the summary. The default is 5 seconds. Choose 0 to skip this pause. This choice does not add a pause before the startup screen.
+
+On ports with PCI display selection, Video Init Order chooses PCI/ISA or ISA/PCI. PCI/ISA is the default. The BIOS uses the other bus when the preferred bus has no usable display.
+
+Supported Plug and Play ports show a device listing below the startup summary. It reports detected expansion devices, assigned resources and configuration status. See the [Plug and Play guide](docs/plug-and-play.md).
+
 Fast Boot shortens memory testing. It does not reduce the amount of detected memory. Leave timings at their defaults until the computer runs reliably.
 
 ## Features and help

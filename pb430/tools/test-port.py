@@ -153,15 +153,23 @@ exit_enabled = 1
     raw = (vm/f'disk-{positions[0]}.img').read_bytes()[512:17*512]
     cells,font = raw[:4000],raw[4096:8192]
     assert len(cells)==4000 and len(font)==4096 and any(font)
+    # Both screen-exporting guests own the unused video-page result tail.
+    base_kib=struct.unpack_from('<H',raw,4000+0x13)[0]
+    ebda_segment=struct.unpack_from('<H',raw,4000+0x0E)[0]
+    ebda_kib=raw[4064] if boot_source=='native-boot.asm' else None
+    if ebda_kib is not None:
+        assert ebda_kib>=8 and ebda_segment*16+ebda_kib*1024==640*1024
+    assert 0<base_kib<=632
+    assert base_kib*1024==ebda_segment*16
     if shadow_policy is not None:
         visible=(vm/f'disk-{positions[0]}.img').read_bytes()[17*512:145*512]
         assert visible==Path(result['path']).read_bytes()[65536:],'Visible F000 bytes changed across staged shadow transitions'
     from frame_proof import check
-    frame_oracle=check(cells,font,PORT/'reference/pb430-m27c1001.bin',ram,positions,types,cache=cache_expected,fpu=fpu,warnings=warnings)
+    frame_oracle=check(cells,font,PORT/'reference/pb430-m27c1001.bin',ram,positions,types,cache=cache_expected,fpu=fpu,warnings=warnings,base_kib=base_kib)
     render(cells,font,folder/'display.png')
     (folder/'cells.bin').write_bytes(cells)
     (folder/'font.bin').write_bytes(font)
-    return {'terminal':actual,'ram_kib':ram,'positions':positions,'image':result,'frame_oracle':frame_oracle,'frame_sha256':hashlib.sha256(cells+font).hexdigest()}
+    return {'terminal':actual,'ram_kib':ram,'base_kib':base_kib,'ebda_segment':ebda_segment,'ebda_kib':ebda_kib,'positions':positions,'image':result,'frame_oracle':frame_oracle,'frame_sha256':hashlib.sha256(cells+font).hexdigest()}
 
 
 def native(name='native',**options):
@@ -222,15 +230,20 @@ def image_checks(image):
         assert Path(delivered['path'])==selected
         checked=validate(selected)
         data=selected.read_bytes();listing=Listing(selected.with_suffix('.lst'))
-        assert data[:65536]==raw[:65536] and data[65536:]!=raw[65536:]
+        assert data[:0x8000]==raw[:0x8000] and data[65536:]!=raw[65536:]
         assert data[0x1F065:0x1F070]==bytes.fromhex('80fc1d7305ea972800c0cf')
-        assert 0xF070 < listing.symbol('pb430_rom_extensions_end') <= listing.symbol('cd_boot_clear') < listing.symbol('cd_boot') < listing.symbol('rom_code_end') < 0xFFEF
+        assert listing.symbol('cd_boot_clear') < listing.symbol('cd_boot') < listing.symbol('rom_code_end') <= 0xF065
+        assert 0xF070 < listing.symbol('pb430_rom_extensions_end') < 0xFFEF
         result['cli_selections'].append({'arguments':[flag],'checked':checked})
     for kind in ('size','vga','padding','reset','checksum'):
         bad=bytearray(raw)
         if kind=='size':bad.pop()
         elif kind=='vga':bad[12]^=1
-        elif kind=='padding':bad[40000]=0
+        elif kind=='padding':
+            padding=0x8000+int.from_bytes(raw[0x8008:0x800A],'little')
+            assert padding<0xFFFF and bad[padding]==0xFF
+            bad[padding]=0
+            bad[0xFFFF]=(-sum(bad[0x8000:0xFFFF]))&255
         elif kind=='reset':bad[-15]^=1;bad[-17]=(-sum(bad[65536:-17])-sum(bad[-16:]))&255
         else:bad[70000]^=1
         path=folder/(kind+'.bin');path.write_bytes(bad)
@@ -267,7 +280,7 @@ def diagnostic_checks(image):
     return rows
 
 
-def floppy_checks():
+def floppy_checks(image):
     from scenarios import ports_record
     from core_proof import ACC
     n=nvram();n[0x10]=0x50;n[0x3B]=(n[0x3B]&~0x18)|8
@@ -332,6 +345,10 @@ def ram_checks(image):
     rows.append(native('ram-fast-pause',vga60=False,cmos=fast,defines=('EMULATOR_RAM_SKIP_TEST','EMULATOR_RAM_PROOF','EMULATOR_RAM_PROOF_PAUSE'),runtime_input=True))
     rows.append(native('ram-fast-esc',vga60=False,cmos=fast,defines=('EMULATOR_RAM_SKIP_TEST','EMULATOR_RAM_PROOF'),ram_flags=2,runtime_input=True))
     rows.append(native('ram-fast-delete-save',vga60=False,cmos=fast,types=0x40,floppy_media=True,defines=('EMULATOR_RAM_SKIP_TEST','EMULATOR_RAM_PROOF','EMULATOR_RAM_PROOF_DELETE','EMULATOR_SETUP_TEST','EMULATOR_SETUP_SAVE_FIELDS','EMULATOR_RAM_SETUP_BOOT'),runtime_input=True))
+    from scenarios import saved_chip
+    for name,expected_fast in (('ram-delete-save',0),('ram-fast-delete-save',1)):
+        persisted=(PORT/'build/tests/results'/name/'vm/nvr/pb430.nvr').read_bytes()
+        assert saved_chip(image,persisted)[6]==expected_fast
     return rows
 
 
@@ -369,7 +386,7 @@ def run_case(case,image):
         return {'stock_reference':verify(image,cold),'cold_entry':scenarios.cache_cold_entry(image,nvram),'cold_post':cold,'component':scenarios.cache(image,nvram),'composed':scenarios.cache_composed(image,nvram),'warm_reset':scenarios.cache_warm(image,nvram),'warm_boot_device':scenarios.warm_boot_device(image,nvram),'interrupt_window':scenarios.cache_interrupts(image,nvram),'timing_rows':scenarios.cache_timing_rows(image,nvram)}
     if case=='serial':return scenarios.serial(image,nvram)
     if case=='parallel':return scenarios.parallel(image,nvram)
-    if case=='floppy':return floppy_checks()
+    if case=='floppy':return floppy_checks(image)
     if case=='disk-services':return [native('disk-master',boot_source='native-disk.asm',expected=0x65,disk_services=True),native('disk-slave',positions=(1,),boot_source='native-disk.asm',expected=0x65,disk_services=True),native('disk-both',positions=(0,1),boot_source='native-disk.asm',expected=0x65,disk_services=True),scenarios.disabled_ide(image,nvram)]
     if case=='cd':return [native('cd-master',cdroms={0:True},positions=(),boot_source='native-cd.asm',expected=0x68),native('cd-slave-only',cdroms={1:True},positions=(),boot_source='native-cd.asm',expected=0x68),native('cd-later-slave',cdroms={0:False,1:True},positions=(),boot_source='native-cd.asm',expected=0x68),native('cd-unusable',cdroms={0:False},positions=(),defines=('PB430_BOOT_RETRY_PROOF','EMULATOR_BOOT_RETRY_EXIT=0x71'),expected=0x71,vga60=False),native('cd-emulated',cdroms={0:True},positions=(),cd_media=2,boot_source='native-cd.asm',expected=0x68)]
     if case=='option-roms':return option_checks(image)

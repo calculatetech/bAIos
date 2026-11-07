@@ -5,11 +5,12 @@
 %define pci_command_write pnp_module_pci_command
 %define pci_next_function pnp_module_pci_next
 %define rom_validate pnp_module_rom_validate
-%define board_pci_rom_writable pnp_module_rom_writable
-%define board_pci_rom_shadow pnp_module_rom_shadow
-%define board_pci_rom_protect pnp_module_rom_protect
+%define board_pci_rom_writable pnp_board_pci_rom_writable
+%define board_pci_rom_shadow pnp_board_pci_rom_shadow
+%define board_pci_rom_protect pnp_board_pci_rom_protect
 %define post_ui_rom pnp_module_rom_ui
 %define option_rom_enter pnp_module_rom_enter
+%include "hardware/pnp-rom-shadow.inc"
 %include "pc/pci-rom.inc"
 %undef pci_read
 %undef pci_write
@@ -31,9 +32,6 @@ pnp_pci_bridge pnp_module_pci_write,pnp_pci_write_callback
 pnp_pci_bridge pnp_module_pci_command,pnp_pci_command_callback
 pnp_pci_bridge pnp_module_pci_next,pnp_pci_next_callback
 pnp_pci_bridge pnp_module_rom_validate,pnp_rom_validate_callback
-pnp_pci_bridge pnp_module_rom_writable,pnp_rom_writable_callback
-pnp_pci_bridge pnp_module_rom_shadow,pnp_rom_shadow_callback
-pnp_pci_bridge pnp_module_rom_protect,pnp_rom_protect_callback
 pnp_pci_bridge pnp_module_rom_ui,pnp_rom_ui_callback
 %unmacro pnp_pci_bridge 2
 pnp_module_rom_enter:

@@ -104,6 +104,8 @@ def peripheral_fixture(image,initial_c2=0x7E):
     for owner in ('settings_load','init_pic_pit','init_at_prerequisites','init_superio'):
         invoke(fixture,owner)
     d.write(0x9E000+state['C_IDE'],1,0)
+    from geometry_proof import prepare_component_post
+    prepare_component_post(fixture)
     return hardware,fixture
 
 
@@ -279,7 +281,7 @@ def run(image=None,output=None):
     image=image.resolve() if image else None
     payload=({'routing':routing(image),'fdc_keyboard':[fdc_and_keyboard(image,policy,initial) for policy in (0,3) for initial in (0x7E,0x7F)],'fixture':'bounded actual peripheral/public owners'}
              if image else {'collection':collection(),'routing':routing(),'saved_ide':saved_ide(),'fdc_keyboard':fdc_and_keyboard()})
-    image=image or PORT/'build/hardware-tests/geometry/baios-m919.bin';payload['rom_sha256']=hashlib.sha256(image.read_bytes()).hexdigest()
+    image=image or PORT/'build/tests/geometry/baios-m919.bin';payload['rom_sha256']=hashlib.sha256(image.read_bytes()).hexdigest()
     path=output.resolve() if output else (image.parent.parent if image.parent.name=='image' else PORT/'build/research/hardware')/'sio-proof.json'
     path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps(payload,indent=2)+'\n')

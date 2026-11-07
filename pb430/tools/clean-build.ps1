@@ -11,6 +11,7 @@ if ((Test-Path -LiteralPath $legacyTools) -and @(Get-ChildItem -LiteralPath $leg
     throw 'Move installed tools from build/deps to root tools/deps before cleanup.'
 }
 $keep = @('baios-pb430.bin','baios-pb430-system.bin','baios-pb430-vga50.bin','baios-pb430-vga60.bin','baios-pb430.lst','configuration.inc','rom-checksums.json','diagnostics','tests','research','review','releases','LATEST.txt','LATEST.json','build-info.json')
+$keep += @('rom-footprint.json')
 $keep += @(Get-LatestCandidateFiles $build)
 foreach ($item in Get-ChildItem -LiteralPath $build -Force | Where-Object Name -NotIn $keep) {
     Remove-Generated $item.FullName

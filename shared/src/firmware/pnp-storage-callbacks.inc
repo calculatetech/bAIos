@@ -41,3 +41,25 @@ pnp_parallel_base_callback:
 pnp_serial_initialize_callback:
     call serial_initialize
     retf
+
+%ifdef BOARD_PRIVATE_POST_CLOCK
+%include "firmware/pnp-post-clock-callbacks.inc"
+%endif
+
+%macro pnp_post_callback 2
+%1:
+    call %2
+    retf
+%endmacro
+pnp_post_callback pnp_post_led_callback,keyboard_led_tick
+%ifdef BOARD_PRIVATE_POST_CLOCK
+pnp_post_callback pnp_post_cmos_callback,update_cmos_checksum
+%endif
+pnp_post_callback pnp_post_keyboard_callback,post_keyboard_wait
+pnp_post_callback pnp_post_gate_callback,setup_post_gate
+pnp_post_callback pnp_post_entering_callback,post_entering_setup
+pnp_post_callback pnp_post_setup_callback,setup_main
+pnp_post_callback pnp_post_ui_callback,post_ui_begin
+%unmacro pnp_post_callback 2
+
+%include "firmware/post-ui-resident.inc"

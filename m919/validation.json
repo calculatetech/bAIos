@@ -278,6 +278,78 @@
         "--port",
         "m919"
       ]
+    },
+    {
+      "id": "shared-rom-footprint",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-rom-footprint.py",
+        "--port",
+        "m919",
+        "--case",
+        "all"
+      ]
+    },
+    {
+      "id": "shared-post-options",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-post-options.py",
+        "--port",
+        "m919",
+        "--case",
+        "all"
+      ]
+    },
+    {
+      "id": "shared-live-post-probes",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "m919",
+        "--case",
+        "probes"
+      ]
+    },
+    {
+      "id": "shared-live-post-table",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "m919",
+        "--case",
+        "table"
+      ]
+    },
+    {
+      "id": "shared-live-post-screen",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "m919",
+        "--case",
+        "screen"
+      ]
+    },
+    {
+      "id": "shared-live-post-summary",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "m919",
+        "--case",
+        "summary"
+      ]
     }
   ],
   "case_sets": [
@@ -316,6 +388,34 @@
         "compatibility": "shared-ui-text",
         "image-contract": "shared-ui-text"
       }
+    },
+    {
+      "script": "shared/tests/test-rom-footprint.py",
+      "argument": "--case",
+      "covered_by": {
+        "measurement": "shared-rom-footprint",
+        "private-ui": "shared-rom-footprint",
+        "startup": "shared-rom-footprint",
+        "setup-continuation": "shared-rom-footprint",
+        "roundtrip": "shared-rom-footprint",
+        "capacity": "shared-rom-footprint",
+        "popups": "shared-rom-footprint",
+        "lifetime": "shared-rom-footprint",
+        "all": "shared-rom-footprint"
+      }
+    },
+    {
+      "script": "shared/tests/test-post-options.py",
+      "covered_by": {
+        "settings": "shared-post-options",
+        "timer": "shared-post-options",
+        "keyboard": "shared-post-options",
+        "video": "shared-post-options",
+        "all": "shared-post-options"
+      }
+    },
+    {
+      "script": "shared/tests/test-live-post.py"
     }
   ],
   "historical_checks": [],
@@ -342,7 +442,8 @@
   ],
   "coverage_notes": [
     "The held-port checkpoint runs the explicit shared-defaults, ATA-completion, replacement-adapter and ROM-integrity checks above.",
-    "Legacy POST/profile/certificate dispatchers remain historical tools, not evidence for the replacement adapter. Wider feature validation must be reconciled before this port joins routine updates."
+    "Legacy POST/profile/certificate dispatchers remain historical tools, not evidence for the replacement adapter. Wider feature validation must be reconciled before this port joins routine updates.",
+    "Shared ROM footprint checks use the current normal builders, actual module transports and complete declared variants. Per-build rom-footprint.json separates resident, private and temporary RAM costs."
   ],
   "wrapped_tests": {
     "m919/tools/test-cache-lifecycle.py": [

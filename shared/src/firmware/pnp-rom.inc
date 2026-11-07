@@ -197,6 +197,10 @@ pnp_initialize_image:
     mov bx,[gs:si+P_V_CSN]
     mov dx,[gs:si+P_V_PORT]
     mov cl,[ss:bp-6]
+    test cl,cl
+    jnz .enter
+    mov cl,[ss:bp-5]           ; Selected legacy video retains its old entry ABI.
+.enter:
     call CFG_ROM_CODE_SEGMENT:pnp_initialize_callback
     mov [ss:bp-24],ax       ; Capture init AX before the wrapper restores regs.
     call pnp_module_state

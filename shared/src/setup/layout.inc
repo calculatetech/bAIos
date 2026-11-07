@@ -34,5 +34,25 @@
     mov di, ((%1) * 80 + (%2)) * 2
     mov si, %3
     mov bh, %4
-    call setup_text
+    call post_ui_setup_text
 %endmacro
+
+%ifndef POST_UI_DATA
+%define POST_UI_DATA cs
+%endif
+%macro post_ui_data_segment 0
+%ifdef POST_UI_PRIVATE
+    push word CFG_ROM_CODE_SEGMENT
+%else
+    push cs
+%endif
+    pop ds
+%endmacro
+%macro post_ui_facade 1
+    pushf
+    push bx
+    mov bx,post_ui_export_%1
+    jmp post_ui_invoke
+%endmacro
+
+%include "firmware/post-ui-aliases.inc"

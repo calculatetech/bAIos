@@ -17,7 +17,25 @@ sys.path.insert(0, str(ROOT.parent))
 from shared.tools.floppy import TYPES, GEOMETRY, blank_86f
 
 
+
+def fixture_rom(intermediate, production):
+    """Compose a diagnostic assembly through the normal private-bank serializer."""
+    from shared.tools.post_module import serialize
+    intermediate = Path(intermediate)
+    assembled = intermediate.read_bytes()
+    assert len(production) == 0x20000 and len(assembled) > 0x10000
+    bank, _ = serialize(assembled[0x10000:], intermediate.parent / 'post-module', 0x4000)
+    system = bytearray(assembled[:0x10000])
+    system[-1] = -sum(system[:-1]) & 255
+    physical = production[:0xC000] + bank + system
+    assert len(physical) == 0x20000 and sum(system) & 255 == 0
+    return physical
+
+
 def run_hidden(args, **kwargs):
+    # Diagnostic assemblies use the same shared include root as the normal builder.
+    if Path(str(args[0])).stem.lower() == 'nasm':
+        args = [*args, '-I', str(ROOT.parent / 'shared/src') + '/']
     startup = subprocess.STARTUPINFO()
     startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     startup.wShowWindow = 0
@@ -130,10 +148,7 @@ def main():
                 defines.append('-DFLOPPY_DIAGNOSTIC')
             run_hidden([nasm, '-f', 'bin', *defines, '-I', str(ROOT / 'src') + '/',
                         '-o', str(system), str(ROOT / 'src/bios.asm')], check=True)
-            data = bytearray(system.read_bytes())
-            assert len(data) == 65536
-            data[-1] = -sum(data[:-1]) & 255
-            wrapper.write_bytes(production[:65536] + data)
+            wrapper.write_bytes(fixture_rom(system, production))
             for case in cases:
                 run_case(args, case, nasm, exe)
     finally:

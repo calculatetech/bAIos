@@ -99,6 +99,10 @@ class Chipset(setup.Setup):
         return super().interrupt(cpu,vector,unused)
 
     def port_in(self, cpu, port, size, unused):
+        if port in (0x3F0,0x3F1):
+            return self.setup_smc().port_in(cpu,port,size,unused)
+        if port==self.setup_isa().read_port:
+            return self.setup_isa().input(port,size)
         if getattr(self, 'starting', False):
             if port == 0x71 and not self.delayed:
                 assert cpu.reg_read(x.UC_X86_REG_CX) == 0, 'stackless CMOS settle loop did not finish'
@@ -112,6 +116,14 @@ class Chipset(setup.Setup):
         return super().port_in(cpu, port, size, unused)
 
     def port_out(self, cpu, port, size, value, unused):
+        if port==0x43 and value==0:
+            # Setup's existing mode3 latch advances1024 raw counts:512 clocks.
+            self.setup_isa().ticks+=512
+        if port in (0x3F0,0x3F1):
+            return self.setup_smc().port_out(cpu,port,size,value,unused)
+        if port in (0x279,0xA79):
+            assert self.setup_isa().output(port,size,value)
+            return
         if port == 0x71 and getattr(self, 'starting', False) and not self.delayed:
             assert cpu.reg_read(x.UC_X86_REG_CX) == 0, 'stackless CMOS settle loop did not finish'
             self.delayed = True
@@ -130,6 +142,20 @@ class Chipset(setup.Setup):
         else:
             super().port_out(cpu, port, size, value, unused)
 
+    def setup_smc(self):
+        # The current early PnP owner applies existing decode before claiming
+        # resources. Reuse the established external SMC configuration device.
+        if not hasattr(self,'setup_smc_device'):
+            self.setup_smc_device=importlib.import_module('test-ports').Ports()
+        self.setup_smc_device.cpu=self.cpu
+        return self.setup_smc_device
+
+    def setup_isa(self):
+        if not hasattr(self,'setup_isa_device'):
+            from shared.tools.isa_pnp_proof import Bus
+            self.setup_isa_device=Bus()
+        return self.setup_isa_device
+
     def record(self, draft=False):
         return bytes(self.cpu.mem_read(self.base + (U if draft else C), SIZE))
 
@@ -140,13 +166,14 @@ class Chipset(setup.Setup):
                 halt=False, before_restart=False, through_gate=False, expected_record=None,
                 production_controls=False, through_boot=False, stop_at_notice=False, boot_failure=False,
                 through_publication=False):
+        self.map_post_rom()
         # Continue the real entry; only retained video/peripheral mechanics are opaque.
         self.starting = True
         if (reset or entry == 'chipset_late_cache') and not getattr(self, 'reset_ram', False):
             self.cpu.mem_map(0x800000, 24 * 1024 * 1024)
             self.reset_ram = True
         self.cpu.hook_del(self.code_hook)
-        terminal = ('post_debug_summary' if through_publication else 'post_notice_wait' if stop_at_notice else 'boot_retry' if boot_failure else 'boot_sector' if through_boot else '.controlled_restart' if before_restart else 'hard_halt' if halt else
+        terminal = ('pnp_post_summary_complete' if through_publication else 'post_notice_wait' if stop_at_notice else 'boot_retry' if boot_failure else 'boot_sector' if through_boot else '.controlled_restart' if before_restart else 'hard_halt' if halt else
                     'chipset_post_recovery_notice' if before_notice else
                     'chipset_late_cache' if through_gate else
                     'post_clock_alert' if through_visible else 'chipset_visible_ram_test')
@@ -175,6 +202,7 @@ class Chipset(setup.Setup):
         opaque = tuple(n for n in opaque if n not in native_owners)
         traced += native_owners
         hops, hooks, alert_hook = [], [], [None]
+        private_tick_segments=set()
         if production_controls:
             # Hook actual HLT sites and the FDC IRQ poll, not every RAM-test instruction.
             rom = bytes(self.cpu.mem_read(0xF0000, 65536))
@@ -199,6 +227,16 @@ class Chipset(setup.Setup):
                 if name == 'shadow_system_bios':
                     assert bytes(cpu.mem_read(0x9FC00, 1)) == b'\x01'
                     assert bytes(cpu.mem_read(0x9FC60, SIZE)) == bytes(SIZE), 'EBDA must be rebuilt'
+                if production_controls and name=='setup_main':
+                    base=int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4
+                    segment=int.from_bytes(cpu.mem_read(base+0x33A,2),'little')
+                    if segment and segment not in private_tick_segments:
+                        private_tick_segments.add(segment)
+                        length=int.from_bytes(cpu.mem_read((segment<<4)+8,2),'little')
+                        for offset,byte in enumerate(cpu.mem_read(segment<<4,length)):
+                            if byte==0xF4:
+                                address=(segment<<4)+offset
+                                hooks.append(cpu.hook_add(UC_HOOK_CODE,self.code,None,address,address))
                 if getattr(self, 'startup_observer', None):
                     self.startup_observer(self, name)
                 if name == terminal and (entry != terminal or getattr(self, 'restarts', 0)):
@@ -235,7 +273,8 @@ class Chipset(setup.Setup):
             alert_hook[0] = self.cpu.hook_add(UC_HOOK_CODE, self.code)
             hooks.append(alert_hook[0])
         try:
-            self.cpu.emu_start(start, 0xFFFFFF, count=100000000)
+            from shared.tools.post_fixture import execute_real
+            execute_real(self.cpu, start, 0xFFFFFF, 100000000)
             assert hops[-1:] == [terminal], hops[-64:]
             self.startup_hops = hops
             if halt or before_restart or stop_at_notice or boot_failure:
@@ -258,6 +297,8 @@ class Chipset(setup.Setup):
             if through_boot:
                 assert hops[-1] == 'boot_sector' and hops[-2] in ('int19', 'int18'), hops
                 assert self.cpu.reg_read(x.UC_X86_REG_DL) == 0x80
+            self.segment = int.from_bytes(self.cpu.mem_read(0x40E, 2), 'little')
+            self.base = self.segment << 4
             expected = saved_policy(self) if expected_record is None else expected_record
             assert self.record() == expected
             exposed = bytes(self.cpu.mem_read(self.base+0xD0, 2))
@@ -488,7 +529,7 @@ def profiles():
         def port_in(self, cpu, port, size, unused):
             value = super().port_in(cpu, port, size, unused)
             if (port == 0x71 and self.index == 0x3E and getattr(self, 'fail_save', False)
-                    and (0x38, 66) in self.writes):
+                    and (0x38, 0) in self.writes):
                 return value ^ 255  # Existing base-settings verification mismatch.
             return value
     for recovering in (False, True):
@@ -938,8 +979,7 @@ def ui():
         assert text or rom[pointer]==0, ('Renderer produced no text',hex(pointer))
         return text
     literal=b'bAIos Setup > Standard Setup'
-    assert rom.count(literal+b'\0')==1
-    assert text_at(rom.index(literal+b'\0'))==literal
+    assert text_at(setup.rtc.symbol('u_standard_title'))==literal
     assert text_at(setup.rtc.symbol('u_help_format1'))==b'Choose a 12-hour or 24-hour clock display.'
     for field in range(103):
         label,byte,shift,mask,count,values,h1,h2,reserved=struct.unpack_from('<HBBBHHHHB',rom,descriptor+14*field)
@@ -1589,12 +1629,9 @@ def emulator(preview=False, only=None, vga141=False, bus07=False, vga_clock=None
         if label == 'post-summary-long': defines += ['-DEMULATOR_CHIPSET_SUMMARY_LONG']
         if label == 'standard24': defines += ['-DEMULATOR_CHIPSET_CLOCK24']
         if preview: defines += ['-DEMULATOR_CHIPSET_PREVIEW']
-        subprocess.run([nasm,'-f','bin',*defines,'-I',str(ROOT/'src')+'/',
+        floppy.run_hidden([nasm,'-f','bin',*defines,'-I',str(ROOT/'src')+'/',
                         '-o',str(system),str(ROOT/'src/bios.asm')],check=True)
-        data=bytearray(system.read_bytes())
-        assert len(data)==65536
-        data[-1]=-sum(data[:-1])&255
-        wrapper.write_bytes(physical[:65536]+data)
+        wrapper.write_bytes(floppy.fixture_rom(system, physical))
         args=[exe,'-P',str(vm),'-R',str(roms),'-L',str(vm/'86box.log'),'-N']
         if preview:
             # Explicitly requested visible emulator; it remains open for review.
@@ -1639,6 +1676,8 @@ def main():
     parser.add_argument('--vga-bus07',action='store_true')
     parser.add_argument('--vga-clock',type=int,choices=(50,60))
     args=parser.parse_args()
+    from shared.tools.post_fixture import bind_rtc_candidate
+    bind_rtc_candidate(setup.rtc, setup.rtc.BUILD / 'baios-presario800-system.rom')
     cases={'profiles':profiles,'profile-locks':profile_locks,'policy':cmos_and_policy,'ui':ui,'ram':ram_test,'ram-bursts':ram_bursts,'controls':production_controls,'integrity':integrity}
     for case in args.case or cases:
         cases[case]()

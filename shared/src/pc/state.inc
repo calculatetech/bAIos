@@ -109,6 +109,10 @@
 %define C_PORTS             0x01E6 ; Eight active device selectors.
 %define U_PORTS             0x01EE ; Eight draft selectors, ends before200h.
 %define C_BOOT_FOURTH       0x01F6 ; Free gap after the device selectors.
+%define C_POST_DELAY        0x01F8 ; Index0/1/2 ->0/5/10 seconds before summary.
+%define U_POST_DELAY        0x01F9
+%define C_VIDEO_ORDER       0x01FA ; PCI hosts:0 ISA/PCI,1 PCI/ISA.
+%define U_VIDEO_ORDER       0x01FB
 %define U_BOOT_FOURTH       0x01F7
 %define P_FLOPPY            5
 %define P_MOUSE             6

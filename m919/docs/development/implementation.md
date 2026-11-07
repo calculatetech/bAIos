@@ -20,6 +20,13 @@ Revision1.5 uses ordinary socketed SRAM, not the later proprietary cache module.
 
 The board has serial mouse connections and no PS/2 mouse connector. `platform.aux_bios_supported` defaults to false. Setup hides PS/2 Mouse, unsupported extra serial address pairs, and ISA Serial Discovery. Hidden controls are also excluded from keyboard navigation. A valid older CMOS record keeps its other parameters; only that unavailable selector is normalized. The AUX initialization and INT15/C2 interface issue no mouse-controller commands. Serial ports remain available.
 
+## Private POST and Setup composition
+
+The shared [module guide](../../../docs/development/rom-modules.md) owns the call and lifetime contract. This adapter executes the raw module directly in E000, starting at physical 01600h. Its private storage window ends at the existing checksum footer. It copies no module into conventional memory. The complete generated prefix at 00000h..015FFh remains unchanged.
+
+The 0.22.0 normal composition has 9,273 free F000 bytes, compared with 217 in the 0.21.0 baseline. Its raw private module occupies 25,632 bytes, including its 12-byte header. Module RAM charge remains zero. The normal `rom-footprint.json` supplies the exact values and final image identity for each build. Public PnP and E000 APM services retain their existing resident ownership.
+
+
 ## Source boundary
 
 ### Plug and Play POST storage

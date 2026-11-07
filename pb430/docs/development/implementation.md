@@ -10,6 +10,13 @@ The selected VGA remains byte-identical at physical 00000h..07FFFh. Physical 080
 
 Non-executing VGA selection and staging establish fixed C000 ownership after ISA census and before assignment. Actual VGA initialization stays at its existing POST site. Both the onboard E000 source and an external C000 provider use this path. The journal allocator excludes physical 20000h..3FFFFh, which the existing video and ROM-shadow owners use as scratch. That skipped memory counts against temporary capacity. Automated checks follow Setup, reset, shadow, RAM and device owners through release. They do not qualify electrical stability.
 
+## Private POST and Setup composition
+
+The shared [module guide](../../../docs/development/rom-modules.md) owns the call and lifetime contract. This adapter retains raw storage in physical 08000h..0FFFFh. The existing ACC E000 read window copies the module before either video branch replaces that mapping. The allocator excludes the unchanged 20000h..3FFFFh shadow/video scratch owners.
+
+The 0.8.0 normal composition has 8,563 free F000 bytes, compared with 8 in the 0.7.0 baseline. Its raw module occupies 23,632 bytes, including its 12-byte header. The paragraph-rounded module RAM charge is 23,632 bytes. Selected VGA bytes, the F065 compatibility entry, the system image and both physical VGA variants retain their original owners. Each normal build writes the final identity and allocation costs to `rom-footprint.json`.
+
+
 ## Existing implementation
 
 Complete verified Save migrates legacy extensions to the [shared NV6 format](../../../docs/development/firmware.md). It preserves all 24 chipset bytes, two-position IDE geometry and peripheral choices. CMOS 37h remains outside the payload for the existing advanced-timing trial and restore sequence. Recovery 69h remains independent of the payload checksum. Component saves update only their own slice after migration.
@@ -81,6 +88,6 @@ Before cleanup, stop the emulator and run:
 powershell -NoProfile -File pb430/tools/clean-build.ps1 -WhatIf
 ```
 
-The port retention policy keeps current ROMs, listings, dependencies, captures, failed diagnostics and the nested task worktree. It removes completed disposable VMs and media only after their consumers finish. A `.retain-diagnosis` file protects an active failed case. Original references remain unchanged.
+The port retention policy keeps current ROMs, listings, dependencies, captures and failed diagnostics. It removes completed disposable VMs and media only after their consumers finish. A `.retain-diagnosis` file protects an active failed case. Original references remain unchanged.
 
 Video initialization, peripheral discovery and the clock alert use POST-only code through resident F000 bridges. The private finalizer returns before the complete runtime EBDA is published. Warm startup restores the original EBDA prefix and conventional-memory budget after the unchanged stock cache return and before the fixed private-bank reader. Public services follow the current BDA pointer after relocation.

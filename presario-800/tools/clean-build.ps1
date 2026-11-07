@@ -14,6 +14,7 @@ if (Test-Path -LiteralPath (Join-Path $build 'presario800-card.vhd')) {
 
 # The root is the approved build; pending features use one directory per pair.
 $keep = @('baios-presario800.bin','baios-presario800-system.rom','baios-presario800-system.lst','baios-presario800-vga50.bin','baios-presario800-vga60.bin','rom-manifest.json','diagnostics','tests','research','review','releases','LATEST.txt','LATEST.json','build-info.json','tmp')
+$keep += @('post-module.json','rom-footprint.json')
 $keep += @(Get-LatestCandidateFiles $build)
 foreach ($item in (Get-ChildItem -LiteralPath $build -Force | Where-Object Name -NotIn $keep)) {
     Remove-Generated $item.FullName

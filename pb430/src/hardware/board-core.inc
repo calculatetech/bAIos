@@ -10,7 +10,21 @@
 %include "hardware/ata-core.inc"
 core_verify_initialization:
     call load_bios_state
-    cmp word [0x413],632
+%ifdef EMULATOR_TEST
+    cmp word [fs:PNP_JOURNAL_ORIGINAL_KIB],640-CFG_PLATFORM_STATE_KIB
+    jne .bad
+    cmp dword [fs:PNP_JOURNAL_END],(640-CFG_PLATFORM_STATE_KIB)*1024
+    jne .bad
+    mov eax,[fs:PNP_JOURNAL_CURSOR]
+    cmp eax,PNP_JOURNAL_FLOOR
+    jb .bad
+    cmp eax,[fs:PNP_JOURNAL_END]
+    ja .bad
+    shr eax,10
+    cmp ax,[0x413]
+%else
+    cmp word [0x413],640-CFG_PLATFORM_STATE_KIB
+%endif
     jne .bad
     clc
     ret

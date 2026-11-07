@@ -86,7 +86,7 @@ def check(image):
     def factory(images, option_rom):
         hardware = Bus(images, option_rom)
         _, fixture = compose(hardware)
-        executed = PORT/'build/hardware-tests/geometry/baios-m919.bin'
+        executed = PORT/'build/tests/geometry/baios-m919.bin'
         if executed.read_bytes() != image.read_bytes():
             raise ValueError('M919 boot-source proof requires the exact default candidate; selected image differs from the executed ROM')
         cpu, hardware, _, _, cmos, _ = fixture

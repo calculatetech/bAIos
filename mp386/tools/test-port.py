@@ -377,9 +377,7 @@ def recovery_checks(image):
     for persistent in (False,True):
         m = machine(image,cache=False)
         m.cmos[:],m.nvram[:] = seed.cmos,seed.nvram
-        m.nvram[0x22B] = 1
-        m.nvram[0x22D] = 0xA5
-        m.nvram[0x22A] = (-0xD3-sum(m.nvram[0x22B:0x240])) & 255
+        importlib.import_module('test-setup-controls').saved_chipset_patch(image,m,{0:1,2:0xA5})
         m.cmos[0x36] = 0
         m.script_after_post = []
         attempts,failed,before = [],[],[]
@@ -427,14 +425,18 @@ def timing_recovery_checks(image, seed):
     from unicorn import UC_HOOK_CODE, UC_HOOK_INSN
     from unicorn import x86_const as x
     rows = []
+    # NV6: IDE occupies20 bytes, ports2, then the unchanged24 chipset bytes.
+    timing_cell=0x200+20+2+2
+    def payload(m):
+        return (bytes(m.cmos[0x33:0x36]),bytes(m.nvram[0x200:0x229]),
+                bytes(m.nvram[0x22A:0x240]),bytes(m.cmos[i] for i in (0x11,0x13,0x2D)))
     def factory(guard=0xD3):
         m = machine(image,cache=True)
         m.cmos[:],m.nvram[:] = seed.cmos,seed.nvram
         m.script_after_post = []
+        # Fast Boot shortens this timing/reset proof, not the detected RAM.
+        importlib.import_module('test-setup-controls').saved_chipset_patch(image,m,{0:1,2:0xA5})
         m.nvram[0x229] = guard
-        m.nvram[0x22B] = 1  # Fast Boot shortens this timing/reset proof, not the detected RAM.
-        m.nvram[0x22D] = 0xA5
-        m.nvram[0x22A] = (-0xD3-sum(m.nvram[0x22B:0x240])) & 255
         m.cmos[0x36] = 0
         return m
     def skip(mm,address):
@@ -505,7 +507,7 @@ def timing_recovery_checks(image, seed):
         for power in (False,True):
             m = factory()
             interrupted(m,label)
-            payload = bytes(m.nvram[0x22A:0x240])
+            saved_payload = payload(m)
             if power:
                 old = m
                 m = factory()
@@ -515,7 +517,7 @@ def timing_recovery_checks(image, seed):
             cold = len(m.ti_trace['cold'])
             reopen(m,warm=not power)
             assert len(m.ti_trace['cold']) > cold,'Pending CPU reset used unsafe retained warm RAM'
-            assert bytes(m.nvram[0x22A:0x240]) == payload
+            assert payload(m) == saved_payload
             assert not m.reset_count
             rows.append(dict(interrupted_at=label,power_loss=power,safe_Setup=True,
                              payload_preserved=True,false_RAM_failure=False,internal_retries=0))
@@ -530,12 +532,12 @@ def timing_recovery_checks(image, seed):
     rows.append(dict(completed_trial=True,saved_timings_retained=True))
     # Cancel Save, then Discard, finish POST and reopen after a later reset.
     m = factory(0xD2)
-    payload = bytes(m.nvram[0x22A:0x240])
+    saved_payload = payload(m)
     reopen(m,script=[0x3F,0x44,1,1,28],stop=False)
     assert m.nvram[0x229] == 0xD2 and m.cmos[0x36] == 0
-    assert bytes(m.nvram[0x22A:0x240]) == payload
+    assert payload(m) == saved_payload
     reopen(m,warm=True)
-    assert bytes(m.nvram[0x22A:0x240]) == payload and not m.reset_count
+    assert payload(m) == saved_payload and not m.reset_count
     rows.append(dict(cancel_Discard_then_reset=True,safe_Setup=True,payload_preserved=True))
     # A real keyboard reset during POST retires the trial after safe restoration.
     m = factory()
@@ -559,12 +561,12 @@ def timing_recovery_checks(image, seed):
     for fault in (None,'timing-cell','base-cell','marker-clear','power-before-commit'):
         m = factory(0xD2)
         oem = bytes(m.nvram[0x240:])
-        entered,errors,stopped,blocked = [],[],[],[]
+        entered,errors,stopped,blocked,completion = [],[],[],[],[]
         down,enter = [0xE0,0x50],[28]
         keys = [0x3F]+down*4+enter+enter+down*5+[0xE0,0x4D]*2+[0x44,28]
         class Storage(bytearray):
             def __setitem__(self,index,value):
-                reject = fault == 'timing-cell' and index == 0x22D
+                reject = fault == 'timing-cell' and index == timing_cell
                 if reject:
                     blocked.append(True)
                 else:
@@ -572,8 +574,13 @@ def timing_recovery_checks(image, seed):
         class Clock(bytearray):
             def __setitem__(self,index,value):
                 reject = fault == 'base-cell' and index == 0x3C
-                reject |= (fault == 'marker-clear' and index == 0x36 and value == 0
-                           and m.nvram[0x229] == 0xD3 and not blocked)
+                if (fault == 'marker-clear' and index == 0x36 and value == 0
+                        and completion and m.nvram[0x229] == 0xD2 and not blocked):
+                    # The prior-D2 path already stores zero here. A refused
+                    # zero-to-zero write would not exercise verification failure.
+                    blocked.append(True)
+                    super().__setitem__(index,0xAB)
+                    return
                 if reject:
                     blocked.append(True)
                 else:
@@ -587,7 +594,8 @@ def timing_recovery_checks(image, seed):
                 mm.pending.extend((0xE0,0x53))
                 mm.script,mm.post_script_armed = keys.copy(),True
             if address == 0xF0000+mm.symbol('chipset_timing_saved'):
-                assert mm.nvram[0x229] == 0xD2 and mm.nvram[0x22D] == 0xA6
+                completion.append(True)
+                assert mm.nvram[0x229] == 0xD2 and mm.nvram[timing_cell] == 0xA6
                 if fault == 'power-before-commit':
                     stopped.append(True)
                     mm.cpu.emu_stop()
@@ -603,7 +611,7 @@ def timing_recovery_checks(image, seed):
         assert entered and bytes(m.nvram[0x240:]) == oem
         if fault is None:
             assert m.booted and m.reset_count == 1
-            assert m.nvram[0x229] == 0xD3 and m.nvram[0x22D] == 0xA6
+            assert m.nvram[0x229] == 0 and m.nvram[timing_cell] == 0xA6
             assert m.cmos[0x36] == 0 and m.ti[0x801] == 0x06A6
         else:
             assert m.nvram[0x229] == 0xD2 and not m.reset_count

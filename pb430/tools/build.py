@@ -71,6 +71,8 @@ def run(output='build', defines=(), vga60=True, *, vga_clock=60):
         image.write_bytes(vga+raw[32768:])
     image.with_name('baios-pb430-system.bin').write_bytes(system)
     checked=validate(image,vga60,vga_clock=vga_clock)
+    from shared.tools.rom_footprint import write_report
+    checked["footprint"]=write_report(image,image.with_suffix(".lst"),module_offset=0x8000,bank_bytes=0x8000,transport="window-copy")
     image.with_name('rom-checksums.json').write_text(json.dumps(result|checked,indent=2)+'\n')
     images = [image, image.with_name('baios-pb430-system.bin')]
     if vga60:

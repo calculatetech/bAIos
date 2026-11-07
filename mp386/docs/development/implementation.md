@@ -40,6 +40,11 @@ Auto-detected CHS disks receive device-parameter initialization before the first
 
 The boot handoff clears the motherboard A20 override and leaves the keyboard-controller gate available to DOS. HIMEM.SYS can then enable and disable A20. Run hardware benchmarks without EMM386 if they use operations that its virtual machine does not support. The reported Landmark DMA-mode error under EMM386 remains an unconfirmed compatibility issue.
 
+## Shared UI composition
+
+This port uses the same [shared Setup bodies](../../../docs/development/rom-modules.md) inline. It has no private POST transport, ZX0 loader or PnP adoption. The source extraction and common-body consolidation preserve the complete 0.7.1 combined image and both programmer lanes. Its normal report contains 8,936 free system bytes and zero module RAM charge. The normal builder writes the exact final identity to `rom-footprint.json`.
+
+
 ## POST and configuration
 
 Complete verified Save migrates legacy extensions to the [shared NV6 format](../../../docs/development/firmware.md). Logical 40h..7Fh still maps only to NVRAM 0200h..023Fh. Logical 33h..35h and 11h/13h/2Dh use the ordinary RTC. Recovery 69h maps to 0229h and remains outside the payload checksum. OEM records 0240h..02FFh remain unchanged. The new format preserves all 24 chipset bytes and the complete two-position IDE geometry.

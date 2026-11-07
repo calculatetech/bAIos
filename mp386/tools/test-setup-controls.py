@@ -28,7 +28,14 @@ def invoke(m, name, **registers):
 
 
 def text(m, pointer):
-    return bytes(m.cpu.mem_read(0xF0000+pointer, 128)).split(b'\0')[0].decode('ascii')
+    # Canonical labels can be encoded; read the actual shared renderer output.
+    saved=m.cpu.context_save();screen=bytes(m.cpu.mem_read(0xB8000,4000))
+    try:
+        m.cpu.mem_write(0xB8000,b'\0\x07'*2000)
+        invoke(m,'setup_text',SI=pointer,DI=0,BX=0x0700)
+        return bytes(m.cpu.mem_read(0xB8000,4000))[::2].split(b'\0')[0].decode('cp437')
+    finally:
+        m.cpu.mem_write(0xB8000,screen);m.cpu.context_restore(saved)
 
 
 def data_address(m, name):
@@ -165,14 +172,23 @@ def check(image):
     assert 'Off/On LPT2' in m.text(15, 24, 53)
     assert 'On/On Disabled' in m.text(16, 24, 53)
     invoke(m, 'setup_draft_defaults')
-    rows = bytes(m.cpu.mem_read(0xF0000+data_address(m,'u_boot_rows'), 8))
-    pointers = struct.unpack('<8H', m.cpu.mem_read(0xF0000+data_address(m,'u_boot_pointers'), 16))
-    labels = struct.unpack('<8H', m.cpu.mem_read(0xF0000+data_address(m,'u_boot_labels'), 16))
-    assert [text(m, p) for p in labels][-1] == 'Fast Boot'
+    count=(data_address(m,'u_ide_rows')-data_address(m,'u_boot_labels'))//2
+    rows = bytes(m.cpu.mem_read(0xF0000+data_address(m,'u_boot_rows'), count))
+    pointers = struct.unpack('<'+str(count)+'H', m.cpu.mem_read(0xF0000+data_address(m,'u_boot_pointers'), count*2))
+    labels = struct.unpack('<'+str(count)+'H', m.cpu.mem_read(0xF0000+data_address(m,'u_boot_labels'), count*2))
+    names=[text(m,p) for p in labels]
+    assert names==['First Boot Device','Second Boot Device','Third Boot Device','Fourth Boot Device',
+                   'Floppy Seek','Boot Num Lock','Halt On','Fast Boot','POST Delay (Seconds)']
     assert bytes(m.cpu.mem_read(m.base+pointers[0], 1)) == b'\x03'
     assert bytes(m.cpu.mem_read(m.base+pointers[1], 1)) == b'\x01'
     assert bytes(m.cpu.mem_read(m.base+pointers[2], 1)) == b'\x02'
-    assert pointers[-1] == 0x260 and rows[-1] == 12
+    fast=names.index('Fast Boot')
+    assert pointers[fast] == 0x260 and rows[fast] == 12
+    from shared.tools.ram_proof import constants
+    state=constants(port.PORT.parent/'shared/src/pc/state.inc')
+    delay=names.index('POST Delay (Seconds)')
+    assert pointers[delay]==state['U_POST_DELAY'] and rows[delay]==13
+    assert m.cpu.mem_read(m.base+pointers[delay],1)==b'\x01'
     invoke(m,'ide_defaults',DI=0x1B0)
     invoke(m,'ports_defaults',DI=0x1EE)
     invoke(m,'chipset_defaults',DI=0x260)

@@ -38,10 +38,7 @@ def main():
                 system = work / 'test.rom'
                 floppy.run_hidden([nasm, '-f', 'bin', '-DVGA_BIOS_141', '-DEMULATOR_POST_SUMMARY_TEST', '-I', str(ROOT / 'src') + '/',
                                    '-o', str(system), str(ROOT / 'src/bios.asm')], check=True)
-                data = bytearray(system.read_bytes())
-                assert len(data) == 65536
-                data[-1] = -sum(data[:-1]) & 255
-                wrapper.write_bytes(production[:65536] + data)
+                wrapper.write_bytes(floppy.fixture_rom(system, production))
             pairs = (('ata', 'packet'),) if preview else (('ata', 'ata'), ('ata', 'packet'), ('packet', 'ata'), ('absent', 'ata'))
             for master, slave in pairs:
                 vm = work / (master + '-' + slave)

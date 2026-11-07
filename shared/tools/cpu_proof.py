@@ -48,7 +48,25 @@ def check(rom,layout,state,*,family_only=False,prepare_unavailable=True,amd_sl_n
             expected=SL_NAMES.get(signature&0x3FF0,expected)
         if not sl and amd_sl_name and vendor==b'AuthenticAMD' and id_bit and max_leaf>=1 and signature&0x3FF0 in (0x4E0,0x4F0):
             expected='AMD 5x86 SL Enhanced'
-        u=Uc(UC_ARCH_X86,UC_MODE_16);u.mem_map(0,0x200000);u.mem_write(layout['base'],raw)
+        observed_owners=owners.copy()
+        base=0x9E000
+        if sl:
+            u=Uc(UC_ARCH_X86,UC_MODE_16);u.mem_map(0,0x200000);u.mem_write(layout['base'],raw)
+        else:
+            # Establish the real component transport before CPU/IO baselines.
+            # Full startup tests independently begin without an installed module.
+            import sys
+            sys.path.insert(0,str(shared_source.parents[1]/'m919/tools'))
+            from ide_completeness_proof import Machine
+            model=Machine(rom,post=True);u=model.cpu
+            prefix=u.mem_read(model.base,1)[0]*1024
+            u.mem_write(base,bytes(u.mem_read(model.base,prefix)))
+            u.mem_write(0x40E,struct.pack('<H',base>>4))
+            from shared.tools.post_fixture import installed_address
+            try:listing.symbol('pnp_module_install')
+            except StopIteration:pass # MP's identical bodies remain inline.
+            else:
+                observed_owners[installed_address(listing,u.mem_read,'post_processor_name')]='post_processor_name'
         base=0x9E000;u.mem_write(0x40E,struct.pack('<H',base>>4));u.mem_write(base+state['S_CPU_SIGNATURE'],struct.pack('<H',reset_signature))
         registers={x.UC_X86_REG_EAX:0x12345678,x.UC_X86_REG_EBX:0x87654321,x.UC_X86_REG_ECX:0xABCDEF12,
             x.UC_X86_REG_EDX:0x76543210,x.UC_X86_REG_ESI:0x24681357,x.UC_X86_REG_EDI:0x13572468,
@@ -57,7 +75,7 @@ def check(rom,layout,state,*,family_only=False,prepare_unavailable=True,amd_sl_n
             x.UC_X86_REG_SS:0,x.UC_X86_REG_EFLAGS:flags}
         queries=[];ports=[];pending=[None];division=[False];visits=[]
         def step(uc,address,size,user):
-            if address in owners:visits.append(owners[address])
+            if address in observed_owners:visits.append(observed_owners[address])
             if pending[0] is not None:
                 current=uc.reg_read(x.UC_X86_REG_EFLAGS);mask=(0 if id_bit else 0x200000)|(0 if ac_bit else 0x40000)
                 uc.reg_write(x.UC_X86_REG_EFLAGS,(current&~mask)|(pending[0]&mask));pending[0]=None

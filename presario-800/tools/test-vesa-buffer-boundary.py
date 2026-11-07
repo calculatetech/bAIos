@@ -1,4 +1,4 @@
-"""Execute the retained VGA clear with the physical Chris failure's ES:DI."""
+"""Reproduce the original retained VGA's buffer wrap with its failure ES:DI."""
 from pathlib import Path
 
 from unicorn import Uc, UC_ARCH_X86, UC_MODE_16
@@ -7,7 +7,7 @@ from unicorn import x86_const as x
 
 def main():
     root = Path(__file__).resolve().parents[1]
-    rom = (root / 'build/baios-presario800.bin').read_bytes()
+    rom = (root / 'reference/COMPAQ_PROLINEA_MT_05-02-94.BIN').read_bytes()
     clear = rom[0x2354:0x235E]
     assert clear == bytes.fromhex('57 33c0 b98000 f3ab 5f c3')
     for segment, offset, wraps in ((0, 0xFF40, True), (0xFF4, 0, False)):

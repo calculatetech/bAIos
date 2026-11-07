@@ -71,8 +71,11 @@ try {
             $source = $source.Replace($include, '%include "' + $irqPath.Replace('\', '/') + '"')
         }
         [IO.File]::WriteAllText($sourcePath, $source)
-        & $nasm -D VGA_BIOS_141 -D EMULATOR_TEST -D EMULATOR_EMM_RESET_TEST -f bin -I ((Join-Path $root 'src') + '/') -o $system $sourcePath
+        & $nasm -D VGA_BIOS_141 -D EMULATOR_TEST -D EMULATOR_EMM_RESET_TEST -f bin -I ((Join-Path $root 'src') + '/') -I ((Join-Path $root '../shared/src') + '/') -o $system $sourcePath
         if ($LASTEXITCODE) { throw 'Reset-test ROM assembly failed.' }
+        $bank = Join-Path $scratch 'post-bank.bin'
+        & python -B (Join-Path $root '../shared/tools/post_module.py') --intermediate $system --system $system --bank $bank --report (Join-Path $scratch 'post-module.json') --bank-size 0x4000
+        if ($LASTEXITCODE) { throw 'Reset-test POST module serialization failed.' }
         $bytes = [IO.File]::ReadAllBytes($system)
         if ($bytes.Length -ne 65536) { throw 'Reset-test ROM size is invalid.' }
         $sum = 0
@@ -80,6 +83,7 @@ try {
         $bytes[65535] = (256 - $sum) -band 255
         [IO.File]::WriteAllBytes($system, $bytes)
         [Array]::Copy($bytes, 0, $image, 65536, 65536)
+        [Array]::Copy([IO.File]::ReadAllBytes($bank), 0, $image, 0xC000, 0x4000)
     } else {
         [IO.File]::WriteAllBytes($system, [byte[]]$image[65536..131071])
     }

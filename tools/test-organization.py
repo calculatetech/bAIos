@@ -27,7 +27,10 @@ def failed_board_build(root):
     config=dict(rom=dict(size=131072,checksum_offset=131055),identity=dict(version='0.1.1'))
     result=dict(path=str(image),size=131072,identity=config['identity'])
     def assemble(command,check):
-        image.write_bytes(bytes(32768)+bytes([255])*32768+bytes(65536))
+        payload=bytearray(b'BAIPNP2\0'+bytes.fromhex('10000c00ffd3cb00')+b'\xFF'*(32768-16))
+        payload[-1]=(-sum(payload[:-1]))&255
+        image.write_bytes(bytes(32768)+payload+bytes(65536))
+        (out/'baios-metadata.lst').write_text(' 1 00000000 FF<rep FFF0h> times 0xFFF0-($-$$) db 0xFF\n')
     with patch.object(board,'PORT',port), patch.object(board,'selected_vga',side_effect=ValueError('invalid VGA input')), \
          patch.object(rom,'configuration',return_value=(port,config)), patch.object(rom,'definitions',return_value=''), \
          patch.object(rom,'verify',return_value=dict(result)), patch.object(rom.subprocess,'run',side_effect=assemble), \

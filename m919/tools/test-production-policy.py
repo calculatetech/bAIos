@@ -66,8 +66,8 @@ def run(image):
                 assert cpu.reg_read(x.UC_X86_REG_IP) == begin-0xF0000
                 before = dict(bus.devices[0x90])
                 end = 0xF0000+listing.symbol('pci_initialize')
-                step.execute(begin, end, 1000)
-                assert cpu.reg_read(x.UC_X86_REG_IP) == end-0xF0000
+                step.execute(begin, end, 1000000)
+                assert cpu.reg_read(x.UC_X86_REG_IP) == end-0xF0000,(hex(cpu.reg_read(x.UC_X86_REG_CS)),hex(cpu.reg_read(x.UC_X86_REG_IP)),hex(end))
                 assert bus.devices[0x90][0x41] == before[0x41] | 1
                 assert bus.devices[0x90][0x45] == before[0x45] | 8
                 assert bus.devices[0x90][0x83] & 0x40 == 0

@@ -75,6 +75,11 @@ if ($release -and $VgaClockMHz -eq 50) {
 $payloads = Join-Path $out "tests/payloads"
 [IO.Directory]::CreateDirectory($payloads) | Out-Null
 $system = Join-Path $out "baios-presario800-system.rom"
+$moduleWork = Join-Path $out 'tests/post-module'
+[IO.Directory]::CreateDirectory($moduleWork) | Out-Null
+$assembly = Join-Path $moduleWork 'raw-assembly.bin'
+$moduleBank = Join-Path $moduleWork 'post-module.bank.bin'
+$moduleReport = Join-Path $out 'post-module.json'
 $physicalName = if ($release) { "baios-presario800-vga$VgaClockMHz.bin" } elseif ($VgaBus07) { 'baios-presario800-vga141-bus07.bin' } else { 'baios-presario800-vga141.bin' }
 $physical = Join-Path $out $physicalName
 $bootTest = Join-Path $payloads "boot-test.bin"
@@ -112,7 +117,7 @@ if ($Vga141) { $diagnosticDefine += ' -D VGA_BIOS_141' }
 $listing = Join-Path $out 'baios-presario800-system.lst'
 $testInclude = (Join-Path $root 'tests').TrimEnd('\') + '/'
 $testArguments = "-D EXPECTED_MEMORY_KIB=$TestMemoryKiB -I `"$testInclude`""
-Invoke-Nasm "$diagnosticDefine -f bin -I `"$includePath`" -I `"$sharedIncludePath`" -l `"$listing`" -o `"$system`" `"$biosSource`"" "NASM"
+Invoke-Nasm "$diagnosticDefine -f bin -I `"$includePath`" -I `"$sharedIncludePath`" -l `"$listing`" -o `"$assembly`" `"$biosSource`"" "NASM"
 Invoke-Nasm "$testArguments -f bin -o `"$bootTest`" `"$testSource`"" "Boot-test assembly"
 Invoke-Nasm "$testArguments -D FAULT_TEST -f bin -o `"$faultTest`" `"$testSource`"" "Fault-test assembly"
 Invoke-Nasm "$testArguments -f bin -o `"$keyboardTest`" `"$keyboardSource`"" "Keyboard-test assembly"
@@ -141,19 +146,14 @@ $hardwareState = Join-Path $diagnostics 'HWSTATE.COM'
 $hardwareSource = Join-Path $root 'diagnostics/hw-state.asm'
 Invoke-Nasm "-f bin -o `"$hardwareState`" `"$hardwareSource`"" "Read-only hardware snapshot assembly"
 
-$assembledBytes = [IO.File]::ReadAllBytes($system)
-if ($assembledBytes.Length -ne 81920) { throw "System plus private POST bank is not 81920 bytes." }
-[byte[]]$systemBytes = $assembledBytes[0..65535]
-[byte[]]$postPayloadBytes = $assembledBytes[65536..81919]
-if ([Text.Encoding]::ASCII.GetString($postPayloadBytes, 0, 8) -ne "BAIPNP2`0") { throw 'Private POST owner identity is invalid.' }
-$postPayloadLength = [BitConverter]::ToUInt16($postPayloadBytes, 8)
-$postPayloadEntry = [BitConverter]::ToUInt16($postPayloadBytes, 10)
-if ($postPayloadLength -lt 15 -or $postPayloadLength -ge 16384 -or ($postPayloadLength -band 1) -or
-    $postPayloadEntry -lt 12 -or $postPayloadEntry -ge $postPayloadLength) { throw 'Private POST owner extent/entry is invalid.' }
-for ($i = $postPayloadLength; $i -lt 16383; $i++) { if ($postPayloadBytes[$i] -ne 255) { throw 'Private POST padding extent changed.' } }
-$postPayloadSum = 0
-for ($i = 0; $i -lt 16383; $i++) { $postPayloadSum = ($postPayloadSum + $postPayloadBytes[$i]) -band 255 }
-$postPayloadBytes[16383] = (-$postPayloadSum) -band 255
+$packer = Join-Path (Split-Path -Parent $root) 'shared/tools/post_module.py'
+& python -B $packer --intermediate $assembly --system $system --bank $moduleBank --report $moduleReport --bank-size 0x4000
+if ($LASTEXITCODE) { throw 'Private POST module serialization failed.' }
+[byte[]]$systemBytes = [IO.File]::ReadAllBytes($system)
+[byte[]]$postPayloadBytes = [IO.File]::ReadAllBytes($moduleBank)
+$moduleInfo = Get-Content -LiteralPath $moduleReport -Raw | ConvertFrom-Json
+$postPayloadLength = $moduleInfo.raw_bytes
+$postPayloadEntry = $moduleInfo.entry
 $listingLines = [IO.File]::ReadAllLines($listing)
 $endLine = [Array]::FindIndex($listingLines, [Predicate[string]] { param($line) $line.TrimEnd().EndsWith('rom_code_end:') })
 if ($endLine -lt 0) { throw 'ROM used-space marker was not found.' }
@@ -200,6 +200,9 @@ if ($release) {
     Copy-Item -LiteralPath $gd5428 -Destination $clockVideo
     [IO.File]::WriteAllBytes($clockWrapper, $physicalBytes)
 }
+
+& python -B (Join-Path (Split-Path -Parent $root) 'shared/tools/rom_footprint.py') $physical $listing --module-offset 0xC000 --bank-bytes 0x4000 --transport top-alias | Out-Null
+if ($LASTEXITCODE) { throw 'ROM footprint reporting failed.' }
 
 [pscustomobject]@{
     SystemRom = $system

@@ -18,7 +18,7 @@ from shared.tools.emulator import run_86box
 
 def baseline(config):
     """Build the previous RAM owner without depending on another test's output."""
-    folder = PORT/'build/hardware-tests/ram-baseline'
+    folder = PORT/'build/tests/ram-baseline'
     r = build(PORT,str(folder.relative_to(PORT)))
     overlay = folder/'firmware'
     overlay.mkdir(exist_ok=True)
@@ -43,7 +43,7 @@ def baseline(config):
 def bounded():
     _, config = configuration(PORT)
     state = constants(REPOSITORY/'shared/src/pc/state.inc')
-    r = build(PORT, 'build/hardware-tests/ram-proof')
+    r = build(PORT, 'build/tests/ram-proof')
     rom = r['path']
     results = [run(rom, config['rom'], state)]
     print('Randomized full three-pattern dword coverage/restoration and machine state: PASS',flush=True)

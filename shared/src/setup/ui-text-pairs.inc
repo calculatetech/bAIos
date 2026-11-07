@@ -1966,8 +1966,8 @@
 %endif
 %endmacro
 %macro UI_TEXT_CACHE_pnp_clear 1.nolist
-%ifidn %1,'Clear ESCD on Reset'
-    %xdefine UI_STRING_BYTES 1,67,139,97,130,69,83,67,68,32,146,32,82,101,221,0
+%ifidn %1,'Clear ESCD'
+    %xdefine UI_STRING_BYTES 1,67,139,97,130,69,83,67,68,0
 %else
     ui_encode %1
 %endif
@@ -1987,50 +1987,50 @@
 %endif
 %endmacro
 %macro UI_TEXT_CACHE_pnp_help1 1.nolist
-%ifidn %1,'Reserve resources used by manual cards.'
-    %xdefine UI_STRING_BYTES 1,82,101,142,114,169,204,178,114,99,151,117,142,132,98,163,109,136,117,145,143,134,100,144,0
+%ifidn %1,'Reserve resources for manual cards.'
+    %xdefine UI_STRING_BYTES 1,82,101,142,114,169,204,178,114,99,151,173,109,136,117,145,143,134,100,144,0
 %else
     ui_encode %1
 %endif
 %endmacro
 %macro UI_TEXT_CACHE_pnp_help2 1.nolist
-%ifidn %1,'I/O is decimal. Length 0 disables a window.'
-    %xdefine UI_STRING_BYTES 1,73,47,79,251,154,99,105,109,145,153,76,164,103,131,32,48,32,180,161,129,179,119,138,100,111,119,46,0
+%ifidn %1,'Example: Start 220h, decimal Count 16.'
+    %xdefine UI_STRING_BYTES 1,69,120,97,109,112,139,58,32,83,116,134,133,50,50,48,104,237,154,99,105,109,217,67,178,110,133,49,54,46,0
 %else
     ui_encode %1
 %endif
 %endmacro
 %macro UI_TEXT_CACHE_pnp_help3 1.nolist
-%ifidn %1,'Use BIOS. Clear keeps manual reservations.'
-    %xdefine UI_STRING_BYTES 1,85,152,248,153,67,139,97,130,107,195,112,129,109,136,117,217,141,142,114,118,97,167,146,144,0
+%ifidn %1,'Count 0 disables the range.'
+    %xdefine UI_STRING_BYTES 1,67,178,110,133,48,32,180,161,129,137,114,250,243,0
 %else
     ui_encode %1
 %endif
 %endmacro
 %macro UI_TEXT_CACHE_pnp_io1 1.nolist
-%ifidn %1,'Window 1 Base'
-    %xdefine UI_STRING_BYTES 1,87,138,100,111,119,32,49,32,66,97,142,0
+%ifidn %1,'Range 1 Start'
+    %xdefine UI_STRING_BYTES 1,82,250,128,49,32,83,116,134,116,0
 %else
     ui_encode %1
 %endif
 %endmacro
 %macro UI_TEXT_CACHE_pnp_io2 1.nolist
-%ifidn %1,'Window 2 Base'
-    %xdefine UI_STRING_BYTES 1,87,138,100,111,119,32,50,32,66,97,142,0
+%ifidn %1,'Range 2 Start'
+    %xdefine UI_STRING_BYTES 1,82,250,128,50,32,83,116,134,116,0
 %else
     ui_encode %1
 %endif
 %endmacro
 %macro UI_TEXT_CACHE_pnp_len1 1.nolist
-%ifidn %1,'Window 1 Length'
-    %xdefine UI_STRING_BYTES 1,87,138,100,111,119,32,49,32,76,164,103,131,0
+%ifidn %1,'Range 1 Port Count'
+    %xdefine UI_STRING_BYTES 1,82,250,128,49,32,80,140,133,67,178,110,116,0
 %else
     ui_encode %1
 %endif
 %endmacro
 %macro UI_TEXT_CACHE_pnp_len2 1.nolist
-%ifidn %1,'Window 2 Length'
-    %xdefine UI_STRING_BYTES 1,87,138,100,111,119,32,50,32,76,164,103,131,0
+%ifidn %1,'Range 2 Port Count'
+    %xdefine UI_STRING_BYTES 1,82,250,128,50,32,80,140,133,67,178,110,116,0
 %else
     ui_encode %1
 %endif
@@ -3642,6 +3642,70 @@
 %macro UI_TEXT_CACHE_uc_99 1.nolist
 %ifidn %1,'Fast runs the CPU faster. Slow helps old programs.'
     %xdefine UI_STRING_BYTES 1,70,97,224,114,117,110,129,137,67,80,85,32,247,153,83,162,119,32,183,108,112,129,111,108,132,112,193,103,114,97,109,144,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+
+%macro UI_TEXT_CACHE_pnp_irqs 1.nolist
+%ifidn %1,'IRQ Reservations'
+    %xdefine UI_STRING_BYTES 1,73,82,81,32,82,101,142,114,118,97,167,146,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+
+%macro UI_TEXT_CACHE_pnp_windows 1.nolist
+%ifidn %1,'Reserved I/O Ports'
+    %xdefine UI_STRING_BYTES 1,82,101,142,114,118,101,132,73,47,79,32,80,140,116,115,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+
+%macro UI_TEXT_CACHE_u_post_delay 1.nolist
+%ifidn %1,'POST Delay (Seconds)'
+    %xdefine UI_STRING_BYTES 1,80,228,84,32,252,108,97,163,40,208,99,146,100,115,41,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+
+%macro UI_TEXT_CACHE_u_help_post_delay1 1.nolist
+%ifidn %1,'Pause before the summary.'
+    %xdefine UI_STRING_BYTES 1,80,97,249,98,101,102,140,128,137,115,117,109,109,134,121,46,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+
+%macro UI_TEXT_CACHE_u_help_post_delay2 1.nolist
+%ifidn %1,'Use 5 seconds. 0 skips the pause.'
+    %xdefine UI_STRING_BYTES 1,85,152,53,32,142,99,146,100,144,32,48,32,115,107,105,112,129,137,112,97,117,142,46,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+
+%macro UI_TEXT_CACHE_u_video_order 1.nolist
+%ifidn %1,'Video Init Order'
+    %xdefine UI_STRING_BYTES 1,86,105,154,156,73,110,105,133,79,114,154,114,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+
+%macro UI_TEXT_CACHE_u_help_video_order1 1.nolist
+%ifidn %1,'Choose which display card starts first.'
+    %xdefine UI_STRING_BYTES 1,213,246,105,242,32,180,112,108,97,121,143,185,215,159,102,105,114,166,46,0
+%else
+    ui_encode %1
+%endif
+%endmacro
+
+%macro UI_TEXT_CACHE_u_help_video_order2 1.nolist
+%ifidn %1,'Use PCI/ISA. The other bus is the fallback.'
+    %xdefine UI_STRING_BYTES 1,85,152,80,67,73,47,73,83,65,153,84,104,128,111,131,191,98,117,129,150,137,102,145,108,98,160,107,46,0
 %else
     ui_encode %1
 %endif

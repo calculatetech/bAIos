@@ -235,11 +235,17 @@ def integration():
 
         def assemble(board):
             subprocess.run([nasm, '-D', 'VGA_BIOS_141', '-D', f'BOARD_DEFINITION="{board}"',
-                            '-f', 'bin', '-I', str(source.resolve()) + '/', '-l', str(directory / 'baios-presario800-system.lst'),
+                            '-f', 'bin', '-I', str(source.resolve()) + '/', '-I', str(ROOT.parent/'shared/src')+'/', '-l', str(directory / 'baios-presario800-system.lst'),
                             '-o', str(directory / 'baios-presario800-system.rom'), str(source / 'bios.asm')], check=True)
-            binary = bytearray((directory / 'baios-presario800-system.rom').read_bytes())
+            assembled = (directory / 'baios-presario800-system.rom').read_bytes()
+            from shared.tools.post_module import serialize
+            payload,info=serialize(assembled[0x10000:],directory,0x4000)
+            binary=bytearray(assembled[:0x10000])
             binary[-1] = -sum(binary[:-1]) & 255
             (directory / 'baios-presario800-system.rom').write_bytes(binary)
+            physical=bytearray((BUILD/'baios-presario800-vga60.bin').read_bytes())
+            physical[0xC000:0x10000]=payload;physical[0x10000:]=binary
+            (directory/'baios-presario800-vga60.bin').write_bytes(physical)
             return bytes(binary)
 
         assert assemble('boards/presario800.inc') == (BUILD / 'baios-presario800-system.rom').read_bytes()
@@ -257,9 +263,10 @@ def integration():
         board = board.replace("'Compaq Presario 800'", "'Fixture Board'")
         (directory / 'board.inc').write_text(board)
         assemble((directory / 'board.inc').as_posix())
-        previous = setup.rtc.BUILD
-        setup.rtc.BUILD = directory
+        previous = setup.rtc.BUILD, setup.rtc.symbol
         try:
+            from shared.tools.post_fixture import bind_rtc_candidate
+            bind_rtc_candidate(setup.rtc, directory / 'baios-presario800-system.rom')
             m = chip.Chipset()
             observed = set()
 
@@ -306,7 +313,7 @@ def integration():
             assert (end - start) // 14 == 104
             assert m.text(0, 3, 13) == 'Fixture Board'
         finally:
-            setup.rtc.BUILD = previous
+            setup.rtc.BUILD, setup.rtc.symbol = previous
     print('PASS explicit equivalent board and synthetic data-only 104th field: navigation, identity and late selector validation', flush=True)
 
 
@@ -318,9 +325,11 @@ def budget():
     assert len(rom) == 65536 and sum(rom) & 255 == 0
     assert used < 0xF065
     assert rom[used:0xF065] == b'\xff' * (0xF065 - used)
-    assert setup.rtc.symbol('cpu_detect_name') == 0xF070
+    assert setup.rtc.symbol('int42_compat') == 0xF065
+    assert rom[0xF065:0xF070] == bytes.fromhex('80FC1D7305EA972800C0CF')
+    cpu_start=setup.rtc.symbol('cpu_detect_name')
     cpu_end=setup.rtc.symbol('presario_cpu_end')
-    assert 0xF070<cpu_end<0xFFF0
+    assert 0xF070<=cpu_start<cpu_end<0xFFF0
     assert rom[cpu_end:0xFFF0] == b'\xff' * (0xFFF0-cpu_end)
     print(f'PASS pre-shim occupancy {used}; late CPU catalogue ends {cpu_end:04X}; available {0xF065-used+0xFFF0-cpu_end}', flush=True)
 
@@ -330,5 +339,7 @@ if __name__ == '__main__':
     cases = {'numeric': numeric, 'abi': abi, 'save': saves, 'integration': integration, 'budget': budget}
     parser.add_argument('--case', choices=cases, action='append')
     args = parser.parse_args()
+    from shared.tools.post_fixture import bind_rtc_candidate
+    bind_rtc_candidate(setup.rtc, setup.rtc.BUILD / 'baios-presario800-system.rom')
     for name in args.case or cases:
         cases[name]()

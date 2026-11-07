@@ -2,6 +2,7 @@
 import argparse
 import importlib
 import struct
+import sys
 import os
 import shutil
 import tempfile
@@ -1334,10 +1335,7 @@ def run_86box():
                 if saved is not None:
                     defines.append('-DEMULATOR_PORTS_COLD')
                 floppy.run_hidden([nasm, '-f', 'bin', *defines, '-I', str(rtc.ROOT/'src')+'/', '-o', str(system), str(rtc.ROOT/'src/bios.asm')], check=True)
-                data = bytearray(system.read_bytes())
-                assert len(data) == 65536
-                data[-1] = -sum(data[:-1]) & 255
-                wrapper.write_bytes(production[:65536]+data)
+                wrapper.write_bytes(floppy.fixture_rom(system, production))
                 disk = vm/'scratch.img'
                 with disk.open('xb') as out:
                     out.truncate(64*1024*1024)
@@ -1390,6 +1388,9 @@ def main():
     parser.add_argument('--case', action='append', choices=CASES)
     parser.add_argument('--86box', action='store_true')
     args = parser.parse_args()
+    sys.path.insert(0, str(rtc.ROOT.parent))
+    from shared.tools.post_fixture import bind_rtc_candidate
+    bind_rtc_candidate(rtc, rtc.BUILD / 'baios-presario800-system.rom')
     for name in args.case or CASES:
         CASES[name]()
         print(name+': actual ROM device path PASS', flush=True)

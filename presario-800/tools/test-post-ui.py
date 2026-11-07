@@ -29,6 +29,7 @@ def display():
             m.cpu.mem_write(m.base + offset + 0x20, b'\x01')
             m.cpu.mem_write(m.base + offset + 0x2E, struct.pack('<I', 0x0FFFFFFF))
             m.cpu.mem_write(m.base + offset + 0x140, b'MAXIMUM MODEL '+b'X'*26+b'\0')
+        m.ensure_post_ui('post_ui_begin') # Actual loader precedes the no-write baseline.
         saved = bytes(m.cmos)
         m.call('post_ui_begin')
         header = bytes(m.cpu.mem_read(0xB8000, 160))

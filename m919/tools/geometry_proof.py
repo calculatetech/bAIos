@@ -77,7 +77,11 @@ class DRAM:
         out=bytearray()
         for a in range(address,address+size):
             key=self.physical(a)
-            out.append(255 if key is None else self.data.get(key,self.initial(key)))
+            if key is None:
+                out.append(255)
+                continue
+            stored=self.data.get(key)
+            out.append(self.initial(key) if stored is None else stored)
         return bytes(out)
 
     def write(self,address,size,value):
@@ -91,10 +95,13 @@ class DRAM:
                     continue
                 self.data[key]=(value>>(i*8))&255
 
+    def preservation_snapshot(self):
+        return dict(self.data)
+
 
 def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revision=4, outside_wrap=False, memory=None,cpu_signature=0xDEAD04F0,rom_image=None):
     if rom_image is None:
-        result=build(PORT,'build/hardware-tests/geometry')
+        result=build(PORT,'build/tests/geometry')
     else:
         from shared.tools.rom import verify
         result=verify(PORT,rom_image)
@@ -111,7 +118,7 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     u.mem_map(0xFFFE0000,0x20000)
     u.mem_write(0xFFFE0000,rom_bytes)
     d=memory if memory is not None else DRAM(modules,flat,alias,fault,revision,outside_wrap)
-    original_data=dict(d.data)
+    original_data=d.preservation_snapshot()
     entry_ebda=int.from_bytes(d.read(0x40E,2),'little')<<4
     entry_ebda_size=d.read(entry_ebda,1)[0]*1024 if 0x10000<=entry_ebda<0xA0000 else 0
     assert not entry_ebda_size or entry_ebda+entry_ebda_size<=0xA0000
@@ -254,6 +261,12 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     return record,(u,d,listing,state,cmos,step)
 
 
+def prepare_component_post(fixture):
+    from shared.tools.post_fixture import ensure_module
+    _,d,listing,_,_,_=fixture
+    ensure_module(listing,'setup_main',d.read,lambda owner:invoke(fixture,owner,count=1000000))
+
+
 def invoke(fixture,name,iret=False,reset=False,count=100000):
     u,d,listing,_,_,step=fixture
     code=u.reg_read(x.UC_X86_REG_CS)<<4
@@ -270,6 +283,7 @@ def invoke(fixture,name,iret=False,reset=False,count=100000):
 
 
 def render_banks(fixture,expected):
+    prepare_component_post(fixture)
     u=fixture[0]
     u.reg_write(x.UC_X86_REG_DS,u.reg_read(x.UC_X86_REG_CS))
     u.reg_write(x.UC_X86_REG_ES,0xB800)
@@ -362,7 +376,7 @@ def services():
                  setup_total=setup_total,setup_extended=setup_extended,summary_extended=summary_extended)
         results.append(r)
     # Execute the optional serial/VGA diagnostic owner with the same published state.
-    report=build(PORT,'build/hardware-tests/geometry-report',defines=('EMULATOR_TEST',))
+    report=build(PORT,'build/tests/geometry-report',defines=('EMULATOR_TEST',))
     report_rom=Path(report['path'])
     u.mem_write(configuration(PORT)[1]['rom']['base'],report_rom.read_bytes())
     listing=Listing(report_rom.with_suffix('.lst'))
@@ -373,7 +387,7 @@ def services():
     assert text.endswith(' RAM=262144 KiB\r\n'),text
     results.append({'standalone_report':text,'rom_sha256':report['sha256']})
     # The actual RAM owner must traverse above the word boundary.
-    _,cfg=configuration(PORT);rom=PORT/'build/hardware-tests/geometry/baios-m919.bin'
+    _,cfg=configuration(PORT);rom=PORT/'build/tests/geometry/baios-m919.bin'
     for kib in (65536,131072):
         proof=ram_run(rom,cfg['rom'],constants(REPOSITORY/'shared/src/pc/state.inc'),kib=kib,
                       coverage=False,legacy=kib==65536)

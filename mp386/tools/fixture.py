@@ -30,8 +30,8 @@ class Tiger(setup.Setup):
                 if re.search(r'\binvd\b', line) and holdoff[0] <= int(match[1],16) < holdoff[1]:
                     continue  # Runtime guard still rejects INVD on this386 fixture.
                 assert not re.search(r'\b(?:wbinvd|invd|bswap|rdtsc)\b', line), line
-        folder = image.parent/'fixture'
-        folder.mkdir(exist_ok=True)
+        from shared.tools.ram_proof import fixture_directory
+        folder = fixture_directory(image,'fixture')
         (folder/'baios-presario800-system.rom').write_bytes(image.read_bytes())
         rtc.BUILD = folder
         rtc.symbol = lambda name: self.symbol(
@@ -115,7 +115,7 @@ class Tiger(setup.Setup):
         self.ram_reads = 0
         self.script_after_post = [28]
         self.post_script_armed = False
-        super().__init__(segment=0x9E00)
+        super().__init__(segment=0x9E00,state_kib=8)
         self.cpu.hook_del(self.code_hook)
         self.cpu.hook_add(UC_HOOK_CODE, self.code, begin=1,
                           end=0xF0000+self.symbol('mp386_ram_sweep'))
@@ -147,6 +147,7 @@ class Tiger(setup.Setup):
         return bytes(raw)
 
     def port_in(self, cpu, port, size, unused):
+        if port==0x23:return 0xFF # No Cyrix indexed register device in this external386 model.
         if self.ti_stage:
             self.ti_trace[self.ti_stage].append(('in', port, size, None, cpu.reg_read(x.UC_X86_REG_IP)))
         if port == 0x41:
@@ -225,6 +226,10 @@ class Tiger(setup.Setup):
         return super().port_in(cpu, port, size, unused)
 
     def port_out(self, cpu, port, size, value, unused):
+        if port in (0x22,0x23):
+            if not hasattr(self,'cpu_probe_io'):self.cpu_probe_io=[]
+            self.cpu_probe_io.append((port,size,value))
+            return # Writes to the absent CPU device cannot change mapper state.
         if port == 0x5A:
             self.control_index = value
             return

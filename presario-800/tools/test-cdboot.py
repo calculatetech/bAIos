@@ -143,7 +143,8 @@ def boot(m, segment=0x7C0, cold=False):
     address = segment * 16
     reached = []
     def terminal(cpu, where, size, unused):
-        if m.cpu.mem_read(m.base+0x298, 1) == b'\1':
+        base = int.from_bytes(cpu.mem_read(0x40E, 2), 'little') << 4
+        if cpu.mem_read(base+0x298, 1) == b'\1':
             reached.append(where)
             cpu.emu_stop()
     hook = m.cpu.hook_add(UC_HOOK_CODE, terminal, None, address, address)

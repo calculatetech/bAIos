@@ -90,6 +90,11 @@ All user-visible choice lists must be sorted by their displayed values. Use asce
 
 Do not hardcode assumed values for hardware configuration that can change. Detect the installed configuration, read a documented hardware selector, or use an explicit user setting. This includes cache capacity and bank population. If the value cannot be established, report it as unknown and leave the dependent feature disabled. A previous bench configuration is not a permanent board property.
 
+## ROM modules
+
+<!-- cpk-rule-route-only: rom-modules -->
+[ROM module composition and lifetime](docs/development/rom-modules.md)
+
 ## Repository layout and build hygiene
 
 <!-- cpk-rule-route-only: repository-layout -->

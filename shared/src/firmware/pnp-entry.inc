@@ -5,9 +5,9 @@ pnp_pci_initialize:
     call pnp_early
     jmp pci_initialize
 %endif
-pnp_publish_finish:
-    call pnp_publish
-    jmp pnp_finish_entry
+%ifndef BOARD_PNP_SETUP_LATE
+%include "firmware/pnp-post-display.inc"
+%endif
 
 ; Actual caller-selected image, before its first device use. Private POST code
 ; validates/initializes once and connects a selected display before INT10.
@@ -26,22 +26,7 @@ pnp_early:
 %ifdef M919_BOARD_DEFINITION
     mov bx,(CFG_PLATFORM_ISA_PCI_DEVICE << 3)+1
     call board_pci_device
-    ; Establish the existing fixed VGA ROM decode before live ROM ownership.
-    ; Relocatable BAR allocation still follows required ISA assignment.
-    xor ebx,ebx
-.fixed_pci:
-    mov eax,ebx
-    shl eax,8
-    or eax,0x80000008
-    call pci_read
-    shr eax,16
-    cmp ax,0x0300
-    jne .next_pci
-    call board_pci_device
-.next_pci:
-    call pci_next_function
-    cmp bx,256
-    jb .fixed_pci
+    call board_select_video
 %endif
 %ifndef M919_BOARD_DEFINITION
     call ports_apply       ; M919's existing IDE owner already applies ports.
@@ -78,6 +63,7 @@ pnp_finish_entry:
     mov dword [fs:PNP_MODULE_POINTER],0
     call pnp_journal_release
     popad
+.atomic_end:
     popf
     ret
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from unicorn import x86_const as x
 
 t=importlib.import_module('test-timing-setup')
+from scenarios import saved_chip
 p=Path(__file__).resolve().parents[1]
 m=t.model(p/'build/baios-pb430.bin')
 rows=[]
@@ -67,8 +68,9 @@ for group,field,parent,mask,child,shift,parent_field,child_mask in (
         data=bytes(m.cpu.mem_read(m.base+0x60,24))
         assert bool(data[parent]&mask)==enabled
         assert (data[child]>>shift)&child_mask==1
-        cmos_index=0x6B+child if child<21 else 0x33+child-21
-        assert (m.cmos[cmos_index]>>shift)&child_mask==1
+        persisted=saved_chip(p/'build/baios-pb430.bin',m.cmos)
+        assert bool(persisted[parent]&mask)==enabled
+        assert (persisted[child]>>shift)&child_mask==1
         if group==4:
             assert bool(m.registers[0x18]&2)==enabled
             assert (m.registers[0x19]>>shift)&child_mask==1

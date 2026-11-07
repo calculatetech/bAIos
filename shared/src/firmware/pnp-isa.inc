@@ -76,7 +76,8 @@ pnp_isa_read_port:
     pop ax
     ret
 
-; CF=invalid/no pair, otherwise nine serial bytes.
+; CF=invalid/no identity. AH=1 if any exact55/AA response, otherwise0.
+; A silent64-bit identifier needs no checksum reads (ISA3.3.2).
 pnp_isa_isolate:
     pushad
     mov bp,di
@@ -125,6 +126,11 @@ pnp_isa_isolate:
     jnz .delay
     inc di
 .delay:
+    cmp si,64
+    jne .continue
+    test bh,bh
+    jz .bad
+.continue:
     dec cx
     jz .isolated
     call pnp_delay_250us
@@ -134,12 +140,18 @@ pnp_isa_isolate:
     jz .bad
     cmp bl,[es:di-1]
     jne .bad
+    call .response
     popad
     clc
     ret
 .bad:
+    call .response
     popad
     stc
+    ret
+.response:
+    mov bp,sp
+    mov [ss:bp+31],bh         ; Saved EAX.AH, accounting for this CALL's return.
     ret
 
 ; AL=byte, CF=per-byte readiness timeout.

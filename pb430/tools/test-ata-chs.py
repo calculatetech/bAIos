@@ -77,6 +77,9 @@ class ParameterDisk(ACC):
             self.error = 0
             if value == 0xEC:
                 self.fifo, self.position, self.status = bytes(self.identify),0,0x58
+            elif value == 0xEF:
+                assert self.task[0x1F1]==3 and self.task[0x1F2]==8,'Only advertised PIO0 is supported'
+                self.status=0x50
             elif value == 0x91:
                 assert self.chs and self.task[0x1F2] == 56 and self.task[0x1F6]&0x4F == 14
                 self.initialized = not self.reject

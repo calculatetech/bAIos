@@ -25,11 +25,11 @@ def run(image,banks=(16,0,0,0),expected_pattern=0x0004,expected_map=0x20,expecte
     sram=bytearray(cache_kib*1024)
     regs=m.registers;regs[0]=0x20;regs[5]=0x18
     index=0;rtc_index=0;writes=[];terminal=[];last=[];stack=[];prepared=False
-    platform_writes=[];warm_stack=[]
+    platform_writes=[];warm_stack=[];producer_budget=[]
     initialized=bytearray(0xA0000);initialization=[];skip_sent=False
     ram_flags=constants(PORT.parent/'shared/src/pc/state.inc')['P_RAM_FLAGS']
     cmos=m.cmos;early_trace=[];early_writes=[];owners=[];late_state=[];cache_inputs=[]
-    required=('cache_initialize','cache_initial_policy','shadow_system_bios','init_pic_pit','init_rtc','init_superio','init_at_prerequisites','initialize_video','init_keyboard','arm_keyboard_runtime','settings_load','chipset_apply','publish_memory_cmos')
+    required=('cache_initialize','cache_initial_policy','shadow_system_bios','init_pic_pit','init_rtc','init_superio','init_at_prerequisites','settings_load','initialize_video','init_keyboard','arm_keyboard_runtime','settings_load','chipset_apply','publish_memory_cmos')
     if complete_post:required+=('chipset_late_cache','boot_retry')
     addresses={0xF0000+listing.symbol(name):name for name in required}
     def mapping(address):
@@ -95,8 +95,12 @@ def run(image,banks=(16,0,0,0),expected_pattern=0x0004,expected_map=0x20,expecte
     final_display=0xF0000+listing.symbol('post_ui_roms')
     fatal_entry=0xF0000+listing.symbol('hard_halt')
     ram_entries={0xF0000+listing.symbol('memory_initialize'),0xF0000+listing.symbol('.warm_memory','startup')}
+    allocation_entry=0xF0000+listing.symbol('pnp_early')
     def code(cpu,address,size,context):
-        nonlocal prepared,skip_sent
+        nonlocal prepared,skip_sent,final_display
+        if complete_post and address==early_display:
+            from shared.tools.post_fixture import installed_address
+            final_display=installed_address(listing,u.mem_read,'post_ui_roms')
         if address==ram_point:ram_blocks.append(cpu.reg_read(x.UC_X86_REG_EDI))
         if complete_post and address in (early_display,final_display):
             phase=cpu.mem_read(m.base+0x51,1)[0]
@@ -111,6 +115,11 @@ def run(image,banks=(16,0,0,0),expected_pattern=0x0004,expected_map=0x20,expecte
             prepared=True
             if reset and not (warm_marker and sys_flag&4):
                 assert all(initialized),'Cold conventional RAM was not fully initialized before the stack and skippable test'
+        if address==allocation_entry:
+            # Startup publishes40E/413 after ram_ready, before this allocator.
+            assert struct.unpack('<H',low_storage()[0x413:0x415])[0]==632
+            assert struct.unpack('<H',low_storage()[0x40E:0x410])[0]==0x9E00
+            producer_budget.append(632)
         if address in (0xF0000+ready,ram_visible,late_entry):
             missing=[i for i in range(0x80000) if i%0x10000<0xFFFC and not initialized[i]]
             initialization.append({'owner':'ram_ready' if address==0xF0000+ready else 'visible_test' if address==ram_visible else 'late_cache','unwritten_fill_bytes_this_reset':len(missing),'first_unwritten':missing[:8],'cr0':cpu.reg_read(x.UC_X86_REG_CR0),'acc':bytes(regs[:0x27]).hex(),'port92':m.port92})
@@ -151,7 +160,8 @@ def run(image,banks=(16,0,0,0),expected_pattern=0x0004,expected_map=0x20,expecte
                            (x.UC_X86_REG_SS,0),(x.UC_X86_REG_ESP,0x430),(x.UC_X86_REG_EDX,0x403),(x.UC_X86_REG_EFLAGS,2),
                            (x.UC_X86_REG_CR0,0x60000010)):
         u.reg_write(register,value)
-    u.emu_start(0xF0000+start,0x100000,count=300000000 if complete_post else 100000000)
+    from shared.tools.post_fixture import execute_real
+    execute_real(u,0xF0000+start,0x100000,300000000 if complete_post else 100000000)
     terminal=m.posts;writes=m.acc_writes
     if expected_map is None:
         assert terminal[-1]==0xEA and not stack,(banks,terminal,stack)
@@ -165,16 +175,30 @@ def run(image,banks=(16,0,0,0),expected_pattern=0x0004,expected_map=0x20,expecte
     assert not stack,('stack access before RAM ready',stack)
     assert regs[0]&15==expected_map&15 and regs[0x12]&3==expected_map>>4,(banks,hex(regs[0]),hex(regs[0x12]),hex(expected_map))
     assert regs[0x13]==expected_route,(banks,hex(regs[0x13]),expected_route)
-    total=(struct.unpack('<H',bytes(low_storage()[0x9E0D0:0x9E0D2]))[0]+1024)*1024
+    current_base=struct.unpack('<H',low_storage()[0x40E:0x410])[0]<<4
+    reported_budget=struct.unpack('<H',low_storage()[0x413:0x415])[0]
+    assert producer_budget==[632]
+    if complete_post:
+        size=low_storage()[current_base]
+        assert size>=8 and current_base+size*1024==0xA0000
+        assert reported_budget*1024==current_base
+        m.base=current_base;m.segment=current_base>>4
+    else:
+        assert current_base==0x9E000
+        cursor,end=struct.unpack('<II',low_storage()[current_base+0x320:current_base+0x328])
+        segment=struct.unpack('<H',low_storage()[current_base+0x33A:current_base+0x33C])[0]
+        module=segment<<4
+        length=struct.unpack_from('<H',raw,0x8008)[0]
+        assert 0x10000<=cursor<=module and module+length<=end==632*1024
+        assert reported_budget==cursor>>10
+    total=(struct.unpack('<H',bytes(low_storage()[current_base+0xD0:current_base+0xD2]))[0]+1024)*1024
     assert total==sum(sizes),(banks,total,sum(sizes))
-    assert struct.unpack('<H',low_storage()[0x9F000:0x9F002])[0]==expected_pattern,(banks,hex(struct.unpack('<H',low_storage()[0x9F000:0x9F002])[0]),hex(expected_pattern))
-    assert struct.unpack('<H',low_storage()[0x40E:0x410])[0]==0x9E00
-    assert struct.unpack('<H',low_storage()[0x413:0x415])[0]==632
+    assert struct.unpack('<H',low_storage()[current_base+0x1000:current_base+0x1002])[0]==expected_pattern,(banks,expected_pattern)
     if warm_marker:
         assert bytes(low_storage()[0x180000:0x180008])==(b'WARM-RAM' if warm_marker and sys_flag&4 else bytes(8))
     if warm_marker and sys_flag&4:
         assert 0x11 in early_trace and 0x20 not in early_trace and 0x22 not in early_trace
-        assert low_storage()[0x9F007]==1
+        assert low_storage()[current_base+0x1007]==1
     elif reset:
         expected_trace=[0x10,0x20,0x27,0x2B,0x28,0x2C,0x29,0x2D,0x2A,0x2E,0x21,0x22,0x23]
         if sum(banks)>1:expected_trace.append(0x26)
@@ -189,11 +213,11 @@ def run(image,banks=(16,0,0,0),expected_pattern=0x0004,expected_map=0x20,expecte
         if enabled:assert all(code in terminal for code in (0x64,0x69,0x54,0x56))
         assert [row[0] for row in l1_displays]==[1,5]
     # The running reset path reached this return after actual publication.
-    for vector,ax,expected in ((0x12,0,632),(0x15,0x8800,sum(banks)*1024-1024)):
+    for vector,ax,expected in ((0x12,0,reported_budget),(0x15,0x8800,sum(banks)*1024-1024)):
         actual,flags=m.public(vector,ax)
         assert actual==expected and not flags&1
     assert struct.unpack('<H',cmos[0x17:0x19])[0]==sum(banks)*1024-1024
-    return {'l1_post_displays':l1_displays,'visible_ram_blocks':ram_blocks,'ram_flags':int(low_storage()[m.base+ram_flags]),'public_int12_kib':632,'public_int15_kib':sum(banks)*1024-1024,'cmos_extended_kib':struct.unpack('<H',cmos[0x17:0x19])[0],'banks_mib':banks,'physical_bytes':total,'routing':regs[0x13],'register_writes':writes,'terminal':terminal,'warm_marker':warm_marker,'kbc_system_flag':bool(sys_flag&4),'ram_sentinel_preserved':bool(warm_marker and sys_flag&4),'intervening_production_owners':owners,'cache_entry_registers_hex':cache_inputs[0],'late_entry_state':late_state,'cache_kib':cache_kib,'initialization':initialization,'ram_skip_injected':skip_sent,'terminal_owner':'actual boot_retry wait then installed INT12/15' if complete_post else 'actual publication return then installed INT12/15'}
+    return {'l1_post_displays':l1_displays,'visible_ram_blocks':ram_blocks,'ram_flags':int(low_storage()[m.base+ram_flags]),'mapper_producer_kib':producer_budget[0],'public_int12_kib':reported_budget,'public_int15_kib':sum(banks)*1024-1024,'cmos_extended_kib':struct.unpack('<H',cmos[0x17:0x19])[0],'banks_mib':banks,'physical_bytes':total,'routing':regs[0x13],'register_writes':writes,'terminal':terminal,'warm_marker':warm_marker,'kbc_system_flag':bool(sys_flag&4),'ram_sentinel_preserved':bool(warm_marker and sys_flag&4),'intervening_production_owners':owners,'cache_entry_registers_hex':cache_inputs[0],'late_entry_state':late_state,'cache_kib':cache_kib,'initialization':initialization,'ram_skip_injected':skip_sent,'terminal_owner':'actual boot_retry wait then installed INT12/15' if complete_post else 'actual publication return then installed INT12/15'}
 
 
 def interleave(image, fault=None, mapper=False):

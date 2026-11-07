@@ -47,7 +47,7 @@ def draft_from_active(read,write,call,devices=2):
 def run(image):
     listing = Listing(image.with_suffix('.lst'))
     state = constants(ROOT / 'shared/src/pc/state.inc')
-    state.update(constants(ROOT / 'shared/src/firmware/boot.inc'))
+    state.update(constants(ROOT / 'shared/src/pc/rom-state.inc'))
     u = Uc(UC_ARCH_X86, UC_MODE_16)
     u.mem_map(0, 0x100000)
     raw = image.read_bytes()

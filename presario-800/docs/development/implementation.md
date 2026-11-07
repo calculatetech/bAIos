@@ -25,7 +25,7 @@ The physically validated bus07 reference is `reference/baios-presario800-vga141-
 
 The builder owns only physical 0C000h..0FFFFh after checking that the selected reference contains FF throughout that range. Selected VGA 00000h..07FFFh and OEM 08000h..0BFFFh stay byte-identical, including the 5857-byte FF suffix. The payload header, even length, extent and whole-bank SUM8 are checked. Its checksum byte stays inside the newly owned bank. The public PnP interface stays in F000. The system image stays 64 KiB and the physical image stays 128 KiB.
 
-After AT prerequisites and before video, the real INT15/AH87 owner copies the complete 16 KiB bank from high alias FFFEC000h into reserved POST memory. Capacity accounting charges the whole copied bank. The source qualification uses 86Box commit 242614ca8e082c457f226ca01d37e2329e82dbcc, specifically `src/machine/m_at_socket1.c`, `src/mem/rom.c` and `src/chipset/vl82c480.c`. Their D824 mapping mirrors the selected 128 KiB image into the upper half of the 256 KiB mapping at FFFC0000h. Low ROMSET shadow selection does not change this high alias. This is source/model qualification, not physical electrical confirmation.
+After AT prerequisites and before video, the real INT15/AH87 owner copies the complete 16 KiB bank from high alias FFFEC000h into reserved POST memory. Capacity accounting charges the whole copied bank plus the separate paragraph-rounded decoded module when the bank is packed. The source qualification uses 86Box commit 242614ca8e082c457f226ca01d37e2329e82dbcc, specifically `src/machine/m_at_socket1.c`, `src/mem/rom.c` and `src/chipset/vl82c480.c`. Their D824 mapping mirrors the selected 128 KiB image into the upper half of the 256 KiB mapping at FFFC0000h. Low ROMSET shadow selection does not change this high alias. This is source/model qualification, not physical electrical confirmation.
 
 ### Existing implementation
 
@@ -322,6 +322,15 @@ Runtime keyboard turbo switching, other keyboard layouts, and 1/2 MiB SIMMs rema
 CAUTION: Use a known recovery method for the first hardware test. 86Box cannot validate physical DRAM timing or SIMM slot wiring.
 
 The [FPM preset guide](../fpm-dram-presets-25-33mhz.md) records the original design inputs. The current VL82C481 profiles, locked values, and Fast eligibility described above supersede its earlier proposals.
+
+## Private POST and Setup composition
+
+The shared [module guide](../../../docs/development/rom-modules.md) owns packing, call frames and release. The existing AH87 transfer still reads the complete physical 0C000h..0FFFFh bank through FFFEC000h. Packed storage adds a separate decoded allocation. It does not change ROMSET, A20, NMI or interrupt ownership.
+
+The 0.8.0 normal composition has 8,829 free F000 bytes, compared with 514 in the 0.7.0 baseline. Its decoded module occupies 22,742 bytes. The complete ZX0 representation occupies 14,164 bytes, including the 16-byte storage header. Source staging costs 16,384 bytes and decoded storage costs 22,752 bytes. The combined temporary module charge is 39,136 bytes. The emitted decoder occupies 181 resident bytes. These costs are included in the normal `rom-footprint.json`, bound to that build's final image.
+
+The assembler writes its raw tail only to `tests/post-module/raw-assembly.bin`. The shared serializer checks the full raw extent, constructs the final bank and compares the decoded final bank with every assembler byte. The normal system file remains 64 KiB and both physical variants remain 128 KiB. Selected VGA 00000h..07FFFh and OEM 08000h..0BFFFh remain exact.
+
 
 ## Directory layout
 

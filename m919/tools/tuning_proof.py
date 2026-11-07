@@ -68,13 +68,16 @@ class Bus(m.Memory):
         u.reg_write(x.UC_X86_REG_CS,int.from_bytes(vector[2:],'little'))
 
 
-def fixture(image):
+def fixture(image,post=False):
     d=Bus()
     _,f=mapped(d.modules,expected=16,memory=d,rom_image=image)
     d.composed=True
     u,_,_,state,_,_=f
     base=u.reg_read(x.UC_X86_REG_FS)<<4
     u.reg_write(x.UC_X86_REG_DI,state['C_CHIP']);invoke(f,'chipset_defaults')
+    if post:
+        from geometry_proof import prepare_component_post
+        prepare_component_post(f)
     return d,f,base,state
 
 
@@ -231,7 +234,7 @@ def game_port_cases(image):
     for owner in ('ide_apply_controller','init_peripherals'):
         for requested in (0,1):
             for incoming in (0x00,0xFF):
-                d,f,base,state=fixture(image)
+                d,f,base,state=fixture(image,post=True)
                 d.sio[0xC0]=incoming
                 d.write(base+state['C_CHIP']+22,1,requested)
                 invoke(f,owner,count=300000)
@@ -304,7 +307,7 @@ def parity_controls_cases(image):
 def parity_fast_boot_cases(image,modes=('full','fast','esc')):
     rows=[]
     for mode in modes:
-        d,f,base,state=fixture(image)
+        d,f,base,state=fixture(image,post=True)
         u=f[0]
         d.write(base+state['C_CHIP']+6,1,1)
         d.write(base+state['C_CHIP']+2,1,1)
@@ -576,13 +579,20 @@ def setup_owner_cases(image,baseline=False):
     """Audit assembled views and rendered controls against their real owners."""
     from ide_completeness_proof import Machine
     import struct
-    machine=Machine(image);cpu=machine.cpu;listing=machine.listing
+    machine=Machine(image, post=True);cpu=machine.cpu;listing=machine.listing
     def data(name):
         row=next(i for i,line in enumerate(listing.lines) if name+' db' in line or name+' dw' in line)
         return listing.offset(row-1)
     def read(address,size):return bytes(cpu.mem_read(0xF0000+address,size))
     def word(address):return int.from_bytes(read(address,2),'little')
-    def text(address):return read(address,100).split(b'\0')[0].decode()
+    def text(address):
+        saved=cpu.context_save();screen=bytes(cpu.mem_read(0xB8000,4000))
+        try:
+            cpu.mem_write(0xB8000,b'\0\x07'*2000)
+            machine.call('setup_text',DS=0xF000,ES=0xB800,SI=address,DI=0,BX=0x0700)
+            return bytes(cpu.mem_read(0xB8000,4000))[::2].split(b'\0')[0].decode('cp437')
+        finally:
+            cpu.mem_write(0xB8000,screen);cpu.context_restore(saved)
     def draw(page,screen=0,field=0):
         machine.put('U_PAGE',page);machine.put('U_FOCUS',1);machine.put('U_FIELD',field)
         machine.put('U_CHIP_SCREEN',screen);machine.put('U_IDE_DEVICE',255)
@@ -638,7 +648,7 @@ def setup_owner_cases(image,baseline=False):
     rows.append(dict(devices_owners=device_owners,FDC_only_Drives=True,IDE_labels=[v.decode() for v in ide_labels]))
     # Exercise the existing Drives arrow and popup owners, including save/reload.
     for method in ('arrow','popup'):
-        m=Machine(image);before=bytes(m.cpu.mem_read(m.base+m.state['C_PORTS'],8))
+        m=Machine(image, post=True);before=bytes(m.cpu.mem_read(m.base+m.state['C_PORTS'],8))
         chip=bytes(m.cpu.mem_read(m.base+m.state['C_CHIP'],24));ide=bytes(m.cpu.mem_read(m.base+0xA00,51))
         m.keys=[0x5000,9]+[0x5000]*7
         m.keys += [0x4D00] if method=='arrow' else [13,0x5000,13]
@@ -647,7 +657,7 @@ def setup_owner_cases(image,baseline=False):
         assert not m.keys and m.reset
         expected=bytearray(before);expected[5]^=1
         assert bytes(m.cpu.mem_read(m.base+m.state['U_PORTS'],8))==expected
-        fresh=Machine(image);fresh.cmos[:]=m.cmos;fresh.writes.clear();fresh.call('settings_load')
+        fresh=Machine(image, post=True);fresh.cmos[:]=m.cmos;fresh.writes.clear();fresh.call('settings_load')
         assert not fresh.writes and bytes(fresh.cpu.mem_read(fresh.base+fresh.state['C_PORTS'],8))==expected
         assert bytes(fresh.cpu.mem_read(fresh.base+fresh.state['C_CHIP'],24))==chip
         assert bytes(fresh.cpu.mem_read(fresh.base+0xA00,51))==ide
@@ -660,7 +670,7 @@ def ide_label_cases(image):
     rows=[]
     labels=('Primary IDE Master','Primary IDE Slave','Secondary IDE Master','Secondary IDE Slave')
     for position,label in enumerate(labels):
-        machine=Machine(image);machine.put('U_PAGE',1);machine.put('U_FOCUS',1)
+        machine=Machine(image, post=True);machine.put('U_PAGE',1);machine.put('U_FOCUS',1)
         machine.put('U_FIELD',0);machine.put('U_IDE_DEVICE',position)
         machine.call('setup_draw',DS=0xF000,ES=0xB800)
         screen=bytes(machine.cpu.mem_read(0xB8000,4000))[::2]
@@ -697,7 +707,7 @@ def device_commit_cases(image):
     for field,slot,encodings,wanted_labels in choices:
         for value,encoded in enumerate(encodings):
             for flags in (0x202,0x247):
-                m=Machine(image);m.put('U_PAGE',3);m.put('U_FIELD',field)
+                m=Machine(image, post=True);m.put('U_PAGE',3);m.put('U_FIELD',field)
                 m.cpu.mem_write(m.base+m.state['U_CHIP']+22,b'\xA1')
                 if field==4:m.cpu.mem_write(m.base+m.state['U_CHIP']+22,bytes((0xA1|encoded,)))
                 else:m.cpu.mem_write(m.base+m.state['U_PORTS']+slot,bytes((encoded,)))
@@ -728,7 +738,10 @@ def device_commit_cases(image):
                 registers=dict(AX=0xB700|value,BX=pointer,CX=0x1234,DX=0xABCD,SI=0x3388,DI=0x5566,BP=0x7F20,EFLAGS=flags)
                 m.call('setup_enum_store',**registers)
                 for register,expected in registers.items():
-                    assert m.cpu.reg_read(getattr(x,'UC_X86_REG_'+register))==expected,(field,value,register)
+                    actual=m.cpu.reg_read(getattr(x,'UC_X86_REG_'+register))
+                    # The existing PnP page dispatch sets arithmetic flags.
+                    mask=~0x8D5 if register=='EFLAGS' else -1
+                    assert (actual&mask)==(expected&mask),(field,value,register,actual,expected)
                 expected_ports=bytearray(before_ports);expected_chip=bytearray(before_chip)
                 if field==4:expected_chip[22]=(expected_chip[22]&~2)|encoded
                 else:expected_ports[slot]=encoded
@@ -799,12 +812,7 @@ def t4_policy_cases(image):
                         self.help_seen=True
             return super().interrupt(cpu,number,data)
     masks=bytes.fromhex('F0010170900301FFFF070F7F010F01FCFFFF0F01FF01031F')
-    def packed(chip):
-        bits=[v>>bit&1 for v,mask in zip(chip,masks) for bit in range(8) if mask>>bit&1]
-        assert len(bits)==93
-        raw=bytearray(b'W\0'+sum(v<<i for i,v in enumerate(bits)).to_bytes(13,'little'))
-        raw[1]=-sum(raw)&255
-        return raw
+    from shared.tools.checkpoint_proof import nv6_payload,selected_bits
     rows=[]
     # Exercise both directions through every supported address, then save each
     # choice through real keyboard input. The expected encodings come from the
@@ -815,7 +823,7 @@ def t4_policy_cases(image):
     for field,slot,encodings,wanted in address_choices:
         for method in ('arrow','popup'):
             for target in range(3):
-                m=Screen(image);m.initial=1;m.address_seen=[]
+                m=Screen(image, post=True);m.initial=1;m.address_seen=[]
                 m.cpu.mem_write(m.base+m.state['C_PORTS'],bytes((1,2,1,2,2,1,0,1)))
                 before=bytes(m.cpu.mem_read(m.base+m.state['C_PORTS'],8))
                 chip=bytes(m.cpu.mem_read(m.base+m.state['C_CHIP'],24))
@@ -841,7 +849,7 @@ def t4_policy_cases(image):
                 assert {choice for unused,choice,popup in m.address_seen if popup==(method=='popup')}=={0,1,2}
                 expected=bytearray(before);expected[slot]=encodings[target]
                 assert bytes(m.cpu.mem_read(m.base+m.state['U_PORTS'],8))==expected
-                fresh=Screen(image);fresh.cmos[:]=m.cmos;fresh.writes.clear();fresh.call('settings_load')
+                fresh=Screen(image, post=True);fresh.cmos[:]=m.cmos;fresh.writes.clear();fresh.call('settings_load')
                 assert not fresh.writes and bytes(fresh.cpu.mem_read(fresh.base+fresh.state['C_PORTS'],8))==expected
                 assert bytes(fresh.cpu.mem_read(fresh.base+fresh.state['C_CHIP'],24))==chip
                 fresh.call('ports_apply')
@@ -856,7 +864,7 @@ def t4_policy_cases(image):
                                  saved_reloaded=True,C0=fresh.sio[0xC0],C1=fresh.sio[0xC1]))
     for initial in (0,1,2,3):
         for action in ('cancel','save'):
-            m=Screen(image);m.initial=initial
+            m=Screen(image, post=True);m.initial=initial
             original=bytes.fromhex('A0010070900000A255070F6E010F01FCA9870F01E401')+bytes((initial,0))
             m.cpu.mem_write(m.base+0x60,original)
             m.cpu.mem_write(m.base+m.state['C_PORTS']+3,b'\x02\x02')
@@ -871,8 +879,11 @@ def t4_policy_cases(image):
             assert bytes(m.cpu.mem_read(m.base+0x60,24))==original
             if action=='cancel':assert not m.writes and not m.reset
             else:
-                assert m.reset and m.cmos[0x71:0x80]==packed(draft)
-                fresh=Screen(image);fresh.cmos[:]=m.cmos;fresh.writes.clear();fresh.call('settings_load')
+                payload=nv6_payload(m.cmos)
+                assert m.reset and m.cmos[0x33:0x35]==b'N\x06'
+                assert (sum(m.cmos[0x33:0x36])+sum(payload))&255==0
+                assert payload[41:53]==selected_bits(draft,masks)
+                fresh=Screen(image, post=True);fresh.cmos[:]=m.cmos;fresh.writes.clear();fresh.call('settings_load')
                 assert not fresh.writes and bytes(fresh.cpu.mem_read(fresh.base+0x60,24))==draft
                 assert bytes(fresh.cpu.mem_read(fresh.base+0xA00,51))==devices
                 assert bytes(fresh.cpu.mem_read(fresh.base+fresh.state['C_PORTS'],8))==ports
@@ -888,7 +899,7 @@ def t4_policy_cases(image):
     # Real keyboard navigation must skip the inactive DMA row and restore its
     # saved selection when the same parallel port returns to ECP mode.
     for inactive in ('disabled','SPP','EPP'):
-        m=Screen(image);m.initial=1
+        m=Screen(image, post=True);m.initial=1
         m.cpu.mem_write(m.base+m.state['C_CHIP']+22,b'\x01')
         m.cpu.mem_write(m.base+m.state['C_PORTS']+3,b'\x02\x02')
         keys=[0x5000]*3+[9]+[0x5000]*2

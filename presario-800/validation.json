@@ -529,13 +529,6 @@
       ]
     },
     {
-      "id": "setup-themes",
-      "argv": [
-        "python",
-        "presario-800/tools/test-setup-themes.py"
-      ]
-    },
-    {
       "id": "shared-adoption",
       "argv": [
         "python",
@@ -643,6 +636,78 @@
         "--port",
         "presario-800"
       ]
+    },
+    {
+      "id": "shared-rom-footprint",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-rom-footprint.py",
+        "--port",
+        "presario-800",
+        "--case",
+        "all"
+      ]
+    },
+    {
+      "id": "shared-post-options",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-post-options.py",
+        "--port",
+        "presario-800",
+        "--case",
+        "all"
+      ]
+    },
+    {
+      "id": "shared-live-post-probes",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "presario-800",
+        "--case",
+        "probes"
+      ]
+    },
+    {
+      "id": "shared-live-post-table",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "presario-800",
+        "--case",
+        "table"
+      ]
+    },
+    {
+      "id": "shared-live-post-screen",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "presario-800",
+        "--case",
+        "screen"
+      ]
+    },
+    {
+      "id": "shared-live-post-summary",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "presario-800",
+        "--case",
+        "summary"
+      ]
     }
   ],
   "case_sets": [
@@ -693,6 +758,34 @@
         "compatibility": "shared-ui-text",
         "image-contract": "shared-ui-text"
       }
+    },
+    {
+      "script": "shared/tests/test-rom-footprint.py",
+      "argument": "--case",
+      "covered_by": {
+        "measurement": "shared-rom-footprint",
+        "private-ui": "shared-rom-footprint",
+        "startup": "shared-rom-footprint",
+        "setup-continuation": "shared-rom-footprint",
+        "roundtrip": "shared-rom-footprint",
+        "capacity": "shared-rom-footprint",
+        "popups": "shared-rom-footprint",
+        "lifetime": "shared-rom-footprint",
+        "all": "shared-rom-footprint"
+      }
+    },
+    {
+      "script": "shared/tests/test-post-options.py",
+      "covered_by": {
+        "settings": "shared-post-options",
+        "timer": "shared-post-options",
+        "keyboard": "shared-post-options",
+        "video": "shared-post-options",
+        "all": "shared-post-options"
+      }
+    },
+    {
+      "script": "shared/tests/test-live-post.py"
     }
   ],
   "historical_checks": [],
@@ -745,9 +838,13 @@
   "coverage_notes": [
     "The default Python suites enumerate their own named cases. The optional native Setup invocation explicitly includes every advertised native case.",
     "memory-fixture.py, run-card-vhd.ps1 and shared FAT helpers execute through DOS, mouse, floppy and EMM reset checks. Helpers are not substitute firmware checks.",
-    "The native floppy Swap On limitation remains the documented port/emulator boundary; --swap only describes availability and is not a success oracle."
+    "The native floppy Swap On limitation remains the documented port/emulator boundary; --swap only describes availability and is not a success oracle.",
+    "Shared ROM footprint checks use the current normal builders, actual module transports and complete declared variants. Per-build rom-footprint.json separates resident, private and temporary RAM costs."
   ],
   "wrapped_tests": {
+    "presario-800/tools/test-setup-themes.py": [
+      "setup"
+    ],
     "presario-800/tools/test-cache-lifecycle.py": [
       "cache-lifecycle"
     ],

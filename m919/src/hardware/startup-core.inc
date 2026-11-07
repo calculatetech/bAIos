@@ -170,6 +170,7 @@ board_smm_startup:
     mov es,ax
     mov eax,[0x40]
     mov [0x108],eax             ; INT42 follows the actual VGA entry.
+    call post_ui_begin          ; Video is useful before the keyboard is armed.
     call init_keyboard
     call arm_keyboard_runtime
     jc keyboard_runtime_failed

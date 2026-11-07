@@ -102,6 +102,8 @@ def build(port, output='build', defines=()):
     raw[checksum] = (-sum(raw)) & 255
     image.write_bytes(raw)
     result = verify(port, image)
+    from shared.tools.rom_footprint import write_report
+    result['footprint']=write_report(image,listing,**({'module_offset':data['rom']['post_module']['offset'],'bank_bytes':data['rom']['post_module']['bank_bytes'],'transport':data['rom']['post_module']['transport']} if 'post_module' in data['rom'] else {}))
     result['identity'] = data['identity']
     (output / 'rom-checksums.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     return result

@@ -45,12 +45,6 @@ pnp_module_install:
     shr ebp,4
     mov ax,bp
     mov es,ax
-    cmp dword [es:0],0x50494142
-    jne .release
-    cmp dword [es:4],0x0032504E
-    jne .release
-    cmp word [es:8],pnp_module_end-pnp_module_start
-    jne .release
     xor si,si
     xor bl,bl
     mov cx,0x4000
@@ -61,6 +55,66 @@ pnp_module_install:
     loop .checksum
     test bl,bl
     jnz .release
+    cmp dword [es:0],0x50494142
+    jne .packed
+    cmp dword [es:4],0x0032504E
+    jne .release
+    cmp word [es:8],0x3FFE
+    ja .release
+    jmp .validated
+.packed:
+    cmp dword [es:0],0x5A494142
+    jne .release
+    cmp dword [es:4],0x00323058
+    jne .release
+    cmp word [es:8],pnp_module_end-pnp_module_start
+    jne .release
+    mov bx,[es:10]
+    test bx,bx
+    jz .release
+    cmp bx,0x3FFF-16
+    ja .release
+    mov ds,bp
+    movzx ecx,word [es:8]
+    add ecx,15
+    and ecx,~15
+    call pnp_journal_allocate
+    jc .release
+    shr eax,4
+    mov es,ax
+    xor di,di
+    mov si,16
+    mov cx,[ds:8]
+    call zx0_decode
+    jc .release
+    xor si,si
+    xor dx,dx
+    xor ax,ax
+    mov cx,[ds:8]
+.raw_checksum:
+    mov al,[es:si]
+    add dx,ax
+    inc si
+    loop .raw_checksum
+    cmp dx,[ds:12]
+    jne .release
+    mov ax,[es:10]
+    cmp ax,[ds:14]
+    jne .release
+    mov bp,es
+.validated:
+    cmp dword [es:0],0x50494142
+    jne .release
+    cmp dword [es:4],0x0032504E
+    jne .release
+    cmp word [es:8],pnp_module_end-pnp_module_start
+    jne .release
+    cmp word [es:10],pnp_module_entry
+    jne .release
+    cmp word [es:pnp_module_entry],0xD3FF
+    jne .release
+    cmp byte [es:pnp_module_entry+2],0xCB
+    jne .release
     mov word [fs:PNP_MODULE_POINTER],pnp_module_entry
     mov [fs:PNP_MODULE_POINTER+2],bp
     pop es
@@ -79,11 +133,7 @@ pnp_module_install:
     stc
     ret
 
-pnp_post_invoke:
-    cmp word [fs:PNP_MODULE_POINTER+2],0
-    je .missing
-    call far [fs:PNP_MODULE_POINTER]
-    ret
-.missing:
-    stc
-    ret
+presario_shared "firmware/post-module-invoke.inc"
+
+; Shared bounded codec is resident: decoding cannot call private code.
+presario_shared "firmware/zx0.inc"
