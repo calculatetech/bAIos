@@ -20,14 +20,19 @@ def main():
     _, config = configuration(PORT)
     raw = Path(result['path']).read_bytes()
     assert len(raw) == 128*1024 and sum(raw) % 256 == 0
-    assert raw[:8] == b'BAISMM1\0' and sum(raw[:65536]) % 256 == 0
+    assert raw[:4]==b'\x55\xAA\x04\xCB' and raw[0x14:0x1C]==b'BAISMM1\0'
+    assert sum(raw[:65536]) % 256 == 0
     assert sum(raw[65536:]) % 256 == 0
+    assert raw[32768:65536]==b'\xFF'*32768
+    module=config['rom']['post_module']
+    assert module['offset']+module['bank_bytes']==32768
     for source in (PORT/'src', REPOSITORY/'shared/src'):
         for path in source.rglob('*.inc'):
             assert 'POST_STAGE_DIAGNOSTIC' not in path.read_text(), path
     assert not (PORT/'src/hardware/post-diagnostic.inc').exists()
     segment=config['rom']['reset_segment']
-    offset=(0xFFF3+struct.unpack_from('<h',raw,0x1FFF1)[0])&0xFFFF
+    offset,segment=struct.unpack_from('<HH',raw,0x1FFF1)
+    assert raw[0x1FFF0]==0xEA
     entry=segment*16+offset-config['rom']['base']
     assert (segment,offset)==(config['rom']['reset_segment'],config['rom']['reset_entry_offset'])
     assert raw[entry] == 0xFA
@@ -71,7 +76,7 @@ def main():
     candidate = Path(varied['path']).read_bytes()
     assert b'9.8.7\0' in candidate and b'Other Board\0' in candidate
     assert candidate[0x1FFF5:0x1FFFD] == b'12/31/27'
-    assert (0xFFF3+struct.unpack_from('<h',candidate,0x1FFF1)[0])&0xFFFF == config['rom']['reset_entry_offset']
+    assert struct.unpack_from('<HH',candidate,0x1FFF1)==(config['rom']['reset_entry_offset'],config['rom']['reset_segment'])
     assert candidate[entry] == 0xFA and candidate[-2] == 0xF8
     entrypoints = []
     output_directory = 'build/tests/build/output with spaces'

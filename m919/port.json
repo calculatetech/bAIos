@@ -3,8 +3,8 @@
     "vendor": "PC-Chips",
     "model": "M919",
     "revision": "1.5",
-    "version": "0.22.0",
-    "release_date": "11/04/2026"
+    "version": "0.26.16",
+    "release_date": "11/10/2026"
   },
   "rom": {
     "size": 131072,
@@ -16,16 +16,26 @@
     "checksum_offset": 131055,
     "checksum_regions": [
       {
+        "start": 6896,
+        "length": 25872,
+        "offset": 32767
+      },
+      {
         "start": 0,
-        "length": 65536,
-        "offset": 65535
+        "length": 2048,
+        "offset": 28
+      },
+      {
+        "start": 0,
+        "length": 32768,
+        "offset": 2076
       }
     ],
     "model_byte": 252,
-    "reset_near": true,
+    "reset_near": false,
     "post_module": {
-      "offset": 5632,
-      "bank_bytes": 59904,
+      "offset": 6896,
+      "bank_bytes": 25872,
       "transport": "direct-rom"
     }
   },

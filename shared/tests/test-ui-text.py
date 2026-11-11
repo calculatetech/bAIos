@@ -362,13 +362,30 @@ def compatibility(port):
     s = model(port)
     s.call('settings_load')
     s.cpu.mem_write(0x400+s.state['KB_POST_STATE'],b'\x01') # Frozen live-screen input; early-screen case proves the unarmed contrast.
-    for owner,expected in baseline['post_screens'].items():
+    for owner,cells in baseline['post_screens'].items():
         if owner=='post_debug_summary':
             # Frozen P0 renderer input was zero KiB. This is a cell-compatibility
             # oracle, not the actual-startup memory-accounting proof.
             s.cpu.mem_write(0x413,bytes(2))
         s.call(owner)
-        assert s.cpu.mem_read(0xB8000,4000) == bytes.fromhex(expected), owner
+        actual=bytes(s.cpu.mem_read(0xB8000,4000))
+        expected=bytearray.fromhex(cells)
+        assert actual[69*2:77*2:2]==s.image.read_bytes()[-11:-3]
+        expected[69*2:77*2:2]=actual[69*2:77*2:2]
+        if owner=='post_ui_begin':
+            memory=(5 if port=='presario-800' else 6)*160
+            assert actual[memory:memory+160:2].split()==[b'Memory',b'1024',b'KB']
+            expected[memory:memory+160]=actual[memory:memory+160]
+            features=b'APM 1.2 ' if port=='mp386' else b'PnP 1.0  APM 1.2 '
+            footer=25*160-2*len(features)
+            assert actual[footer::2]==features
+            expected[footer:]=actual[footer:]
+        else:
+            for row in range(9,13 if port=='m919' else 11):
+                start,end=row*160+2,(row+1)*160-2
+                assert actual[start:end:2]==b' '*78
+                expected[start:end]=actual[start:end]
+        assert actual==expected,owner
     if port == 'presario-800':
         subprocess.run([sys.executable,'-B',str(ROOT/port/'tools/test-post-ui.py'),'--case','display'],
                        cwd=ROOT,env=dict(os.environ,BAIOS_BUILD_DIRECTORY=OUTPUT),check=True,stdout=sys.stderr)
@@ -381,6 +398,14 @@ def compatibility(port):
 
 def owned_post_layout(full,port):
     """Current B35 owner replaces only qualified padding; P0/P1 fixtures stay frozen."""
+    if port=='m919':
+        from shared.tools.post_module import inspect_bank
+        config=json.loads((ROOT/port/'port.json').read_text())['rom']['post_module']
+        start=config['offset'];end=start+config['bank_bytes']
+        decoded,info=inspect_bank(full[start:end])
+        assert full[end:65536]==b'\xFF'*(65536-end),'factory ESCD area must be erased'
+        return {'retained_range':[],'owned_range':[start,end],'module_length':len(decoded),
+                'entry':info['entry'],'module_sha256':info['raw_sha256'],'SUM8':0}
     frozen=POST_LAYOUT_MANIFEST['ports'][port]
     first,last=frozen['retained_start'],frozen['retained_end']
     assert hashlib.sha256(full[first:last]).hexdigest()==frozen['retained_sha256'],(port,'retained prefix')
@@ -396,7 +421,7 @@ def owned_post_layout(full,port):
     assert 15<=length<len(payload) and not length&1 and 12<=entry<length
     assert payload[entry:entry+3]==bytes.fromhex('FFD3CB')
     assert payload[length:-1]==b'\xFF'*(len(payload)-length-1)
-    assert sum(full[:65536] if port=='m919' else payload)&255==0
+    assert sum(payload)&255==0
     return {'retained_range':[first,last],'owned_range':[start,end],'module_length':length,
             'entry':entry,'module_sha256':hashlib.sha256(payload[:length]).hexdigest(),'SUM8':0}
 

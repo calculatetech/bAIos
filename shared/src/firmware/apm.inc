@@ -1,5 +1,6 @@
 ; Intel/Microsoft APM 1.2, sections4.1/4.6 and AppendixC.
 ; Board-qualified Stop Grant or CPU HLT; no devices or global power states.
+%include "pc/firmware-versions.inc"
 %ifndef PC_PROCESSOR_PRIMITIVES
 %include "pc/processor.inc"
 %endif
@@ -143,7 +144,7 @@ apm_pm16:
 %%installation:
     test bx, bx
     jnz %%bad_device
-    mov ax, 0x0102
+    mov ax, BIOS_APM_SPEC_VERSION
     mov bx, 0x504D
     mov cx, 3                    ; Both PM interfaces.
     cpu_idle_query
@@ -290,7 +291,7 @@ apm_pm16:
     cmp cx, 0x0101
     jb %%set_version
     inc al
-    cmp cx, 0x0102
+    cmp cx, BIOS_APM_SPEC_VERSION
     jb %%set_version
     inc al
 %%set_version:

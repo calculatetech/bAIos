@@ -26,7 +26,7 @@ def fixture_model(port):
 def profiles(port):
  return [('post_ui_begin',phase,0) for phase in (0,1,3,5)]+[('setup_draw',0,page) for page in range(6 if port=='mp386' else 7)]
 
-def oracle_profile(m,owner,phase,page,version):
+def oracle_profile(m,owner,phase,page,version,baseline_version=None,baseline_date=None):
  m.call('settings_load');m.call('setup_defaults');m.draft()
  m.cpu.mem_write(0x413,struct.pack('<H',480)) # Controlled renderer input; startup checks use real accounting.
  m.put('P_PHASE',[phase]);m.put('U_PAGE',[page]);m.put('U_FOCUS',[1]);m.put('U_FIELD',[0]);m.put('U_CHIP_SCREEN',[0]);m.put('U_PNP_SCREEN',[0])
@@ -34,12 +34,46 @@ def oracle_profile(m,owner,phase,page,version):
  registers.update(DS=0xF000 if owner=='setup_draw' else 0x3456,ES=0xB800 if owner=='setup_draw' else 0x4567,GS=0x5678,EFLAGS=0x247)
  m.call(owner,**registers)
  raw=bytearray(m.cpu.mem_read(0xB8000,4000));plane=bytes(raw[::2]);matches=list(re.finditer(re.escape(version.encode()),plane))
+ if baseline_date is not None:
+  date=(69 if owner=='post_ui_begin' else 80+69)*2
+  assert raw[date:date+16:2]==m.image.read_bytes()[-11:-3]
+  raw[date:date+16:2]=baseline_date
+  if owner=='post_ui_begin':normalize_post(raw,m.port,phase)
  for match in matches:
-  for i in range(match.start(),match.end()):raw[i*2]=ord('*')
+  start,end=match.span()
+  if baseline_version is None:raw[start*2:end*2:2]=b'*'*(end-start)
+  else:
+   assert raw[start*2+1:end*2:2]==b'\x1B'*(end-start)
+   width=max(end-start,len(baseline_version))
+   raw[start*2:(start+width)*2]=b'*\x1B'*len(baseline_version)+b' \x1F'*(width-len(baseline_version))
  # setup_draw has caller-owned scratch outputs; all segment/stack outputs stay exact.
  preserved=REGS if owner=='post_ui_begin' else REGS[7:13]
  return {'VRAM_sha256':hashlib.sha256(raw).hexdigest(),'version_occurrences':len(matches),
   'return_state':{r:m.cpu.reg_read(getattr(x,'UC_X86_REG_'+r)) for r in preserved}}
+
+def normalize_post(raw,port,phase):
+ # Verify the intentional new cells, then restore only those cells for the historical hash.
+ blank=b' \x07'*80
+ features=b'APM 1.2' if port=='mp386' else b'PnP 1.0  APM 1.2'
+ start=4000-(len(features)+1)*2
+ assert raw[start:-2:2]==features
+ raw[start:-2]=b' \x07'*len(features)
+ if phase==0:
+  row=(5 if port=='presario-800' else 6)*160
+  assert raw[row:row+160:2].split()==[b'Memory',b'1024',b'KB']
+  raw[row:row+160]=blank
+ elif port=='m919':
+  assert raw[4*160:5*160:2].split()==[b'L2',b'cache',b'Enabled']
+  raw[4*160:5*160]=blank
+ if phase==5:
+  for row in range(11,15 if port=='m919' else 13):
+   start=row*160
+   assert raw[start:start+160]==blank
+   raw[start+6:start+42]=b''.join(bytes((char,0x0B)) for char in b'Primary IDE Master')
+   raw[start+48:start+64:2]=b'Disabled'
+  assert raw[15*160:16*160]==blank
+  raw[15*160:18*160]=raw[16*160:19*160]
+  raw[18*160:19*160]=blank
 
 def measurement(port):
  baseline=json.loads(FIXTURE.read_text())['ports'][port]
@@ -49,9 +83,12 @@ def measurement(port):
  from shared.tools.rom_footprint import report
  image=ROOT/port/OUTPUT/('baios-presario800-vga60.bin' if port=='presario-800' else f'baios-{port}.bin')
  listing=image.with_name('baios-presario800-system.lst') if port=='presario-800' else image.with_suffix('.lst')
- options=({'module_offset':0xC000,'bank_bytes':0x4000,'transport':'top-alias'} if port=='presario-800' else
-          {'module_offset':0x1600,'bank_bytes':0xEA00,'transport':'direct-rom'} if port=='m919' else
-          {'module_offset':0x8000,'bank_bytes':0x8000,'transport':'window-copy'} if port=='pb430' else {})
+ if port=='m919':
+  module=json.loads((ROOT/port/'port.json').read_text())['rom']['post_module']
+  options=dict(module_offset=module['offset'],bank_bytes=module['bank_bytes'],transport=module['transport'])
+ else:
+  options=({'module_offset':0xC000,'bank_bytes':0x4000,'transport':'top-alias'} if port=='presario-800' else
+           {'module_offset':0x8000,'bank_bytes':0x8000,'transport':'window-copy'} if port=='pb430' else {})
  result['footprint']=report(image,listing,**options)
  module=result['footprint']['private_module']
  result['temporary_module_RAM_bytes']=module['charged_temporary_RAM_bytes']
@@ -111,8 +148,11 @@ def private_api(m):
 def private_ui(port):
  oracle=json.loads(FIXTURE.read_text())['ports'][port]
  m=fixture_model(port)
- if port=='presario-800':version='0.8.0'
+ if port=='presario-800':
+  version=re.search(r"%define BIOS_VERSION '([^']+)'",(ROOT/port/'src/bios.asm').read_text())[1]
  else:version=json.loads((ROOT/port/'port.json').read_text())['identity']['version']
+ historical=json.loads((ROOT/'shared/tests/fixtures/ui-text-p0.json').read_text())['ports'][port]
+ baseline_date=bytes.fromhex(historical['post_screens']['post_ui_begin'])[69*2:77*2:2]
  entered=[];encoded=[]
  if port!='mp386':
   segment=int.from_bytes(m.cpu.mem_read(m.base+0x33A,2),'little');assert segment and segment!=0xF000
@@ -129,7 +169,7 @@ def private_ui(port):
  m.cpu.hook_add(UC_HOOK_CODE,renderer,None,text_at,text_at)
  compared=[]
  for owner,phase,page in profiles(port):
-  key=f'{owner}:{phase}:{page}';actual=oracle_profile(m,owner,phase,page,version)
+  key=f'{owner}:{phase}:{page}';actual=oracle_profile(m,owner,phase,page,version,oracle['version'],baseline_date)
   assert actual==oracle['profiles'][key],(port,key,actual,oracle['profiles'][key])
   compared.append(key)
  assert encoded
@@ -145,6 +185,8 @@ def private_ui(port):
   selector=m.state['STATE_BASE']+int(re.search(r'^%define S_ATA_DEVICE\s+STATE_BASE\s*\+\s*(\d+)',
    (ROOT/'shared/src/pc/state.inc').read_text(),re.M)[1])
   m.cpu.mem_write((slave<<4)+selector,b'\x10')
+  for field in ('C_HDD','S_CONTROLLER'):
+   m.cpu.mem_write((slave<<4)+m.state[field],b'\x01')
   m.cpu.mem_write(0xB8000+12*160,b'\x20\x07'*80)
   m.call('post_ui_disk',FS=slave,DS=0x3456,ES=0x4567)
   row=bytes(m.cpu.mem_read(0xB8000+12*160,160))[::2]

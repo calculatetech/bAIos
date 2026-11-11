@@ -123,8 +123,8 @@ def main():
     source = str(PORT / 'diagnostics/wake-check.asm')
     subprocess.run(common + ['-DCLOCK_TRIAL', '-o', str(image), source], check=True)
     subprocess.run(common + ['-o', str(OUT / 'WAKECHK.COM'), source], check=True)
-    # Retained SGW1 byte identity, independent of an ignored local build.
-    assert hashlib.sha256((OUT / 'WAKECHK.COM').read_bytes()).hexdigest() == '4b430498c760b316e239595363baaaef73bcdb9ebd998ff90c992a54a60abd31'
+    # The RTC-only diagnostic uses the SMM signature after the ROM header.
+    assert hashlib.sha256((OUT / 'WAKECHK.COM').read_bytes()).hexdigest() == '6bc232a327baf707bf803de8b2d95fe468738f739049543183f2c98fb219a7c2'
     symbols = {key: listing.symbol(key) for key in ('RTC_INTERRUPT_LABEL', 'int70')}
     cases = [('wake-in-window', {'clock_wake': True}, 'C0'),
              ('Am5x86-wake', {'family': 'Am5x86', 'clock_wake': True}, 'C0'),

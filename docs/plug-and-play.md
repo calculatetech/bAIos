@@ -26,7 +26,7 @@ These reservations guide BIOS assignments. They do not prevent an operating-syst
 
 Set Clear ESCD to Request, then save and restart. The BIOS rebuilds automatic assignments and keeps manual reservations. After complete reconstruction, the choice returns to Keep. If reconstruction is incomplete, the request remains pending.
 
-Automatic assignments are rebuilt at startup. This implementation does not require a writable BIOS chip or a stored copy of every card assignment.
+The BIOS rebuilds automatic assignments at startup from the detected devices and saved Setup reservations. Boards with a supported storage adapter can also save an Extended System Configuration Data (ESCD) database for configuration utilities. See the board's guide for storage requirements.
 
 ## Boot from an expansion card
 

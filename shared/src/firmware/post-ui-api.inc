@@ -15,7 +15,8 @@ post_ui_export post_ui_roms
 post_ui_export post_ram_status
 post_ui_export post_clear_value
 post_ui_export post_count
-post_ui_export post_entering_setup
+post_ui_import post_entering_setup,post_entering_setup
+post_ui_import post_features,post_features
 post_ui_export post_message_cursor
 post_ui_export post_ui_rom
 post_ui_export post_rom_state_text

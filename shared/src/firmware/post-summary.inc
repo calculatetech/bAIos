@@ -90,12 +90,15 @@ post_ui_post_debug_summary:
     mov cx,BOARD_ATA_DEVICE_COUNT
 .disk:
     push cx
+    call post_ui_disk_visible
+    jc .next_disk
     call post_ui_post_device_label
     mov di,bp
     add di,3*2
     mov bh,0x0B
     call post_ui_setup_text
     call .device
+.next_disk:
     mov ax,fs
     add ax,0x20
     mov fs,ax

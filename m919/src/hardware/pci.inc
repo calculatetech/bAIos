@@ -249,7 +249,9 @@ initialize_video:
 .provider:
     mov dx,0xC000
     mov cl,2
+    post_code 0x53
     call pnp_rom_enter
+    post_code 0x54
     xor ax,ax
     mov ds,ax
     mov es,ax
@@ -315,8 +317,8 @@ board_vga_rom_release:
     call pci_vga_rom_release
     pop bx
     ret
-board_vga_shadow:
-    ; Preserve code when the VGA provider changes its own PCI ROM decoding.
+; Fill both firmware banks before enabling their shared RAM read selection.
+board_firmware_shadow:
     pushf
     cli
     cld
@@ -328,7 +330,26 @@ board_vga_shadow:
     mov bh,al
     mov bl,0x55
     call host_write
-    ; Global shadow read enable also selects F, so fill it before enabling C.
+    mov ax,0xE000
+    mov ds,ax
+    mov es,ax
+    xor si,si
+    xor di,di
+    mov cx,0x8000
+    rep movsw
+    ; Persisted ESCD changes the ROM bank sum; protect its visible shadow from UMBs.
+    mov si,0x800
+    xor ax,ax
+    mov ecx,0xF800
+.checksum:
+    cmp si,0x81C
+    je .next_byte
+    add ah,[si]
+.next_byte:
+    inc si
+    a32 loop .checksum
+    neg ah
+    mov [es:0x81C],ah
     mov ax,CFG_ROM_CODE_SEGMENT
     mov ds,ax
     mov es,ax
@@ -336,6 +357,35 @@ board_vga_shadow:
     xor di,di
     mov cx,0x8000
     rep movsw
+    cache_read 0x54
+    or al,1
+    mov bh,al
+    mov bl,0x54
+    call host_write
+    cache_read 0x55
+    or al,0xC0
+    mov bh,al
+    mov bl,0x55
+    call host_write
+    pop es
+    pop ds
+    popad
+    popf
+    ret
+
+board_vga_shadow:
+    ; Preserve code when the VGA provider changes its own PCI ROM decoding.
+    pushf
+    cli
+    cld
+    pushad
+    push ds
+    push es
+    cache_read 0x55
+    and al,0x9E             ; Keep E/F firmware reads on their prepared RAM copies.
+    mov bh,al
+    mov bl,0x55
+    call host_write
     mov ax,0xC000
     mov ds,ax
     mov es,ax
@@ -347,7 +397,7 @@ board_vga_shadow:
     rep movsw
     cache_read 0x54
     mov bh,al
-    or bh,2
+    or bh,3                 ; E firmware stays shadowed while C VGA is added.
     cmp word [fs:HW_VGA_END],0xC800
     jbe .regions
     or bh,4

@@ -9,7 +9,7 @@ from unicorn import x86_const as x
 from cache_proof import SRAM,POSTHardware,composed,post_module
 from geometry_proof import invoke
 from shared.tools.pci_proof import PCI,Endpoint,api,public_call
-from shared.tools.ram_proof import Listing
+from shared.tools.ram_proof import Listing, fixture_directory
 PORT=Path(__file__).resolve().parents[1]
 REPOSITORY=PORT.parent
 
@@ -78,7 +78,7 @@ class Hardware(POSTHardware):
         self.ata_entry=0xF0000+listing.symbol('ata_detect_primary')
         self.ide_entry=0xF0000+listing.symbol('ide_apply_controller')
         self.vga_bdf=next(bdf for bdf,device in self.pci.endpoints.items() if device.read(8,4)>>16==0x0300)
-        folder=(self.rom_image.parent/'runtime-fixtures/pci-providers' if hasattr(self,'rom_image') else
+        folder=(fixture_directory(self.rom_image,'pci-providers') if hasattr(self,'rom_image') else
                 PORT/'build/tests/pci-providers');folder.mkdir(parents=True,exist_ok=True)
         source=folder/f'vga{self.vga_kib}.asm';image=source.with_suffix('.bin')
         end=self.vga_kib*1024;self.near_end=end-32

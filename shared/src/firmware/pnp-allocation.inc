@@ -1,5 +1,10 @@
 ; Complete private POST producer. Module code and journal share one lifetime.
 pnp_prepare:
+    call pnp_prepare_video
+    jmp pnp_configure
+
+; Establish ownership and map the display before video, without ISA probes.
+pnp_prepare_video:
 %ifndef PNP_EXTERNAL_JOURNAL
     call pnp_journal_begin
     jc .done
@@ -7,24 +12,12 @@ pnp_prepare:
     call pnp_work_begin
     jc .done
     call pnp_seed
-    jc .census_only
-    xor ax,ax
-    call pnp_rom_resources
-    jc .census_only
-    call pnp_census
+    jc .done
 %ifdef PB430_PORT
     call CFG_ROM_CODE_SEGMENT:pnp_video_callback
     jc .fixed_failed
 %endif
-    mov al,1
-    call pnp_rom_resources
-    jc .done
-    call pnp_solve
-    call pnp_program
 .done:
-    ret
-.census_only:
-    call pnp_census
     ret
 %ifdef PB430_PORT
 .fixed_failed:
@@ -35,8 +28,55 @@ pnp_prepare:
     or byte [gs:si+PNP_ROOT_STATUS],1
     pop gs
     popad
+    stc
     ret
 %endif
+
+; A configured card can add, move or deactivate a BIOS serial/parallel port.
+pnp_configure_post:
+    push gs
+    call pnp_configure
+    mov eax,[fs:PNP_JOURNAL_FIRST]
+    test eax,eax
+    jz .done
+    call pnp_pointer
+    cmp byte [gs:si+PNP_ROOT_CSN_COUNT],0
+    je .done
+    call pnp_init_peripherals
+.done:
+    pop gs
+    ret
+
+; ISA discovery follows RAM/cache qualification and fixed-port detection.
+pnp_configure:
+    mov eax,[fs:PNP_JOURNAL_FIRST]
+    test eax,eax
+    jz .done
+    push gs
+    call pnp_pointer
+    cmp dword [gs:si+PNP_ROOT_BUS],0
+    jne .ready
+    or byte [gs:si+PNP_ROOT_STATUS],1
+    pop gs
+    ret
+.ready:
+    cmp byte [gs:si+PNP_ROOT_STATUS],0
+    pop gs
+    jne .census_only
+    xor ax,ax
+    call pnp_rom_resources
+    jc .census_only
+    call pnp_census
+    mov al,1
+    call pnp_rom_resources
+    jc .done
+    call pnp_solve
+    call pnp_program
+.done:
+    ret
+.census_only:
+    call pnp_census
+    ret
 
 pnp_finish:
     pushad

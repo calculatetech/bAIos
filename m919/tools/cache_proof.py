@@ -15,6 +15,7 @@ PORT=Path(__file__).resolve().parents[1]
 REPOSITORY=PORT.parent
 sys.path.insert(0,str(REPOSITORY))
 from geometry_proof import DRAM, mapped
+from shared.tools.ram_proof import fixture_directory
 
 
 class SRAM(DRAM):
@@ -415,7 +416,7 @@ class POSTHardware(SRAM):
         self.ram_entry_policy=None
         self.final_cache_policy=None
         # The VGA expansion ROM is an external device, not bAIos code.
-        folder=(self.rom_image.parent/'runtime-fixtures/cache-guests' if hasattr(self,'rom_image') else
+        folder=(fixture_directory(self.rom_image,'cache-guests') if hasattr(self,'rom_image') else
                 PORT/'build/tests/cache-guests');folder.mkdir(parents=True,exist_ok=True)
         source=folder/'vga-seam.asm';image=folder/'vga-seam.bin'
         source.write_text('bits 16\norg 0\ndw 0xAA55\ndb 1\n'

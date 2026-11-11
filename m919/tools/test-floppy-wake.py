@@ -20,7 +20,7 @@ def check(raw,success, *, host=0x88811060,bridge=0x888A1060,protected=False):
     segment=0x1FA0
     base=segment<<4
     u.mem_write(base+0x100,raw)
-    u.mem_write(0xE0000,b'BAISMM1\0')
+    u.mem_write(0xE0014,b'BAISMM1\0')
     for reg in (x.UC_X86_REG_CS,x.UC_X86_REG_DS,x.UC_X86_REG_ES,x.UC_X86_REG_SS):
         u.reg_write(reg,segment)
     u.reg_write(x.UC_X86_REG_SP,0xFFFE)

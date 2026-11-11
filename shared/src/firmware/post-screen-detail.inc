@@ -36,23 +36,23 @@ post_ui_post_ui_rom:
     mov ax, 0xB800
     mov es, ax
     movzx ax, byte [fs:P_ROM_COUNT]
-    cmp ax, 4
+    cmp ax, 3
     jb .row
     push ds
     push es
     pop ds
-    mov si, 19*160
-    mov di, 18*160
-    mov cx, 3*80
+    mov si, 20*160
+    mov di, 19*160
+    mov cx, 2*80
     cld
     rep movsw
     mov ax, 0x0720
     mov cx, 80
     rep stosw
     pop ds
-    mov ax, 3
+    mov ax, 2
 .row:
-    add ax, 18
+    add ax, 19
     imul ax, 160
     mov di, ax
     add di, 3*2
@@ -66,11 +66,11 @@ post_ui_post_ui_rom:
     pop ax
     call post_ui_post_rom_state_text
     inc byte [fs:P_ROM_COUNT]
-    mov di, 17*160+24*2
+    mov di, 18*160+24*2
     call post_ui_post_clear_value
     movzx eax, byte [fs:P_ROM_COUNT]
     call post_ui_setup_number
-    ui_text 17, 28, u_post_detected, 7
+    ui_text 18, 28, u_post_detected, 7
     pop es
     pop ds
     popad

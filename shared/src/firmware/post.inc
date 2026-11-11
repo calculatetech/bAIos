@@ -22,8 +22,6 @@ post_clear_value:
     post_ui_facade post_clear_value
 post_count:
     post_ui_facade post_count
-post_entering_setup:
-    post_ui_facade post_entering_setup
 %else
 %include "firmware/post-screen.inc"
 %endif
@@ -55,6 +53,118 @@ post_ui_capture:
 %include "firmware/post-screen-detail.inc"
 %endif
 
+; Keep the current operation visible while its existing owner waits.
+; IRQ1 can call this without reentering BIOS video or the private UI module.
+post_entering_setup:
+    pushf
+    pushad
+    push ds
+    push es
+    push cs
+    pop ds
+    mov ax,0xB800
+    mov es,ax
+    mov di,24*160
+    mov ax,0x0F20
+    mov cx,40                 ; Keep the feature indicators on the right.
+    cld
+    rep stosw
+    mov di,24*160+3*2
+    mov si,u_post_entering
+.character:
+    lodsb
+    test al,al
+    jz .done
+    mov ah,0x0F
+    stosw
+    jmp .character
+.done:
+    pop es
+    pop ds
+    popad
+    popf
+    ret
+
+post_features:
+    pushf
+    pushad
+    push ds
+    push es
+    push cs
+    pop ds
+    mov ax,0xB800
+    mov es,ax
+    mov di,24*160+(79-(u_post_features_end-u_post_features-1))*2
+    mov si,u_post_features
+    mov bh,8
+    cld
+    call setup_text
+    pop es
+    pop ds
+    popad
+    popf
+    ret
+
+post_status:
+    pushf
+    pushad
+    push ds
+    push es
+    push fs
+    push gs
+    cmp al,13
+    ja .done
+    movzx bx,al
+    shl bx,1
+    mov si,[cs:post_status_labels+bx]
+    push cs
+    pop ds
+    ; Publication can release the private UI; notices must remain resident.
+    mov ax,0xB800
+    mov es,ax
+    mov di,22*160
+    mov ax,0x0720
+    mov cx,160
+    cld
+    rep stosw
+    mov di,22*160+3*2
+    mov bh,7
+    call setup_text
+.done:
+    pop gs
+    pop fs
+    pop es
+    pop ds
+    popad
+    popf
+    ret
+post_status_labels:
+    dw u_post_blank,u_post_keyboard,u_post_memory_check,u_post_cache_check
+    dw u_post_ports,u_post_pnp,u_post_floppy_check,u_post_ide_check,u_post_rom_check
+    dw u_post_summary_wait
+    dw u_post_escd_rebuild,u_post_escd_update,u_post_escd_done,u_post_escd_retry
+u_post_keyboard db 'Checking keyboard...',0
+u_post_memory_check db 'Checking memory...',0
+u_post_cache_check db 'Checking cache...',0
+u_post_ports db 'Detecting ports...',0
+u_post_pnp db 'Configuring Plug and Play devices...',0
+u_post_floppy_check db 'Detecting floppy drives...',0
+u_post_ide_check db 'Detecting IDE drives...',0
+u_post_rom_check db 'Initializing option ROMs...',0
+u_post_summary_wait db 'POST complete. Waiting before summary...',0
+u_post_escd_rebuild db 'Rebuilding ESCD...',0
+u_post_escd_update db 'Updating ESCD...',0
+u_post_escd_done db 'ESCD rebuilt.',0
+u_post_escd_retry db 'ESCD update failed; will retry.',0
+u_post_features:
+%ifdef BOARD_PNP_SUPPORT
+    db 'PnP ', '0'+(BIOS_PNP_SPEC_VERSION >> 4),'.','0'+(BIOS_PNP_SPEC_VERSION & 15)
+    db '  '
+%endif
+    db 'APM ', '0'+(BIOS_APM_SPEC_VERSION >> 8),'.','0'+(BIOS_APM_SPEC_VERSION & 255),0
+u_post_features_end:
+    ; A future ACPI indicator can join the same right-aligned list.
+u_post_memory db 'Memory',0
 u_post_l1 db 'L1 Cache',0
 u_post_enabled db 'Enabled',0
 u_post_ram db 'RAM Test',0
@@ -80,6 +190,10 @@ u_post_entering db 'Entering setup...',0
 u_post_keys db 'Del: Setup    Esc: Skip RAM test',0
 
 post_summary_pause:
+    push ax
+    mov al,9
+    call post_status
+    pop ax
 %ifdef BOARD_PNP_SUPPORT
     push bx
     mov bx,pnp_post_summary_pause

@@ -164,6 +164,25 @@ pnp_initialize_image:
     jc .bad
     mov [ss:bp-16],ecx
     mov [ss:bp-18],si
+    cmp byte [ss:bp-5],2
+    jne .headers_begin
+    ; Preserve the display's validated extent before it replaces its header.
+    pushad
+    push gs
+    movzx edx,word [ss:bp-2]
+    shl edx,4
+    mov esi,1
+    mov ax,0x0100
+    call pnp_reserve
+%ifdef M919_BOARD_DEFINITION
+    cmp word [fs:M_VGA_BDF],0xFFFF
+    jne .display_reserved
+    call pnp_reserve_vga
+.display_reserved:
+%endif
+    pop gs
+    popad
+.headers_begin:
     mov byte [ss:bp-6],0
 .headers:
     test si,si

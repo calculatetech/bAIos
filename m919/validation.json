@@ -350,6 +350,82 @@
         "--case",
         "summary"
       ]
+    },
+    {
+      "id": "rom-identity",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tests/test-rom-identity.py"
+      ]
+    },
+    {
+      "id": "firmware-shadow",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tests/test-early-shadow.py"
+      ]
+    },
+    {
+      "id": "intel-icu-rom-scan",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tests/test-icu-rom-scan.py"
+      ]
+    },
+    {
+      "id": "pci-caller-state",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tests/test-pci-call-state.py"
+      ]
+    },
+    {
+      "id": "escd-storage",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-escd.py"
+      ]
+    },
+    {
+      "id": "escd-v86",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tests/test-escd-v86.py"
+      ]
+    },
+    {
+      "id": "keyboard-state",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/test-keyboard-state.py"
+      ]
+    },
+    {
+      "id": "reset-entry",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-reset-vector.py",
+        "--port",
+        "m919"
+      ]
+    },
+    {
+      "id": "keyboard-ownership",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-keyboard-ownership.py",
+        "--port",
+        "m919"
+      ]
     }
   ],
   "case_sets": [

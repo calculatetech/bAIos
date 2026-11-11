@@ -1,5 +1,6 @@
 ; Complete public interface. Only explicit partial test compositions omit discovery.
 ; BiosSelector covers physical0400..103FF; all public temporaries use caller SS.
+%include "pc/firmware-versions.inc"
 PNP_PAYLOAD equ 0xAD
 PNP_BASE equ PNP_PAYLOAD+66
 PNP_RAM_END equ PNP_BASE+8
@@ -8,6 +9,9 @@ PNP_STATUS equ PNP_ISA+3
 PNP_PROVENANCE equ PNP_STATUS+1
 times -(PNP_PROVENANCE != 0xFF) db 0
 PNP_FRAME equ 216
+PNP_REAL_CALL equ -208
+PNP_CALL_FRAME equ 56          ; PUSHAD/PUSHFD, far return, largest argument list.
+PNP_STACK_TOP equ 0xFFC0
 PNP_NODE_MAX equ 80
 PNP_NODE equ -96
 PNP_PORTS equ PNP_NODE-8
@@ -33,9 +37,9 @@ times -(PNP_NODE+PNP_NODE_MAX > -8) db 0
 %ifndef EMULATOR_PNP_PARTIAL
 align 16,db 0xFF
 pnp_installation:
-    db '$PnP',0x10,0x21
+    db '$PnP',BIOS_PNP_SPEC_VERSION,0x21
     dw 0
-    db (-(0x24+0x50+0x6E+0x50+0x10+0x21+0xF0+0x0F+0x40+4+((pnp_real_entry-$$) & 255)+((pnp_real_entry-$$) >> 8)+((pnp_pm_entry-$$) & 255)+((pnp_pm_entry-$$) >> 8))) & 255
+    db (-(0x24+0x50+0x6E+0x50+BIOS_PNP_SPEC_VERSION+0x21+0xF0+0x0F+0x40+4+((pnp_real_entry-$$) & 255)+((pnp_real_entry-$$) >> 8)+((pnp_pm_entry-$$) & 255)+((pnp_pm_entry-$$) >> 8))) & 255
     dd 0
     dw pnp_real_entry,0xF000,pnp_pm_entry
     dd 0xF0000,0
@@ -156,7 +160,8 @@ pnp_real_entry:
     pushfd
     pushad
     movzx ebp,sp
-    jmp pnp_enter
+    mov ax,1
+    jmp pnp_enter16
 pnp_pm_entry:
     pushfd
     pushad
@@ -164,14 +169,64 @@ pnp_pm_entry:
     lar eax,eax
     test eax,0x400000
     mov ebp,esp
-    jnz pnp_enter
+    jnz .stack32
     movzx ebp,bp
+.stack_ready:
+    xor ax,ax
+    jmp pnp_enter16
+.stack32:
+    xor si,si
+    jmp pnp_enter
+
+; Keep 32-bit local addresses inside a wrapping caller's 16-bit stack segment.
+; The PnP caller supplies 1 KiB; the largest resident worker uses less than 512 B.
+pnp_enter16:
+    cli
+    cmp bp,PNP_FRAME+194
+    jb .move
+    cmp bp,0x10000-PNP_CALL_FRAME
+    jbe .ready
+.move:
+    call pnp_call_frame_size
+    mov si,bp
+    mov di,PNP_STACK_TOP
+.copy:
+    mov dl,[ss:si]
+    mov [ss:di],dl
+    inc si
+    inc di
+    loop .copy
+    mov sp,PNP_STACK_TOP
+    movzx ebp,sp
+.ready:
+    mov si,ax
+    jmp pnp_enter
+
+; Preserve only actual arguments; caller output buffers may follow them on SS.
+pnp_call_frame_size:
+    mov si,bp
+    add si,40
+    movzx edx,word [ss:si]
+    mov cx,42
+    cmp dx,12
+    jb .size
+    sub edx,0x40
+    cmp edx,3
+    ja .done
+    add edx,12
+.size:
+    movzx ecx,byte [cs:pnp_call_frame_sizes+edx]
+.done:
+    ret
+pnp_call_frame_sizes db 52,54,52,42,42,42,42,42,42,42,42,48,48,56,50,50
+
 pnp_enter:
     push ds
     push es
     push fs
     push gs
     sub esp,208
+    mov [ss:ebp+PNP_REAL_CALL],si
     cld
     cli
     mov ax,ss
@@ -187,9 +242,23 @@ pnp_enter:
     je pnp_apm
     cmp ax,0x40
     je pnp_isa
+%ifdef BOARD_ESCD_SOURCE
+    cmp ax,9
+    je pnp_use_escd
+    cmp ax,0x0A
+    je pnp_use_escd
+%endif
     cmp ax,0x0A
     jbe pnp_unsupported
     sub ax,0x41
+%ifdef BOARD_ESCD_SOURCE
+    cmp ax,0
+    je pnp_escd_info
+    cmp ax,1
+    je pnp_escd_read
+    cmp ax,2
+    je pnp_escd_write
+%endif
     cmp ax,2
     jbe pnp_unsupported
     mov ax,0x81
@@ -197,6 +266,10 @@ pnp_enter:
 pnp_unsupported:
     mov ax,0x82
     jmp pnp_return
+%ifdef BOARD_ESCD_SOURCE
+%include "firmware/pnp-escd.inc"
+%include BOARD_ESCD_SOURCE
+%endif
 pnp_bad_parameter:
     mov ax,0x84
     jmp pnp_return
@@ -215,6 +288,23 @@ pnp_return:
     pop fs
     pop es
     pop ds
+    mov ax,[ss:ebp+12]         ; PUSHAD's unused original ESP identifies the frame.
+    sub ax,32
+    cmp ax,bp
+    je .restore
+    call pnp_call_frame_size
+    mov ebx,[ss:ebp+12]
+    sub bx,32
+    lea esi,[ebp+ecx-1]
+    lea edi,[ebx+ecx-1]
+.copy_back:
+    mov dl,[ss:si]
+    mov [ss:di],dl
+    dec si
+    dec di
+    loop .copy_back
+    mov esp,ebx
+.restore:
     popad
     popfd
     retf

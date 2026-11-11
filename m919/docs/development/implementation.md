@@ -182,3 +182,9 @@ Current replacement checks are:
 The manual proof entry point includes settings/save/reload, VGA initialization through later ROM discovery, ordinary-cache failure rejection and supported cache/CPU controls. The ATA proof enters public INT13 with interrupts initially clear, services the shared IRQ14 owner while polling, and checks bounded PIO exclusion and delayed completion. The short `build/diagnostics/L2CHECK.COM` tests only its DOS-owned allocation. Its I0 result does not qualify all SRAM cells or timing margins. Memtest and real DOS workloads remain necessary hardware observations.
 
 The private finalizer includes POST-only peripheral and clock-alert work. It returns to resident F000 code before compact runtime publication can overwrite its arena. The public services use the current BDA EBDA pointer and the complete advertised extent. The complete cache and SMM/APM transactions retain their existing order.
+
+### ESCD storage
+
+The shared PnP entry handles ESCD functions 41h through 43h. The M919 adapter uses two records in E8000h through EFFFFh. It writes and verifies the replacement before selecting it on subsequent reads. Firmware code remains outside those records. The adapter requires a complete supported chip ID before programming, including a fresh ID command for the Macronix device byte. A failed write reports an error and leaves the previous valid record available. Virtual 8086 calls use the SMM path and validate the caller's mapped pages before copying data.
+
+Two checksummed ROM headers reserve the complete E segment for EMM386. The headers describe 2 KiB and 62 KiB regions. Intel's DOS configuration driver can advance past both sizes with its 16-bit option-ROM scanner. Startup refreshes the second checksum after copying saved ESCD into shadow RAM. The ESCD database serves configuration utilities. POST still uses detected devices and saved Setup reservations when it assigns resources.

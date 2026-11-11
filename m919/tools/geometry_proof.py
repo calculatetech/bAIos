@@ -129,6 +129,11 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     init=code+listing.symbol('ram_initialize')
     ready=code+listing.symbol('.ram_ready','startup')
     finish=code+listing.symbol('init_pic_pit')
+    try:
+        shadow_begin=code+listing.symbol('board_firmware_shadow')
+        shadow_end=code+listing.symbol('board_vga_shadow')
+    except StopIteration:
+        shadow_begin=shadow_end=-1 # Earlier images have no early F-copy owner.
     begin_state=cfg['platform']['state_seg']<<4
     stack_ops=[];excluded_writes=[];instructions={};far_return=[False];far_return_enabled=[False];instruction_count=[0]
 
@@ -139,6 +144,10 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     def write(uc,access,address,size,value,user):
         if 0xE0000<=address and address+size<=0xF0000 and not d.registers.get(0x55,0)&0x40:
             assert value.to_bytes(size,'little')==rom_bytes[address-0xE0000:address-0xE0000+size], 'E shadow copy differs from ROM'
+        elif 0xF0000<=address and address+size<=0x100000 and not d.registers.get(0x55,0)&0x40:
+            pc=(uc.reg_read(x.UC_X86_REG_CS)<<4)+uc.reg_read(x.UC_X86_REG_IP)
+            assert not remapping[0] and shadow_begin<=pc<shadow_end, 'F copy outside its post-mapper owner'
+            assert value.to_bytes(size,'little')==rom_bytes[address-0xE0000:address-0xE0000+size], 'F shadow copy differs from ROM'
         elif 0xA0000<=address<0x100000:
             excluded_writes.append(address)
         elif address<0x10200000:
@@ -230,7 +239,7 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
         finally:far_return_enabled[0]=False
     step.execute=execute
     execute(code+listing.symbol('startup'),code+0xFFFF,5000000+(memory.capacity*24 if memory is not None else 0))
-    assert terminal and not stack_ops and not excluded_writes,(terminal,stack_ops,excluded_writes)
+    assert terminal and not stack_ops and not excluded_writes,(terminal,stack_ops[:8],len(excluded_writes),excluded_writes[:8])
     if revision!=4:
         assert not any(offset==0x61 and value&0x30 for offset,size,value in d.writes),d.writes
     if terminal!=['published']:

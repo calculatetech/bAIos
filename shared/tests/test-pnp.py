@@ -75,7 +75,7 @@ def isa_machine(port,bus,output='build/tests/pnp-runtime',conventional_kib=None)
                 self.payload_shadow[offset:offset+size]=value.to_bytes(size,'little')
         def call(self,name,**registers):
             if ((port=='m919' and (name.startswith('pnp_') or name=='settings_nv6_retire')) or
-                (port in ('pb430','presario-800') and (name.startswith(('pnp_isa_','pnp_delay_','pnp_claim_','pnp_work_','pnp_bus_','pnp_census','pnp_initialize_','pnp_discover_')) or name in ('pnp_pit_sample','pnp_prepare','pnp_finish','pnp_resource_next','pnp_stream_byte','pnp_normalize_event','pnp_eisa_id_valid','pnp_replay','pnp_place_ldn','pnp_candidate','pnp_try_ldn','pnp_solve','pnp_program','pnp_seed','pnp_reserve','pnp_map_node','pnp_rom_resources','settings_nv6_retire')))) and name not in ('settings_nv6_retire','pnp_journal_release','pnp_rom_enter','pnp_module_install','pnp_post_invoke','pnp_publish','pnp_early','pnp_finish_entry','pnp_pci_initialize'):
+                (port in ('pb430','presario-800') and (name.startswith(('pnp_isa_','pnp_delay_','pnp_claim_','pnp_work_','pnp_bus_','pnp_census','pnp_initialize_','pnp_discover_')) or name in ('pnp_pit_sample','pnp_prepare','pnp_prepare_video','pnp_configure','pnp_configure_post','pnp_finish','pnp_resource_next','pnp_stream_byte','pnp_normalize_event','pnp_eisa_id_valid','pnp_replay','pnp_place_ldn','pnp_candidate','pnp_try_ldn','pnp_solve','pnp_program','pnp_seed','pnp_reserve','pnp_map_node','pnp_rom_resources','settings_nv6_retire')))) and name not in ('settings_nv6_retire','pnp_journal_release','pnp_rom_enter','pnp_module_install','pnp_post_invoke','pnp_publish','pnp_early','pnp_finish_entry','pnp_pci_initialize','pnp_configure_isa'):
                 if name=='pnp_publish_finish':return super().call(name,**registers)
                 registers['BX']=self.listing.symbol(name)
                 name='pnp_post_invoke'
@@ -883,7 +883,10 @@ def selected_vga_resources(output='build/tests/pnp-runtime'):
             decoded=rom_kind!='absent' and (not display or bool(endpoint.read(4,2)&2 and endpoint.read(0x30,4)&1))
             observed.append(decoded);cpu.mem_write(address,bytes(rom[address-0xC0000:address-0xC0000+size]) if decoded else b'\xFF'*size)
         hook=m.cpu.hook_add(UC_HOOK_MEM_READ,mapped,None,0xC0000,0xC7FFF)
-        try:m.call('pnp_early')
+        try:
+            m.call('pnp_early')
+            assert all(card.registers[n][0x30]==0 for n in range(3))
+            m.call('pnp_configure_isa')
         finally:m.cpu.hook_del(hook)
         actual=int.from_bytes(m.cpu.mem_read(m.base+0x1000,2),'little');assert actual==(0x60 if display else 0xFFFF)
         assert any(op[:4]==('read',0x60,8,4) for op in bus.pci.accesses),'Actual PCI class discovery missing'
@@ -930,7 +933,10 @@ def pci_fixed_rom(output='build/tests/pnp-runtime'):
             visible.append(responds)
             cpu.mem_write(address,bytes(rom[address-0xC0000:address-0xC0000+size]) if responds else b'\xFF'*size)
         hook=m.cpu.hook_add(UC_HOOK_MEM_READ,mapped,None,0xC0000,0xC7FFF)
-        try:m.call('pnp_early')
+        try:
+            m.call('pnp_early')
+            assert not card.registers[0][0x30]
+            m.call('pnp_configure_isa')
         finally:m.cpu.hook_del(hook)
         assert card.registers[0][0x30]==int(not display)
         assert any(visible)==display
@@ -988,6 +994,7 @@ def pci_vga_first_use(output='build/tests/pnp-runtime'):
         except Exception as error:
             raise AssertionError(('VGA execution',hex(m.cpu.reg_read(x.UC_X86_REG_CS)),hex(m.cpu.reg_read(x.UC_X86_REG_IP)),
                                   hex(m.cpu.reg_read(x.UC_X86_REG_SS)),hex(m.cpu.reg_read(x.UC_X86_REG_SP)),bus.witness)) from error
+        m.call('pnp_configure_isa')
     finally:m.cpu.hook_del(hook)
     assert bus.witness and all(cs==0xC000 for cs,ip in bus.witness)
     assert m.cpu.mem_read(0x40,4)==b'\0\x01\0\xC0'
@@ -1101,7 +1108,11 @@ def early_port_ownership(port,output='build/tests/pnp-runtime'):
         def work_bounds(cpu,access,address,size,value,unused):
             raise AssertionError(('Decoder wrote outside allocated state/stack',hex(address),size))
         guard=m.cpu.hook_add(UC_HOOK_MEM_WRITE,work_bounds,None,guard_base,m.base+0xFFFF)
-        try:m.call('pnp_early')
+        try:
+            m.call('pnp_early')
+            assert bus.first_route is None
+            m.call('init_peripherals')
+            m.call('pnp_configure_isa')
         finally:m.cpu.hook_del(guard)
         assert bytes(m.cpu.mem_read(guard_base,len(guard_before)))==guard_before
         expected=(selector==1,selector==3)
@@ -1883,11 +1894,14 @@ class Caller(settings.Settings):
             cpu.reg_write(getattr(x,'UC_X86_REG_'+name),value)
         offset=self.stack_offset if self.mode=='ss32' else self.stack_offset&65535
         frame=struct.pack('<'+'H'*(3+len(args)),0x200,self.return_code,function,*args)
-        lower=0x30000+offset-1041
-        upper=0x30000+offset+len(frame)
+        lower=0x30000+((offset-1041)&65535 if self.mode!='ss32' else offset-1041)
+        upper_offset=offset+len(frame)+getattr(self,'stack_output_bytes',0)
+        upper=0x30000+(upper_offset&65535 if self.mode!='ss32' else upper_offset)
         cpu.mem_write(lower,b'BEFORE-PNP-STACK!')
         cpu.mem_write(upper,b'AFTER-PNP-STACK!!')
-        cpu.mem_write(0x30000+offset,frame)
+        cut=min(len(frame),0x10000-offset) if self.mode!='ss32' else len(frame)
+        cpu.mem_write(0x30000+offset,frame[:cut])
+        if cut<len(frame):cpu.mem_write(0x30000,frame[cut:])
         cpu.mem_write(0x10200,getattr(self,'return_opcode',b'\xF4'))
         before={name:cpu.reg_read(getattr(x,'UC_X86_REG_'+name)) for name in registers}
         descriptor_state=tuple(cpu.reg_read(getattr(x,'UC_X86_REG_'+name)) for name in ('CR0','GDTR','IDTR'))
@@ -1907,11 +1921,14 @@ class Caller(settings.Settings):
         for name,value in before.items():
             actual=cpu.reg_read(getattr(x,'UC_X86_REG_'+name))
             expected=(value&0xFFFF0000|result) if name=='EAX' else value+4 if name=='ESP' else self.return_code if name=='CS' else value
+            if name=='ESP' and self.mode!='ss32':expected=(value&0xFFFF0000)|((value+4)&0xFFFF)
             assert actual==expected,(self.port,self.mode,name,hex(actual),hex(expected))
         assert descriptor_state==tuple(cpu.reg_read(getattr(x,'UC_X86_REG_'+name)) for name in ('CR0','GDTR','IDTR'))
         assert bytes(cpu.mem_read(lower,17))==b'BEFORE-PNP-STACK!'
         assert bytes(cpu.mem_read(upper,17))==b'AFTER-PNP-STACK!!'
-        assert bytes(cpu.mem_read(0x30000+offset,len(frame)))==frame,'Caller argument/return frame changed'
+        actual_frame=bytes(cpu.mem_read(0x30000+offset,cut))
+        if cut<len(frame):actual_frame+=bytes(cpu.mem_read(0x30000,len(frame)-cut))
+        assert actual_frame==frame,'Caller argument/return frame changed'
         return result
 
 
@@ -2160,7 +2177,15 @@ def invalid_next(port):
 def information_services_mode(port,mode):
     c=Caller(port,mode)
     before=c.snapshot()
-    for fn in (*range(3,11),0x41,0x42,0x43):assert c.far(fn)==0x82,fn
+    for fn in range(3,11):assert c.far(fn)==(0x8D if port=='m919' and fn in (9,10) else 0x82),fn
+    # Unsupported ESCD services must not expose an E000 backing store or touch
+    # caller storage, even when given valid output buffers.
+    firmware=bytes(c.cpu.mem_read(0xE0000,0x20000))
+    for fn in (() if port=='m919' else (0x41,0x42,0x43)):
+        c.cpu.mem_write(0x20100,b'\xA6'*256)
+        assert c.far(fn,[0x100,c.buffer,0x108,c.buffer,0x110,c.buffer,c.bios])==0x82,fn
+        assert bytes(c.cpu.mem_read(0x20100,256))==b'\xA6'*256,fn
+    assert bytes(c.cpu.mem_read(0xE0000,0x20000))==firmware
     for fn in (0x0C,0x3F,0x44,0xFFFF):assert c.far(fn)==0x81,fn
     for capacity in (0,1,0xFFFF):
         c.cpu.mem_write(0x20100,struct.pack('<H',capacity)+b'\xCC'*6)
@@ -2175,7 +2200,9 @@ def information_services_mode(port,mode):
     for handle in (0xFE,0xFF):assert get_node(c,handle)[0]==0x83,handle
     assert c.snapshot()==before and not c.writes
     assert not c.io,'Information services performed hardware I/O'
-    return {'exact_statuses':True,'empty_apm':True,'zero_isa':True,'no_persistent_writes':True}
+    return {'exact_statuses':True,'empty_apm':True,'zero_isa':True,'no_persistent_writes':True,
+            'ESCD_backend':('test-escd.py' if port=='m919' else 'unsupported; no backing address'),
+            'E_F_firmware_unchanged':True}
 
 
 def information_services(port):
@@ -2203,6 +2230,10 @@ def allocation_information(port):
         private_base=(segment<<4)+(module_start if port=='m919' else 0)
         m.call('pnp_finish_entry')
         assert not any(m.cpu.mem_read(m.base+0x338,4))
+        ebda=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4
+        ceiling=int.from_bytes(m.cpu.mem_read(0x413,2),'little')<<10
+        extent=m.cpu.mem_read(ebda,1)[0]<<10
+        assert ceiling<=ebda<ebda+extent<=0xA0000,(port,hex(ceiling),hex(ebda),extent)
         frozen=bytes(m.cpu.mem_read(0x4AD,83));expected=bytes((1,count))+struct.pack('<HH',0x20B if count else 0,0)
         for mode in ('real','ss16','ss32'):
             c=Caller(port,mode,m.snapshot());c.cpu.mem_write(0x4AD,frozen)
@@ -2689,7 +2720,7 @@ def set_node(port):
             'invalid_nv6_next_fallback':invalid_next(port),'public_commit_contracts':public_commit_contracts(port),'causal_routing':causal_routing(port)}
 
 
-def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_video=False,expect_first_active=True):
+def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_video=False,expect_configured_active=True):
     """Real reset/application/publication, using the existing board hardware seams."""
     import importlib
     def cad_scratch(cpu):
@@ -2722,6 +2753,8 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
             (match:=re.match(r'\s*\d+\s+([0-9A-F]{8})\s+[0-9A-F]',line)))
     else:video_entry=0xF0000+publication_listing.symbol('initialize_video')
     progress[video_entry]='initialize_video'
+    configuration_end=0xF0000+publication_listing.symbol('init_floppy')
+    configuration_hooked=set()
     snapshots=[]
     persistent_snapshots=[]
     boundaries=[]
@@ -2844,6 +2877,9 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
         boundaries.append([min(writes),max(writes)])
     def observe(cpu,address,listing):
         if pnp_bus is not None and getattr(pnp_bus,'runtime_continue',False):return
+        if pnp_bus is not None and id(cpu) not in configuration_hooked:
+            configuration_hooked.add(id(cpu))
+            cpu.hook_add(UC_HOOK_CODE,lambda u,a,z,v:observe(u,a,listing),None,configuration_end,configuration_end)
         if address==settings_entry:
             notice_acknowledged[0]=False
         if pnp_bus is not None and port in ('pb430','presario-800') and address==notice_entry and not notice_acknowledged[0]:
@@ -2880,8 +2916,10 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
             entry,segment=struct.unpack('<HH',cpu.mem_read(base+0x338,4))
             module_live[0]=(segment<<4)+(source_at if port=='m919' else 0)
             assert bytes(cpu.mem_read(module_live[0],len(expected_module)))==expected_module
-            expected=(expect_first_active(len(placement_observations)) if callable(expect_first_active) else expect_first_active)
-            assert all(bool(card.registers[0][0x30])==expected for card in pnp_bus.cards),'Assignment/policy must precede video'
+        if pnp_bus is not None and address==configuration_end:
+            base=int.from_bytes(cpu.mem_read(0x40E,2),'little')<<4
+            expected=(expect_configured_active(len(placement_observations)) if callable(expect_configured_active) else expect_configured_active)
+            assert all(bool(card.registers[0][0x30])==expected for card in pnp_bus.cards),'Assignment/policy must complete before drive detection'
             root=int.from_bytes(cpu.mem_read(base+0x330,4),'little')
             root_data=bytes(cpu.mem_read(root,32))
             node=int.from_bytes(root_data[8:12],'little');stored=0;seen=set()
@@ -2893,7 +2931,7 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
             if port=='pb430':spans=[(lo,hi) for lo,hi in ((cursor,min(end,0x20000)),(max(cursor,0x40000),end)) if lo<hi]
             live_journal[0]=[(lo,bytes(cpu.mem_read(lo,hi-lo))) for lo,hi in spans]
             placement_observations.append({'actual_module_linear':module_live[0],'complete_source_bytes_equal':True,
-                'required_active_before_video':expected,'external_video':external_video,
+                'required_active_after_video':expected,'external_video':external_video,
                 'original_KiB':int.from_bytes(cpu.mem_read(base+0x328,2),'little'),
                 'journal_cursor':int.from_bytes(cpu.mem_read(base+0x320,4),'little'),
                 'actual_LDN_count':int.from_bytes(root_data[24:28],'little'),'stored_LDN_count':stored,
@@ -3245,6 +3283,7 @@ def runtime_promotion(port):
     policy=bytearray(15);policy[14]=1;m.put('U_PNP',policy);assert m.call('settings_save')
     if port!='m919':m.call('pnp_journal_release') # Constructor-only copied bank.
     m.call('pnp_early')
+    m.call('pnp_configure_isa')
     m.call('option_rom_discovery')
     for n in range(2):
         ax,bx,dx,es,di=struct.unpack('<5H',m.cpu.mem_read(0x600+n*16,10))
@@ -3301,7 +3340,9 @@ def runtime_promotion(port):
 def runtime_assemble(port,name,source):
     """Only authored external devices/loaders, never a substituted BIOS hop."""
     import shutil
-    work=ROOT/port/OUTPUT/'runtime-fixtures';work.mkdir(parents=True,exist_ok=True)
+    work=ROOT/port/OUTPUT
+    if work.name=='build':work=work/'tests'
+    work=work/'runtime-fixtures';work.mkdir(parents=True,exist_ok=True)
     asm=work/(name+'.asm');binary=asm.with_suffix('.bin');asm.write_text(source)
     nasm=shutil.which('nasm') or str(Path(os.environ['LOCALAPPDATA'])/'bin/NASM/nasm.exe')
     subprocess.run([nasm,'-f','bin','-o',str(binary),str(asm)],check=True)
@@ -3481,7 +3522,7 @@ def runtime_external_machine(port,actions=('int18','boot'),statuses=None,images=
     m.put('U_HALT',b'\x01')
     assert m.call('settings_save')
     if port!='m919':m.call('pnp_journal_release')
-    m.call('pnp_early');m.call('option_rom_discovery')
+    m.call('pnp_early');m.call('pnp_configure_isa');m.call('option_rom_discovery')
     m.runtime_post_intervals=struct.unpack('<II',m.cpu.mem_read(m.base+0x320,8))
     m.call('pnp_finish_entry')
     m.base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4
@@ -3698,7 +3739,8 @@ def runtime_public_current(port,model,cpu,listing,bus):
                 expected=bytes((1,len(bus.cards)))+struct.pack('<HH',bus.read_port if bus.cards else 0,0)
                 assert actual==expected+b'\xCC'*6,(mode,actual.hex(),expected.hex())
                 before=len(ports)
-                for function in (9,10,0x41,0x42,0x43):assert c.far(function)==0x82
+                for function in ((9,10) if port=='m919' else (9,10,0x41,0x42,0x43)):
+                    assert c.far(function)==(0x8D if port=='m919' else 0x82)
                 assert len(ports)==before
                 assert c.far(0x1234)==0x81
                 assert not forbidden and 0x71 not in ports and 0x279 not in ports and 0xA79 not in ports
@@ -3797,6 +3839,7 @@ mov [602h],dx
 mov [604h],es
 mov [606h],di
 inc word [608h]
+mov byte [449h],13h
 INIT_TAIL
 connect:
 xor bx,bx
@@ -3816,6 +3859,7 @@ mov ds,bx
 cmp ax,3
 jne .done
 inc word [60Ch]
+mov byte [449h],3
 .done:
 pop bx
 pop ds
@@ -4177,7 +4221,7 @@ def runtime_startup_snapshot(port,phases=(False,),cards=(),policy=None,relocate_
             if port=='presario-800':model.base=new;model.segment=new>>4
             self.relocation={'old':old,'new':new,'copied_only_advertised_bytes':size}
     bus=Devices()
-    try:evidence=startup(port,bytes(saved.cmos).hex(),'',pnp_bus=bus,phases=phases,external_video=external_video,expect_first_active=(not bool(cards)) if expect_active is None else expect_active)
+    try:evidence=startup(port,bytes(saved.cmos).hex(),'',pnp_bus=bus,phases=phases,external_video=external_video,expect_configured_active=(not bool(cards)) if expect_active is None else expect_active)
     except Exception as error:
         if hasattr(bus,'latest'):
             model,cpu,listing,address=bus.latest
@@ -5049,7 +5093,7 @@ def runtime_isa_association_case(port,first_present):
         for field,value in (('U_BOOT',4),('U_BOOT_SECOND',0),('U_BOOT_THIRD',0),('U_BOOT_FOURTH',0)):m.put(field,bytes((value,)))
         assert m.call('settings_save')
         if port!='m919':m.call('pnp_journal_release')
-        m.call('pnp_early');m.call('option_rom_discovery');m.call('pnp_finish_entry')
+        m.call('pnp_early');m.call('pnp_configure_isa');m.call('option_rom_discovery');m.call('pnp_finish_entry')
         m.base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4
         # Install the actual resident disk handler for the boot reset service;
         # this allocator-entry fixture has not run the POST IVT initializer.
@@ -5176,7 +5220,7 @@ def allocation_startup_causal(port,groups=None,pci_cases=(False,True),video_case
         m=saved(policy);before=decode_saved(m)
         finish=0xF0000+m.listing.symbol('pnp_finish_entry');end=0xF0000+m.listing.symbol('pnp_post_summary_complete')
         result=startup(port,bytes(m.cmos).hex(),'',pnp_bus=bus,phases=(False,True,True),
-                       expect_first_active=lambda index:index>0)
+                       expect_configured_active=lambda index:index>0)
         assert len(bus.retirement)==3 and not bus.retirement[0] and bus.retirement[1] and not bus.retirement[2]
         decoded=[]
         for index,cmos in enumerate(result['persistent_snapshots']):
@@ -5305,7 +5349,7 @@ def composed_capacity(port,baseline):
         before=decode_saved(m)
         print(port,'census capacity',amount,'LDNs',file=sys.stderr,flush=True)
         result=startup(port,bytes(m.cmos).hex(),bytes(m.nvram[0x200:0x240]).hex(),
-            pnp_bus=bus,phases=(False,),expect_first_active=False)
+            pnp_bus=bus,phases=(False,),expect_configured_active=False)
         observed=result['placement_observations'][0]
         assert observed['original_KiB']==kib
         assert observed['actual_LDN_count']==amount
@@ -5509,6 +5553,7 @@ def runtime_noncontiguous_pack(port):
         policy=bytearray(15);policy[14]=1;m.put('U_PNP',policy);assert m.call('settings_save')
         if port!='m919':m.call('pnp_journal_release')
         m.call('pnp_early')
+        m.call('pnp_configure_isa')
         prefix=m.cpu.mem_read(m.base,1)[0]*1024
         stage=(prefix+60+3*24+1023)&~1023
         failure_ceiling=64+stage//1024-1
@@ -5740,12 +5785,8 @@ def image_contract(port,output=None):
         assert hashlib.sha256(full[:0xC000]).hexdigest()==json.loads((ROOT/'shared/tests/fixtures/pnp-placement-p1.json').read_text())['ports'][port]['retained_sha256']
         assert sum(full)&255==int(frozen['sum32'],16)&255
     if port=='m919':
-        # E0 is generated APM/SMM code, not a retained vendor input. Test-only
-        # discovery cannot alter it; its independent region checksum also holds.
-        assert sum(raw[:65536])&255==0
-        frozen=json.loads((ROOT/'shared/tests/fixtures/pnp-placement-p1.json').read_text())['ports'][port]
-        assert hashlib.sha256(raw[:0x1600]).hexdigest()==frozen['retained_sha256']
-        if output is None:assert raw[:0x1600]==c.image.read_bytes()[:0x1600]
+        # Test-only discovery must leave the generated E bank byte-identical.
+        if output is None:assert raw[:65536]==c.image.read_bytes()[:65536]
     placement={}
     if port in ('m919','pb430','presario-800'):
         spec=importlib.util.spec_from_file_location('pnp_ui_layout',ROOT/'shared/tests/test-ui-text.py')

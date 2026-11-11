@@ -567,6 +567,7 @@ keyboard_enqueue:
     mov ax, [0x000E]
     mov es, ax
     mov byte [es:S_SETUP_REQUEST], 1
+    call post_entering_setup
     pop es
     pop ax
     clc

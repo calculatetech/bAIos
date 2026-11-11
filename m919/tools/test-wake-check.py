@@ -47,7 +47,7 @@ def check(raw, rom, symbols, status_offset, state_kib, nmi_policy, name, **optio
     u.mem_write(ebda * 16, bytes([options.get('size', state_kib)]))
     u.mem_write(ebda * 16 + status_offset, bytes([options.get('status', 1)]))
     if options.get('header') is False:
-        u.mem_write(0xE0000, b'OTHERROM')
+        u.mem_write(0xE0014, b'OTHERROM')
     prior_vector = struct.pack('<HH', 0x1234, 0x8765)
     u.mem_write(0x4A * 4, prior_vector)
     state_before = bytes(u.mem_read(ebda * 16, state_kib * 1024))

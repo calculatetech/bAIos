@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from unicorn import UC_HOOK_MEM_WRITE
 from pci_proof import Hardware,Endpoint,compose,post_module,invoke
+from shared.tools.ram_proof import fixture_directory
 
 PORT=Path(__file__).resolve().parents[1]
 
@@ -26,7 +27,7 @@ class ROMHardware(Hardware):
             u.mem_write(0xC8000,self.isa)
             u.mem_write(0xD0000,bytes(self.dbase))
         else:self.dbase[:512]=u.mem_read(0xD0000,512)
-        folder=(self.rom_image.parent/'runtime-fixtures/pci-rom' if hasattr(self,'rom_image') else
+        folder=(fixture_directory(self.rom_image,'pci-rom') if hasattr(self,'rom_image') else
                 PORT/'build/tests/pci-rom');folder.mkdir(parents=True,exist_ok=True)
         source=folder/'controller.asm';image=source.with_suffix('.bin')
         source.write_text('''bits 16

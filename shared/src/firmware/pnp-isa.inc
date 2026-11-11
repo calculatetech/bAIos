@@ -157,7 +157,7 @@ pnp_isa_isolate:
 ; AL=byte, CF=per-byte readiness timeout.
 pnp_isa_resource_byte:
     push cx
-    mov cx,100               ;200ms hardware timeout, never a stream-size bound.
+    mov cx,800               ;800x250us retains the 200ms per-byte retry allowance.
 .status:
     push dx
     mov dx,0x279
@@ -167,7 +167,7 @@ pnp_isa_resource_byte:
     in al,dx
     test al,1
     jnz .ready
-    call pnp_delay_2ms
+    call pnp_delay_250us
     loop .status
     stc
     pop cx

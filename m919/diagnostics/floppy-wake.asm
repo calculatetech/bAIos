@@ -15,9 +15,9 @@ start:
     jnz unsupported
     mov ax,0xE000
     mov es,ax
-    cmp dword [es:0],0x53494142
+    cmp dword [es:0x14],0x53494142
     jne unsupported
-    cmp dword [es:4],0x00314D4D
+    cmp dword [es:0x18],0x00314D4D
     jne unsupported
     pushf
     cli

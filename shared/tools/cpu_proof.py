@@ -68,6 +68,8 @@ def check(rom,layout,state,*,family_only=False,prepare_unavailable=True,amd_sl_n
             else:
                 observed_owners[installed_address(listing,u.mem_read,'post_processor_name')]='post_processor_name'
         base=0x9E000;u.mem_write(0x40E,struct.pack('<H',base>>4));u.mem_write(base+state['S_CPU_SIGNATURE'],struct.pack('<H',reset_signature))
+        # This component check renders the summary without waiting for POST ticks.
+        u.mem_write(base+state['C_POST_DELAY'],b'\0')
         registers={x.UC_X86_REG_EAX:0x12345678,x.UC_X86_REG_EBX:0x87654321,x.UC_X86_REG_ECX:0xABCDEF12,
             x.UC_X86_REG_EDX:0x76543210,x.UC_X86_REG_ESI:0x24681357,x.UC_X86_REG_EDI:0x13572468,
             x.UC_X86_REG_EBP:0x19283746,x.UC_X86_REG_ESP:0xCAFE6FFE,x.UC_X86_REG_CS:layout['code_segment'],

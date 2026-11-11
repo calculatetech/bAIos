@@ -9,6 +9,7 @@ bits 16
 %error "Select a board definition before composing the firmware core"
 %endif
 %include BOARD_DEFINITION
+%include "pc/firmware-versions.inc"
 %include "setup/ui-text.inc"
 %include "firmware/cache-lifecycle.inc"
 %include "pc/processor.inc"
@@ -76,6 +77,8 @@ bits 16
 %ifdef EMULATOR_RAM_SKIP_TEST
     call core_ram_test_begin
 %endif
+    mov al,2
+    call post_status
     call chipset_visible_ram_test
 %ifdef BOARD_RAM_POLICY_BEFORE_TEST
     post_code 0x7C
@@ -88,9 +91,25 @@ bits 16
     call setup_test_begin     ; Notice Delete enters Setup at the next early gate.
 %endif
     call post_early_setup
+    mov al,3
+    call post_status
     cache_phase after_ram
     call load_bios_state
+    call post_ui_cache
+    mov al,4
+    call post_status
     call init_peripherals
+%ifdef BOARD_PNP_SUPPORT
+    mov al,5
+    call post_status
+%ifdef M919_BOARD_DEFINITION
+    post_code 0x55
+%endif
+    call pnp_configure_isa
+%ifdef M919_BOARD_DEFINITION
+    post_code 0x56
+%endif
+%endif
 %ifdef EMULATOR_SETUP_TEST
 %ifndef EMULATOR_SETUP_POWERLOSS
     call setup_test_begin
@@ -134,6 +153,8 @@ bits 16
 %endif
 %endif
 
+    mov al,6
+    call post_status
     call init_floppy
     mov byte [fs:P_PHASE], 3
     call post_ui_floppy
@@ -151,6 +172,8 @@ bits 16
     call post_pause_test_end
 %endif
     post_code 0x70
+    mov al,7
+    call post_status
     call ata_detect_primary
     call post_keyboard_wait
     mov byte [fs:P_PHASE], 4
@@ -221,6 +244,8 @@ bits 16
 %ifdef BOARD_LATE_POST_TRACE
     post_code 0x59
 %endif
+    mov al,8
+    call post_status
     call option_rom_discovery
 %ifdef BOARD_LATE_POST_TRACE
     post_code 0x5A

@@ -8,12 +8,14 @@ import sys
 
 from unicorn import Uc, UC_ARCH_X86, UC_MODE_16, UC_HOOK_CODE, UC_HOOK_INSN, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
 from unicorn import x86_const as x
+
+PORT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PORT.parent))
 from shared.tools.ram_proof import constants
 
 setup = importlib.import_module('test-setup')
 chipset = importlib.import_module('test-chipset')
 cache = importlib.import_module('test-external-cache')
-PORT = Path(__file__).resolve().parents[1]
 SAVE = [0x44, 28]
 STATE = constants(PORT.parent/'shared/src/pc/state.inc')
 

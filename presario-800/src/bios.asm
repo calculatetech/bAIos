@@ -4,7 +4,7 @@ bits 16
 %define BOARD_PNP_NV6_LATE 1
 org 0
 
-%define BIOS_VERSION '0.8.0'
+%define BIOS_VERSION '0.10.2'
 %define BIOS_RELEASE_DATE '10/31/2026'
 %substr BIOS_DATE_PREFIX BIOS_RELEASE_DATE 1,6
 %substr BIOS_DATE_YEAR BIOS_RELEASE_DATE 9,2
@@ -636,6 +636,8 @@ startup:
 
     ; Video is available for failure diagnostics, not a keyboard prerequisite.
     call post_ui_begin
+    mov al,1
+    call post_status
     call init_keyboard
     post_code 0x48
     call arm_keyboard_runtime
@@ -667,6 +669,8 @@ startup:
     mov byte [fs:P_PHASE], 1
     call post_ui_cache
     call post_early_setup
+    mov al,2
+    call post_status
     call chipset_visible_ram_test
     mov byte [fs:P_PHASE], 2
     call post_early_setup
@@ -677,8 +681,15 @@ startup:
 %endif
     call post_early_setup
     call load_bios_state
+    mov al,3
+    call post_status
     cache_phase after_ram
+    mov al,4
+    call post_status
     call init_peripherals
+    mov al,5
+    call post_status
+    call pnp_configure_isa
 %ifdef EMULATOR_SETUP_TEST
 %ifndef EMULATOR_SETUP_POWERLOSS
     call setup_test_begin
@@ -722,6 +733,8 @@ startup:
 %endif
 %endif
 
+    mov al,6
+    call post_status
     call init_floppy
     mov byte [fs:P_PHASE], 3
     call post_ui_floppy
@@ -739,6 +752,8 @@ startup:
     call post_pause_test_end
 %endif
     post_code 0x70
+    mov al,7
+    call post_status
     call ata_detect_primary
     call post_keyboard_wait
     mov byte [fs:P_PHASE], 4
@@ -790,6 +805,8 @@ startup:
     mov byte [fs:P_PHASE], 5
     call post_ui_cache
     call post_ui_roms
+    mov al,8
+    call post_status
     call option_rom_discovery
 %ifdef EMULATOR_CHIPSET_POST_UI
     call post_ui_capture

@@ -3,7 +3,24 @@ post_ui_post_ui_begin:
     push ds
     push es
     call post_ui_load_bios_state
+    cmp byte [fs:U_THEME_ACTIVE],0
+    jne .restore
+    xor ax,ax
+    mov ds,ax
+    ; Redraw the existing POST mode without resetting the monitor's signal.
+    cmp byte [0x449],3
+    jne .restore
+    cmp word [0x44A],80
+    jne .restore
+    cmp byte [0x462],0
+    jne .restore
+    cmp byte [0x484],24
+    jne .restore
+    cmp word [0x485],16
+    je .ready
+.restore:
     call post_ui_setup_restore_text
+.ready:
     post_ui_data_segment
     mov ax, 0xB800
     mov es, ax
@@ -19,7 +36,15 @@ post_ui_post_ui_begin:
     mov bh, 7
     call post_ui_setup_text
     cmp byte [fs:P_PHASE], 0
-    je .keys
+    jne .progress
+    ui_text BOARD_POST_RAM_ROW,3,u_post_memory,0x0B
+    ui_text BOARD_POST_RAM_ROW,30,u_kb,7
+    memory_installed_kib eax
+    add eax,1024
+    mov di,BOARD_POST_RAM_ROW*160+24*2
+    call post_ui_post_count
+    jmp .keys
+.progress:
     call post_ui_post_ui_cache
     cmp byte [fs:P_RAM_FLAGS], 0
     je .drives
@@ -44,6 +69,12 @@ post_ui_post_ui_begin:
     jb .keys
     call post_ui_post_ui_roms
 .keys:
+    call post_ui_post_features
+    cmp byte [fs:S_SETUP_REQUEST],1
+    jne .key_hint
+    call post_ui_post_entering_setup
+    jmp .no_keys
+.key_hint:
     push ds
     push word 0x40
     pop ds
@@ -92,12 +123,7 @@ post_ui_post_ui_disks:
     mov cx,BOARD_ATA_DEVICE_COUNT
 .position:
     push cx
-    call post_ui_post_device_label
-    mov di,bp
-    add di,3*2
-    mov bh,0x0B
-    call post_ui_setup_text
-    call .device
+    call post_ui_post_disk_row
     mov ax,fs
     add ax,0x20
     mov fs,ax
@@ -149,6 +175,39 @@ post_ui_post_ui_disks:
 .done:
     ret
 
+; Fixed physical identities remain unchanged when a position is hidden.
+post_ui_disk_visible:
+    cmp byte [fs:S_CONTROLLER],0
+    je .hidden
+%if BOARD_ATA_DEVICE_COUNT = 4
+    cmp byte [fs:S_ENABLED],1
+%else
+    cmp byte [fs:C_HDD],1
+%endif
+    jne .hidden
+    clc
+    ret
+.hidden:
+    stc
+    ret
+
+post_ui_post_disk_row:
+    mov di,bp
+    add di,3*2
+    mov ax,0x0720
+    mov cx,76
+    rep stosw
+    call post_ui_disk_visible
+    jc .done
+    call post_ui_post_device_label
+    mov di,bp
+    add di,3*2
+    mov bh,0x0B
+    call post_ui_setup_text
+    call post_ui_disk_body
+.done:
+    ret
+
 ; Publish the current IDE position as soon as its existing probe returns.
 post_ui_post_ui_disk:
     pushad
@@ -171,12 +230,7 @@ post_ui_post_ui_disk:
     shr dx,5
     imul bp,dx,160
     add bp,11*160
-    call post_ui_post_device_label
-    mov di,bp
-    add di,3*2
-    mov bh,0x0B
-    call post_ui_setup_text
-    call post_ui_disk_body
+    call post_ui_post_disk_row
 .done:
     pop es
     pop ds
@@ -247,20 +301,20 @@ post_ui_post_ui_roms:
     post_ui_data_segment
     mov ax, 0xB800
     mov es, ax
-    ui_text 15, 3, u_post_vga, 0x0B
+    ui_text 16, 3, u_post_vga, 0x0B
     mov dx, 0xC000
     mov bx, 0x0800
     call post_ui_post_rom_state
-    mov di, 15*160+24*2
+    mov di, 16*160+24*2
     call post_ui_post_rom_state_text
-    ui_text 16, 3, u_post_system, 0x0B
+    ui_text 17, 3, u_post_system, 0x0B
     mov dx, 0xF000
     mov bx, 0x1000
     call post_ui_post_rom_state
-    mov di, 16*160+24*2
+    mov di, 17*160+24*2
     call post_ui_post_rom_state_text
-    ui_text 17, 3, u_post_roms, 0x0B
-    ui_text 17, 24, u_absent, 7
+    ui_text 18, 3, u_post_roms, 0x0B
+    ui_text 18, 24, u_absent, 7
     pop es
     pop ds
     popad
@@ -307,21 +361,3 @@ post_ui_post_count:
     call post_ui_setup_number
     popad
     ret
-
-post_ui_post_entering_setup:
-    pushad
-    push ds
-    push es
-    post_ui_data_segment
-    mov ax, 0xB800
-    mov es, ax
-    mov di, 22*160
-    mov ax, 0x0720
-    mov cx, 80
-    rep stosw
-    ui_text 22, 3, u_post_entering, 0x0F
-    pop es
-    pop ds
-    popad
-    ret
-

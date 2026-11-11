@@ -29,6 +29,10 @@
     mov dx,0xCF8
     in eax,dx
     mov ebp,eax
+%if %1 = 2
+    smm_read SMM_SB,0xA3
+    push ax
+%endif
     smm_read SMM_SB,0xA0
     push ax
     smm_read SMM_SB,0xA8
@@ -87,7 +91,7 @@
     pop ecx                     ; Saved A8 word, followed by saved A0 word.
     mov ebx,ecx
     shr ecx,16
-%if %1
+%if %1 = 1
     ; Successful idle returned full-on; old A0 mode bits are not live policy.
     test edi,edi
     jnz %%restore_a0
@@ -96,6 +100,10 @@
 %endif
     smm_write SMM_SB,0xA0,cl
     smm_write SMM_SB,0xA8,bl
+%if %1 = 2
+    pop cx
+    smm_write SMM_SB,0xA3,cl
+%endif
 %if !%1
     mov eax,SMM_HB | 0x50
     mov dx,0xCF8

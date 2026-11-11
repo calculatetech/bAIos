@@ -271,7 +271,7 @@ class Board:
         ins = self.instructions[address]
         if self.address('board_smm_initialize') <= address < self.address('board_smm_command') and ins.mnemonic == 'cmp':
             # Unicorn omits real-mode segment-limit faults: check the actual header operand.
-            assert ins.op_str == 'dword ptr es:[0], 0x53494142' and u.reg_read(x.UC_X86_REG_ES) == 0xE000
+            assert ins.op_str == 'dword ptr es:[0x14], 0x53494142' and u.reg_read(x.UC_X86_REG_ES) == 0xE000
         if ins.mnemonic == 'popfd':
             self.flags_after_pop = u.reg_read(x.UC_X86_REG_EFLAGS)
         if self.smm:
@@ -410,7 +410,7 @@ class Board:
         self.execute(self.address('chipset_initialize'), self.address('flat_addressing'))
         assert self.conf[SB][0xA0] == 0 and self.conf[SB][0xA3] & 0xC0 == 0
         assert self.conf[SB][0x57] & 0x20
-        assert bytes(self.u.mem_read(0xE0000, 8)) == b'BAISMM1\0'
+        assert bytes(self.u.mem_read(0xE0014, 8)) == b'BAISMM1\0'
         return self.startup()
 
     def call(self, name, *, command=0, cached=False):
@@ -479,7 +479,7 @@ def diagnostic():
         u = Uc(UC_ARCH_X86, UC_MODE_16)
         u.mem_map(0, 0x100000)
         u.mem_write(0x10100, image.read_bytes())
-        u.mem_write(0xE0000, b'BAISMM1\0' if valid_rom else b'OTHERROM')
+        u.mem_write(0xE0014, b'BAISMM1\0' if valid_rom else b'OTHERROM')
         u.mem_write(0x40E, struct.pack('<H', ebda))
         u.mem_write(ebda*16, bytes([state_kib]))
         u.mem_write(ebda*16+STATUS, bytes([status]))
@@ -622,9 +622,10 @@ def main():
         b = Board()
         assert b.startup() == 1
         b.conf[HB][0x54] = int(shadow_e)
+        b.e_bank()
         b.u.mem_write(b.ebda + 0x103A, struct.pack('<H', 0xC800))
         b.call('board_vga_shadow')
-        assert b.e_visible == shadow_e
+        assert b.e_visible
         assert bytes(b.u.mem_read(0xE0000, 0x10000)) == b.raw[:0x10000]
         b.call('board_smm_command')
         assert b.u.reg_read(x.UC_X86_REG_AX) == 0

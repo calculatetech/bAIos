@@ -2,7 +2,9 @@
 ; before any expansion consumer. Private module state never enters PM calls.
 %ifdef M919_BOARD_DEFINITION
 pnp_pci_initialize:
+    post_code 0x50
     call pnp_early
+    post_code 0x51
     jmp pci_initialize
 %endif
 %ifndef BOARD_PNP_SETUP_LATE
@@ -35,9 +37,27 @@ pnp_early:
     call pnp_publish
     call pnp_module_install
     jc .done
-    mov bx,pnp_prepare
+    mov bx,pnp_prepare_video
     call pnp_post_invoke
 .done:
+    popad
+    popf
+    ret
+
+; Called after RAM, cache and fixed ports, before drive probes.
+pnp_configure_isa:
+    pushf
+    pushad
+    push fs
+    call load_bios_state
+    cmp byte [fs:C_PNP+PNP_CLEAR],0
+    je .configure
+    mov al,10
+    call post_status
+.configure:
+    mov bx,pnp_configure_post
+    call pnp_post_invoke
+    pop fs
     popad
     popf
     ret
@@ -55,10 +75,24 @@ pnp_finish_entry:
     jc .incomplete
     cmp byte [fs:C_PNP+PNP_CLEAR],0
     je .release
+    mov al,11
+    call post_status
+%ifdef BOARD_ESCD_SOURCE
+    call pnp_escd_clear_post
+    jc .retry
+%endif
     call settings_nv6_retire
+    jc .retry
+    mov al,12
+    call post_status
     jmp .release
 .incomplete:
     call CFG_ROM_CODE_SEGMENT:pnp_incomplete_callback
+    cmp byte [fs:C_PNP+PNP_CLEAR],0
+    je .release
+.retry:
+    mov al,13
+    call post_status
 .release:
     mov dword [fs:PNP_MODULE_POINTER],0
     call pnp_journal_release
