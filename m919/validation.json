@@ -246,9 +246,254 @@
         "--output",
         "m919/build/tests/production-ide-channels.json"
       ]
+    },
+    {
+      "id": "shared-pnp",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-pnp.py",
+        "--case",
+        "all",
+        "--port",
+        "m919"
+      ]
+    },
+    {
+      "id": "shared-pnp-settings",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-pnp-settings.py",
+        "--port",
+        "m919"
+      ]
+    },
+    {
+      "id": "shared-ui-text",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-ui-text.py",
+        "--port",
+        "m919"
+      ]
+    },
+    {
+      "id": "shared-rom-footprint",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-rom-footprint.py",
+        "--port",
+        "m919",
+        "--case",
+        "all"
+      ]
+    },
+    {
+      "id": "shared-post-options",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-post-options.py",
+        "--port",
+        "m919",
+        "--case",
+        "all"
+      ]
+    },
+    {
+      "id": "shared-live-post-probes",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "m919",
+        "--case",
+        "probes"
+      ]
+    },
+    {
+      "id": "shared-live-post-table",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "m919",
+        "--case",
+        "table"
+      ]
+    },
+    {
+      "id": "shared-live-post-screen",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "m919",
+        "--case",
+        "screen"
+      ]
+    },
+    {
+      "id": "shared-live-post-summary",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "m919",
+        "--case",
+        "summary"
+      ]
+    },
+    {
+      "id": "rom-identity",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tests/test-rom-identity.py"
+      ]
+    },
+    {
+      "id": "firmware-shadow",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tests/test-early-shadow.py"
+      ]
+    },
+    {
+      "id": "intel-icu-rom-scan",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tests/test-icu-rom-scan.py"
+      ]
+    },
+    {
+      "id": "pci-caller-state",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tests/test-pci-call-state.py"
+      ]
+    },
+    {
+      "id": "escd-storage",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-escd.py"
+      ]
+    },
+    {
+      "id": "escd-v86",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tests/test-escd-v86.py"
+      ]
+    },
+    {
+      "id": "keyboard-state",
+      "argv": [
+        "python",
+        "-B",
+        "m919/tools/test-keyboard-state.py"
+      ]
+    },
+    {
+      "id": "reset-entry",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-reset-vector.py",
+        "--port",
+        "m919"
+      ]
+    },
+    {
+      "id": "keyboard-ownership",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-keyboard-ownership.py",
+        "--port",
+        "m919"
+      ]
     }
   ],
-  "case_sets": [],
+  "case_sets": [
+    {
+      "script": "shared/tests/test-pnp.py",
+      "argument": "--case",
+      "exclude": [
+        "mp-negative"
+      ],
+      "covered_by": {
+        "all": "shared-pnp",
+        "abi": "shared-pnp",
+        "information-services": "shared-pnp",
+        "nodes": "shared-pnp",
+        "set-node": "shared-pnp",
+        "image-contract": "shared-pnp",
+        "isolation": "shared-pnp",
+        "resource-reopen": "shared-pnp",
+        "logical-devices": "shared-pnp",
+        "memory-and-streams": "shared-pnp",
+        "resource-semantics": "shared-pnp",
+        "dependent-alternatives": "shared-pnp",
+        "composed-resources": "shared-pnp",
+        "option-roms": "shared-pnp",
+        "boot-continuation": "shared-pnp",
+        "placement": "shared-pnp"
+      }
+    },
+    {
+      "script": "shared/tests/test-ui-text.py",
+      "argument": "--case",
+      "covered_by": {
+        "strings": "shared-ui-text",
+        "renderer": "shared-ui-text",
+        "setup": "shared-ui-text",
+        "compatibility": "shared-ui-text",
+        "image-contract": "shared-ui-text"
+      }
+    },
+    {
+      "script": "shared/tests/test-rom-footprint.py",
+      "argument": "--case",
+      "covered_by": {
+        "measurement": "shared-rom-footprint",
+        "private-ui": "shared-rom-footprint",
+        "startup": "shared-rom-footprint",
+        "setup-continuation": "shared-rom-footprint",
+        "roundtrip": "shared-rom-footprint",
+        "capacity": "shared-rom-footprint",
+        "popups": "shared-rom-footprint",
+        "lifetime": "shared-rom-footprint",
+        "all": "shared-rom-footprint"
+      }
+    },
+    {
+      "script": "shared/tests/test-post-options.py",
+      "covered_by": {
+        "settings": "shared-post-options",
+        "timer": "shared-post-options",
+        "keyboard": "shared-post-options",
+        "video": "shared-post-options",
+        "all": "shared-post-options"
+      }
+    },
+    {
+      "script": "shared/tests/test-live-post.py"
+    }
+  ],
   "historical_checks": [],
   "candidates": [
     {
@@ -273,7 +518,8 @@
   ],
   "coverage_notes": [
     "The held-port checkpoint runs the explicit shared-defaults, ATA-completion, replacement-adapter and ROM-integrity checks above.",
-    "Legacy POST/profile/certificate dispatchers remain historical tools, not evidence for the replacement adapter. Wider feature validation must be reconciled before this port joins routine updates."
+    "Legacy POST/profile/certificate dispatchers remain historical tools, not evidence for the replacement adapter. Wider feature validation must be reconciled before this port joins routine updates.",
+    "Shared ROM footprint checks use the current normal builders, actual module transports and complete declared variants. Per-build rom-footprint.json separates resident, private and temporary RAM costs."
   ],
   "wrapped_tests": {
     "m919/tools/test-cache-lifecycle.py": [

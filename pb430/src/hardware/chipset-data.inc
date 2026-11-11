@@ -2,8 +2,10 @@ u_chip_menu db 'Chipset',0
 u_chip_title db 'bAIos Setup > Chipset',0
 u_chip_open db 'Open',0x1A,0
 u_chip_help dw u_chip_menu,u_chip_help1,u_chip_help2
-u_chip_help1 db 'Tune memory, cache, refresh and ROM settings.',0
-u_chip_help2 db 'F9 loads defaults. Save applies after restart.',0
+u_chip_help1:
+    ui_string 'Tune memory, cache, refresh and ROM settings.', u_chip_help1
+u_chip_help2:
+    ui_string 'F9 loads defaults. Save applies after restart.', u_chip_help2
 chip_group_0:
     chipset_field acc_field_0,0,0,1,2,acc_values_0,acc_field_0_help1,acc_field_0_help2
     chipset_field acc_field_1,1,0,1,2,acc_values_1,acc_field_1_help1,acc_field_1_help2
@@ -169,145 +171,235 @@ acc_values_15_5 db '6',0
 acc_values_15_6 db '7',0
 acc_values_15_7 db '8',0
 acc_field_0 db 'ADS Delay Control',0
-acc_field_0_help1 db 'Auto uses the recommended disabled ADS delay.',0
-acc_field_0_help2 db 'Choose Manual to change ADS Delay yourself.',0
+acc_field_0_help1:
+    ui_string 'Auto uses the recommended disabled ADS delay.', acc_field_0_help1
+acc_field_0_help2:
+    ui_string 'Choose Manual to change ADS Delay yourself.', acc_field_0_help2
 acc_field_1 db 'Internal Cache',0
-acc_field_1_help1 db 'Enable or disable the processor cache.',0
-acc_field_1_help2 db 'Enabled usually makes programs run faster.',0
+acc_field_1_help1:
+    ui_string 'Enable or disable the processor cache.', acc_field_1_help1
+acc_field_1_help2:
+    ui_string 'Enabled usually makes programs run faster.', acc_field_1_help2
 acc_field_2 db 'External Cache',0
-acc_field_2_help1 db 'Use the cache fitted to the motherboard.',0
-acc_field_2_help2 db 'Requires processor cache and detected cache RAM.',0
+acc_field_2_help1:
+    ui_string 'Use the cache fitted to the motherboard.', acc_field_2_help1
+acc_field_2_help2:
+    ui_string 'Requires processor cache and detected cache RAM.', acc_field_2_help2
 acc_field_3 db 'System ROM Shadow',0
-acc_field_3_help1 db 'Copy the system BIOS into RAM for faster access.',0
-acc_field_3_help2 db 'Disabled runs it from the BIOS chip instead.',0
+acc_field_3_help1:
+    ui_string 'Copy the system BIOS into RAM for faster access.', acc_field_3_help1
+acc_field_3_help2:
+    ui_string 'Disabled runs it from the BIOS chip instead.', acc_field_3_help2
 acc_field_4 db 'Video ROM Shadow',0
-acc_field_4_help1 db 'Copy the video BIOS into RAM for faster access.',0
-acc_field_4_help2 db 'Required for onboard video. Optional for cards.',0
+acc_field_4_help1:
+    ui_string 'Copy the video BIOS into RAM for faster access.', acc_field_4_help1
+acc_field_4_help2:
+    ui_string 'Required for onboard video. Optional for cards.', acc_field_4_help2
 acc_field_5 db 'ADS Delay',0
-acc_field_5_help1 db 'Disabled is recommended by the AMI manual.',0
-acc_field_5_help2 db 'Enabled adds a delay. Auto always disables it.',0
+acc_field_5_help1:
+    ui_string 'Disabled is recommended by the AMI manual.', acc_field_5_help1
+acc_field_5_help2:
+    ui_string 'Enabled adds a delay. Auto always disables it.', acc_field_5_help2
 acc_field_8 db 'Memory Timing',0
-acc_field_8_help1 db 'Fast uses tested 33 MHz RAM and refresh timings.',0
-acc_field_8_help2 db 'Choose Manual after Fast to adjust them further.',0
+acc_field_8_help1:
+    ui_string 'Fast uses tested 33 MHz RAM and refresh timings.', acc_field_8_help1
+acc_field_8_help2:
+    ui_string 'Choose Manual after Fast to adjust them further.', acc_field_8_help2
 acc_field_9 db 'RAS Timeout',0
-acc_field_9_help1 db 'Closes an idle RAM row after a short wait.',0
-acc_field_9_help2 db 'Enabled is the default. Disable to compare.',0
+acc_field_9_help1:
+    ui_string 'Closes an idle RAM row after a short wait.', acc_field_9_help1
+acc_field_9_help2:
+    ui_string 'Enabled is the default. Disable to compare.', acc_field_9_help2
 acc_field_10 db 'RAS Precharge',0
-acc_field_10_help1 db 'Time to prepare a RAM row for another access.',0
-acc_field_10_help2 db 'Smaller is faster. Too short can corrupt data.',0
+acc_field_10_help1:
+    ui_string 'Time to prepare a RAM row for another access.', acc_field_10_help1
+acc_field_10_help2:
+    ui_string 'Smaller is faster. Too short can corrupt data.', acc_field_10_help2
 acc_field_11 db 'Read RAS to CAS',0
-acc_field_11_help1 db 'Wait between choosing a RAM row and reading it.',0
-acc_field_11_help2 db 'Smaller is faster. Increase if memory errors occur.',0
+acc_field_11_help1:
+    ui_string 'Wait between choosing a RAM row and reading it.', acc_field_11_help1
+acc_field_11_help2:
+    ui_string 'Smaller is faster. Increase if memory errors occur.', acc_field_11_help2
 acc_field_12 db 'Write RAS to CAS',0
-acc_field_12_help1 db 'Wait between choosing a RAM row and writing it.',0
-acc_field_12_help2 db 'Smaller is faster. Increase if memory errors occur.',0
+acc_field_12_help1:
+    ui_string 'Wait between choosing a RAM row and writing it.', acc_field_12_help1
+acc_field_12_help2:
+    ui_string 'Smaller is faster. Increase if memory errors occur.', acc_field_12_help2
 acc_field_13 db 'Read CAS Width',0
-acc_field_13_help1 db 'Sets the length of each RAM read pulse.',0
-acc_field_13_help2 db 'For 1T, choose Earlier for Read Pulse Timing.',0
+acc_field_13_help1:
+    ui_string 'Sets the length of each RAM read pulse.', acc_field_13_help1
+acc_field_13_help2:
+    ui_string 'For 1T, choose Earlier for Read Pulse Timing.', acc_field_13_help2
 acc_field_14 db 'Write CAS Width',0
-acc_field_14_help1 db 'Sets the length of each RAM write pulse.',0
-acc_field_14_help2 db 'Shorter can be faster. Too short can corrupt data.',0
+acc_field_14_help1:
+    ui_string 'Sets the length of each RAM write pulse.', acc_field_14_help1
+acc_field_14_help2:
+    ui_string 'Shorter can be faster. Too short can corrupt data.', acc_field_14_help2
 acc_field_15 db 'Read CAS Precharge',0
-acc_field_15_help1 db 'Wait between RAM read pulses.',0
-acc_field_15_help2 db '1T is the starting choice. Compare with 2T.',0
+acc_field_15_help1:
+    ui_string 'Wait between RAM read pulses.', acc_field_15_help1
+acc_field_15_help2:
+    ui_string '1T is the starting choice. Compare with 2T.', acc_field_15_help2
 acc_field_16 db 'Write CAS Precharge',0
-acc_field_16_help1 db 'Wait between RAM write pulses.',0
-acc_field_16_help2 db '1T is faster. Increase if memory errors occur.',0
+acc_field_16_help1:
+    ui_string 'Wait between RAM write pulses.', acc_field_16_help1
+acc_field_16_help2:
+    ui_string '1T is faster. Increase if memory errors occur.', acc_field_16_help2
 acc_field_17 db 'Read Pulse Timing',0
-acc_field_17_help1 db 'Earlier starts the read pulse half a clock sooner.',0
-acc_field_17_help2 db 'Use Earlier with a Read CAS Width of 1T.',0
+acc_field_17_help1:
+    ui_string 'Earlier starts the read pulse half a clock sooner.', acc_field_17_help1
+acc_field_17_help2:
+    ui_string 'Use Earlier with a Read CAS Width of 1T.', acc_field_17_help2
 acc_field_18 db 'Write Pulse Timing',0
-acc_field_18_help1 db 'Earlier starts the write pulse half a clock sooner.',0
-acc_field_18_help2 db 'Use Earlier with Uncached Write Wait at 0 WS.',0
+acc_field_18_help1:
+    ui_string 'Earlier starts the write pulse half a clock sooner.', acc_field_18_help1
+acc_field_18_help2:
+    ui_string 'Use Earlier with Uncached Write Wait at 0 WS.', acc_field_18_help2
 acc_field_20 db 'Cache Burst Reads',0
-acc_field_20_help1 db 'Transfer cache data to the processor in bursts.',0
-acc_field_20_help2 db 'Disabled was faster in the tests on this board.',0
+acc_field_20_help1:
+    ui_string 'Transfer cache data to the processor in bursts.', acc_field_20_help1
+acc_field_20_help2:
+    ui_string 'Disabled was faster in the tests on this board.', acc_field_20_help2
 acc_field_21 db 'Cache Read Wait',0
-acc_field_21_help1 db 'Extra wait for a read from motherboard cache.',0
-acc_field_21_help2 db '0 WS is faster. Add a wait if cache errors occur.',0
+acc_field_21_help1:
+    ui_string 'Extra wait for a read from motherboard cache.', acc_field_21_help1
+acc_field_21_help2:
+    ui_string '0 WS is faster. Add a wait if cache errors occur.', acc_field_21_help2
 acc_field_22 db 'Uncached Write Wait',0
-acc_field_22_help1 db 'Wait for a write that does not use cache.',0
-acc_field_22_help2 db 'For 0 WS, choose Earlier for Write Pulse Timing.',0
+acc_field_22_help1:
+    ui_string 'Wait for a write that does not use cache.', acc_field_22_help1
+acc_field_22_help2:
+    ui_string 'For 0 WS, choose Earlier for Write Pulse Timing.', acc_field_22_help2
 acc_field_24 db 'Cache Write Hit 0 WS',0
-acc_field_24_help1 db 'Remove a wait when writing data already in cache.',0
-acc_field_24_help2 db 'May be faster. Disable if errors or crashes occur.',0
+acc_field_24_help1:
+    ui_string 'Remove a wait when writing data already in cache.', acc_field_24_help1
+acc_field_24_help2:
+    ui_string 'May be faster. Disable if errors or crashes occur.', acc_field_24_help2
 acc_field_25 db 'Cache Read X-2-2-2',0
-acc_field_25_help1 db 'Use two clocks for each later cache burst transfer.',0
-acc_field_25_help2 db 'Available only while Cache Burst Reads is enabled.',0
+acc_field_25_help1:
+    ui_string 'Use two clocks for each later cache burst transfer.', acc_field_25_help1
+acc_field_25_help2:
+    ui_string 'Available only while Cache Burst Reads is enabled.', acc_field_25_help2
 acc_field_26 db 'Memory Wait Control',0
-acc_field_26_help1 db 'Change the wait used for memory and bus transfers.',0
-acc_field_26_help2 db 'Neither choice is known to be faster on this board.',0
+acc_field_26_help1:
+    ui_string 'Change the wait used for memory and bus transfers.', acc_field_26_help1
+acc_field_26_help2:
+    ui_string 'Neither choice is known to be faster on this board.', acc_field_26_help2
 acc_field_27 db 'Cache Wait Control',0
-acc_field_27_help1 db 'Change the wait used for cache access.',0
-acc_field_27_help2 db 'Enabled improved writes in tests on this board.',0
+acc_field_27_help1:
+    ui_string 'Change the wait used for cache access.', acc_field_27_help1
+acc_field_27_help2:
+    ui_string 'Enabled improved writes in tests on this board.', acc_field_27_help2
 acc_field_28 db 'Refresh Period',0
-acc_field_28_help1 db 'Longer periods leave more time for RAM access.',0
-acc_field_28_help2 db '120 us is Slow Refresh. Shorten if errors occur.',0
+acc_field_28_help1:
+    ui_string 'Longer periods leave more time for RAM access.', acc_field_28_help1
+acc_field_28_help2:
+    ui_string '120 us is Slow Refresh. Shorten if errors occur.', acc_field_28_help2
 acc_field_29 db 'Refresh Active Time',0
-acc_field_29_help1 db 'Time that RAM stays active during each refresh.',0
-acc_field_29_help2 db 'Requires Hidden Burst Refresh. Test stability.',0
+acc_field_29_help1:
+    ui_string 'Time that RAM stays active during each refresh.', acc_field_29_help1
+acc_field_29_help2:
+    ui_string 'Requires Hidden Burst Refresh. Test stability.', acc_field_29_help2
 acc_field_30 db 'Refresh Precharge',0
-acc_field_30_help1 db 'Time to prepare RAM for a refresh cycle.',0
-acc_field_30_help2 db 'Requires Hidden Burst Refresh. Fast selects 2T.',0
+acc_field_30_help1:
+    ui_string 'Time to prepare RAM for a refresh cycle.', acc_field_30_help1
+acc_field_30_help2:
+    ui_string 'Requires Hidden Burst Refresh. Fast selects 2T.', acc_field_30_help2
 acc_field_31 db 'Refresh Burst Count',0
-acc_field_31_help1 db 'Number of refresh cycles performed in a group.',0
-acc_field_31_help2 db 'Available only with Hidden Burst Refresh enabled.',0
+acc_field_31_help1:
+    ui_string 'Number of refresh cycles performed in a group.', acc_field_31_help1
+acc_field_31_help2:
+    ui_string 'Available only with Hidden Burst Refresh enabled.', acc_field_31_help2
 acc_field_32 db 'Hidden Burst Refresh',0
-acc_field_32_help1 db 'Group memory refresh cycles in hidden bursts.',0
-acc_field_32_help2 db 'Try with the refresh count. Check memory stability.',0
+acc_field_32_help1:
+    ui_string 'Group memory refresh cycles in hidden bursts.', acc_field_32_help1
+acc_field_32_help2:
+    ui_string 'Try with the refresh count. Check memory stability.', acc_field_32_help2
 acc_field_35 db '8-Bit ISA 0 WS',0
-acc_field_35_help1 db 'Remove a wait from access to 8-bit expansion cards.',0
-acc_field_35_help2 db 'Enable only if your cards work reliably with it.',0
+acc_field_35_help1:
+    ui_string 'Remove a wait from access to 8-bit expansion cards.', acc_field_35_help1
+acc_field_35_help2:
+    ui_string 'Enable only if your cards work reliably with it.', acc_field_35_help2
 acc_field_36 db '16-Bit ISA 0 WS',0
-acc_field_36_help1 db 'Remove a wait when using 16-bit expansion cards.',0
-acc_field_36_help2 db 'Enable only if your cards work reliably with it.',0
+acc_field_36_help1:
+    ui_string 'Remove a wait when using 16-bit expansion cards.', acc_field_36_help1
+acc_field_36_help2:
+    ui_string 'Enable only if your cards work reliably with it.', acc_field_36_help2
 acc_field_37 db 'Extra ISA Wait',0
-acc_field_37_help1 db 'Add time for slower expansion cards.',0
-acc_field_37_help2 db 'Disabled is faster. Enable for slower cards.',0
+acc_field_37_help1:
+    ui_string 'Add time for slower expansion cards.', acc_field_37_help1
+acc_field_37_help2:
+    ui_string 'Disabled is faster. Enable for slower cards.', acc_field_37_help2
 acc_field_38 db 'ROM 0 WS',0
-acc_field_38_help1 db 'Remove a wait when reading the physical ROM chip.',0
-acc_field_38_help2 db 'Slow ROM chips can fail. Shadow reads are separate.',0
+acc_field_38_help1:
+    ui_string 'Remove a wait when reading the physical ROM chip.', acc_field_38_help1
+acc_field_38_help2:
+    ui_string 'Slow ROM chips can fail. Shadow reads are separate.', acc_field_38_help2
 acc_field_39 db 'System ROM Shadow',0
-acc_field_39_help1 db 'Copy the system BIOS into RAM for faster access.',0
-acc_field_39_help2 db 'Disabled runs it from the BIOS chip instead.',0
+acc_field_39_help1:
+    ui_string 'Copy the system BIOS into RAM for faster access.', acc_field_39_help1
+acc_field_39_help2:
+    ui_string 'Disabled runs it from the BIOS chip instead.', acc_field_39_help2
 acc_field_40 db 'Video ROM Shadow',0
-acc_field_40_help1 db 'Copy the video BIOS into RAM for faster access.',0
-acc_field_40_help2 db 'Required for onboard video. Optional for cards.',0
+acc_field_40_help1:
+    ui_string 'Copy the video BIOS into RAM for faster access.', acc_field_40_help1
+acc_field_40_help2:
+    ui_string 'Required for onboard video. Optional for cards.', acc_field_40_help2
 acc_field_41 db 'C800-CFFF ROM Shadow',0
-acc_field_41_help1 db 'Copy this ROM area into RAM for faster access.',0
-acc_field_41_help2 db 'Leave disabled for cards that use this area as RAM.',0
+acc_field_41_help1:
+    ui_string 'Copy this ROM area into RAM for faster access.', acc_field_41_help1
+acc_field_41_help2:
+    ui_string 'Leave disabled for cards that use this area as RAM.', acc_field_41_help2
 acc_field_42 db 'D000-DFFF ROM Shadow',0
-acc_field_42_help1 db 'Copy this ROM area into RAM for faster access.',0
-acc_field_42_help2 db 'Leave disabled for cards that use this area as RAM.',0
+acc_field_42_help1:
+    ui_string 'Copy this ROM area into RAM for faster access.', acc_field_42_help1
+acc_field_42_help2:
+    ui_string 'Leave disabled for cards that use this area as RAM.', acc_field_42_help2
 acc_field_43 db 'E000-EFFF ROM Shadow',0
-acc_field_43_help1 db 'Copy this ROM area into RAM for faster access.',0
-acc_field_43_help2 db 'Required for onboard video. Optional for cards.',0
+acc_field_43_help1:
+    ui_string 'Copy this ROM area into RAM for faster access.', acc_field_43_help1
+acc_field_43_help2:
+    ui_string 'Required for onboard video. Optional for cards.', acc_field_43_help2
 acc_field_44 db 'Shadow RAM Cacheable',0
-acc_field_44_help1 db 'Allow cached reads from shadowed ROMs.',0
-acc_field_44_help2 db 'AMI recommends Disabled for compatibility.',0
+acc_field_44_help1:
+    ui_string 'Allow cached reads from shadowed ROMs.', acc_field_44_help1
+acc_field_44_help2:
+    ui_string 'AMI recommends Disabled for compatibility.', acc_field_44_help2
 acc_field_45 db 'Shadow Write Protection',0
-acc_field_45_help1 db 'Protect BIOS and card ROM copies from changes.',0
-acc_field_45_help2 db 'Keep enabled unless software must change the copy.',0
+acc_field_45_help1:
+    ui_string 'Protect BIOS and card ROM copies from changes.', acc_field_45_help1
+acc_field_45_help2:
+    ui_string 'Keep enabled unless software must change the copy.', acc_field_45_help2
 acc_field_46 db 'Cache Burst Writes',0
-acc_field_46_help1 db 'Try grouped cache writes with write-back operation.',0
-acc_field_46_help2 db 'Experimental. Leave disabled if unsure.',0
+acc_field_46_help1:
+    ui_string 'Try grouped cache writes with write-back operation.', acc_field_46_help1
+acc_field_46_help2:
+    ui_string 'Experimental. Leave disabled if unsure.', acc_field_46_help2
 acc_field_47 db 'Cache Write X-2-2-2',0
-acc_field_47_help1 db 'Use two clocks for later cache burst writes.',0
-acc_field_47_help2 db 'Available only while Cache Burst Writes is enabled.',0
+acc_field_47_help1:
+    ui_string 'Use two clocks for later cache burst writes.', acc_field_47_help1
+acc_field_47_help2:
+    ui_string 'Available only while Cache Burst Writes is enabled.', acc_field_47_help2
 acc_field_48 db 'CAS Before RAS Refresh',0
-acc_field_48_help1 db 'Let the memory chips choose which row to refresh.',0
-acc_field_48_help2 db 'Try enabled for compatible memory. Test stability.',0
+acc_field_48_help1:
+    ui_string 'Let the memory chips choose which row to refresh.', acc_field_48_help1
+acc_field_48_help2:
+    ui_string 'Try enabled for compatible memory. Test stability.', acc_field_48_help2
 acc_field_19 db 'DRAM Read Burst',0
-acc_field_19_help1 db 'Read memory in groups instead of single transfers.',0
-acc_field_19_help2 db 'Enabled is normal. Compare disabled for speed.',0
+acc_field_19_help1:
+    ui_string 'Read memory in groups instead of single transfers.', acc_field_19_help1
+acc_field_19_help2:
+    ui_string 'Enabled is normal. Compare disabled for speed.', acc_field_19_help2
 chip_page_prefix db 'Page ',0
 chip_page_slash db ' / ',0
-chip_page_keys db 'PgUp/PgDn Page   F1 Help   F4/F5 Theme   F9 Defaults   F10 Save',0
-
+chip_page_keys:
+    ui_string 'PgUp/PgDn Page   F1 Help   F4/F5 Theme   F9 Defaults   F10 Save', chip_page_keys
 %macro pb430_isa_choices 0
 acc_isa_clock db 'ISA Clock Divider',0
-acc_isa_help1 db 'Divides the motherboard bus clock.',0
-acc_isa_help2 db 'Clear CMOS if startup fails.',0
+acc_isa_help1:
+    ui_string 'Divides the motherboard bus clock.', acc_isa_help1
+acc_isa_help2:
+    ui_string 'Clear CMOS if startup fails.', acc_isa_help2
 acc_isa_values dw acc_isa_default4,acc_isa_5,acc_isa_4,acc_isa_3,acc_isa_25,acc_isa_default4,acc_isa_15,acc_isa_1
 acc_isa_values_other dw acc_isa_default3,acc_isa_5,acc_isa_4,acc_isa_3,acc_isa_25,acc_isa_2,acc_isa_default3,acc_isa_1
 acc_isa_choices4 dw acc_isa_1,acc_isa_15,acc_isa_default4,acc_isa_25,acc_isa_3,acc_isa_4,acc_isa_5

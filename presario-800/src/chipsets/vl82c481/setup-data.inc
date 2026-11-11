@@ -2,8 +2,10 @@ u_chip_menu db 'Chipset',0
 u_chip_title db 'bAIos Setup > Chipset',0
 u_chip_open db 'Open',0x1A,0
 u_chip_help dw u_chip_menu,u_chip_help1,u_chip_help2
-u_chip_help1 db 'Smaller waits are faster. Too fast can corrupt data.',0
-u_chip_help2 db 'F9 loads defaults. Save applies after restart.',0
+u_chip_help1:
+    ui_string 'Smaller waits are faster. Too fast can corrupt data.', u_chip_help1
+u_chip_help2:
+    ui_string 'F9 loads defaults. Save applies after restart.', u_chip_help2
 chip_group_0:
     chipset_field chip_profile_clock,23,1,1,2,chip_clock_values,chip_clock_help1,chip_clock_help2
     chipset_field chip_dram_speed,10,4,3,3,chip_speed_values,chip_speed_help1,chip_speed_help2
@@ -279,80 +281,130 @@ chip_headers_12:
 chip_cas_disabled dw uc_611,uc_612,uc_613,uc_614
 chip_cas_enabled dw uc_615,uc_615,uc_616,uc_617
 uc_0 db 'Cycle Start',0
-uc_1 db 'First T2 is faster. End T2 gives RAM more time.',0
-uc_2 db 'An early start can cause RAM errors or a failed boot.',0
+uc_1:
+    ui_string 'First T2 is faster. End T2 gives RAM more time.', uc_1
+uc_2:
+    ui_string 'An early start can cause RAM errors or a failed boot.', uc_2
 uc_3 db 'RAS Precharge',0
-uc_4 db 'Smaller is faster. Larger gives RAM more time.',0
-uc_5 db 'Too small can corrupt data or prevent a boot.',0
+uc_4:
+    ui_string 'Smaller is faster. Larger gives RAM more time.', uc_4
+uc_5:
+    ui_string 'Too small can corrupt data or prevent a boot.', uc_5
 uc_6 db 'RAS to CAS Delay',0
-uc_7 db 'Smaller is faster. RAM needs time from RAS to CAS.',0
-uc_8 db 'Too small can cause RAM errors with or without L2.',0
+uc_7:
+    ui_string 'Smaller is faster. RAM needs time from RAS to CAS.', uc_7
+uc_8:
+    ui_string 'Too small can cause RAM errors with or without L2.', uc_8
 uc_9 db 'CAS Width',0
-uc_10 db 'Smaller is faster. Values show read/write CAS widths.',0
-uc_11 db 'L2/HSPD uses right widths. Too small corrupts data.',0
+uc_10:
+    ui_string 'Smaller is faster. Values show read/write CAS widths.', uc_10
+uc_11:
+    ui_string 'L2/HSPD uses right widths. Too small corrupts data.', uc_11
 uc_12 db 'High Speed Timing',0
-uc_13 db 'High Speed changes timing for high CPU clock rates.',0
-uc_14 db 'Auto keeps the board strap. An override can fail.',0
+uc_13:
+    ui_string 'High Speed changes timing for high CPU clock rates.', uc_13
+uc_14:
+    ui_string 'Auto keeps the board strap. An override can fail.', uc_14
 uc_15 db 'Refresh Mode',0
-uc_16 db 'Asynchronous/Decoupled can reduce refresh delays.',0
-uc_17 db 'RAM resumes earlier. ISA cards still need refresh.',0
+uc_16:
+    ui_string 'Asynchronous/Decoupled can reduce refresh delays.', uc_16
+uc_17:
+    ui_string 'RAM resumes earlier. ISA cards still need refresh.', uc_17
 uc_18 db 'CAS Before RAS',0
-uc_19 db 'Enabled selects the RAM internal refresh counter.',0
-uc_20 db 'No clear speed gain. The RAM must support this mode.',0
+uc_19:
+    ui_string 'Enabled selects the RAM internal refresh counter.', uc_19
+uc_20:
+    ui_string 'No clear speed gain. The RAM must support this mode.', uc_20
 uc_21 db 'Refresh Period',0
-uc_22 db '125 us refreshes less often and leaves more RAM time.',0
-uc_23 db 'RAM without 125 us support can lose data.',0
+uc_22:
+    ui_string '125 us refreshes less often and leaves more RAM time.', uc_22
+uc_23:
+    ui_string 'RAM without 125 us support can lose data.', uc_23
 uc_24 db 'Memory Interleave',0
-uc_25 db 'Enabled can speed RAM access across matching banks.',0
-uc_26 db 'BIOS picks the bank pair. Mixed RAM can be unstable.',0
+uc_25:
+    ui_string 'Enabled can speed RAM access across matching banks.', uc_25
+uc_26:
+    ui_string 'BIOS picks the bank pair. Mixed RAM can be unstable.', uc_26
 uc_27 db 'RAS Timeout',0
-uc_28 db 'Leave Disabled unless RAM requires a RAS time limit.',0
-uc_29 db 'Enabled ends long RAS pulses and can close RAM pages.',0
+uc_28:
+    ui_string 'Leave Disabled unless RAM requires a RAS time limit.', uc_28
+uc_29:
+    ui_string 'Enabled ends long RAS pulses and can close RAM pages.', uc_29
 uc_30 db 'DRAM Drive Strength',0
-uc_31 db 'More mA drives a heavier RAM load. It is not faster.',0
-uc_32 db 'Too little or too much drive can cause RAM errors.',0
+uc_31:
+    ui_string 'More mA drives a heavier RAM load. It is not faster.', uc_31
+uc_32:
+    ui_string 'Too little or too much drive can cause RAM errors.', uc_32
 uc_33 db 'DRAM Page Mode',0
-uc_34 db 'Enabled speeds repeated access to the same RAM page.',0
-uc_35 db 'Burst Only limits fast page access to burst cycles.',0
+uc_34:
+    ui_string 'Enabled speeds repeated access to the same RAM page.', uc_34
+uc_35:
+    ui_string 'Burst Only limits fast page access to burst cycles.', uc_35
 uc_36 db 'RAM Parity Check',0
-uc_37 db 'Enabled detects RAM parity errors but cannot repair.',0
-uc_38 db 'Needs parity RAM and CPU generation. Errors halt.',0
+uc_37:
+    ui_string 'Enabled detects RAM parity errors but cannot repair.', uc_37
+uc_38:
+    ui_string 'Needs parity RAM and CPU generation. Errors halt.', uc_38
 uc_39 db 'CPU Parity Generation',0
-uc_40 db 'Enabled stores parity bits with CPU writes to RAM.',0
-uc_41 db 'No speed gain. Needs parity RAM for useful checking.',0
+uc_40:
+    ui_string 'Enabled stores parity bits with CPU writes to RAM.', uc_40
+uc_41:
+    ui_string 'No speed gain. Needs parity RAM for useful checking.', uc_41
 uc_42 db 'Internal Cache',0
-uc_43 db 'Enabled speeds repeated CPU reads from RAM.',0
-uc_44 db 'Disabled is slower but helps diagnose RAM faults.',0
+uc_43:
+    ui_string 'Enabled speeds repeated CPU reads from RAM.', uc_43
+uc_44:
+    ui_string 'Disabled is slower but helps diagnose RAM faults.', uc_44
 uc_45 db 'External Cache',0
-uc_46 db 'Enabled speeds repeated RAM reads if L2 is present.',0
-uc_47 db 'L2 starts after summary. Bad timing can corrupt data.',0
+uc_46:
+    ui_string 'Enabled speeds repeated RAM reads if L2 is present.', uc_46
+uc_47:
+    ui_string 'L2 starts after summary. Bad timing can corrupt data.', uc_47
 uc_48 db 'L2 Write Wait States',0
-uc_49 db '0 WS is faster. Needs two low-skew clock buffers.',0
-uc_50 db 'Wrong clock wiring or slow SRAM can corrupt writes.',0
+uc_49:
+    ui_string '0 WS is faster. Needs two low-skew clock buffers.', uc_49
+uc_50:
+    ui_string 'Wrong clock wiring or slow SRAM can corrupt writes.', uc_50
 uc_51 db 'L2 Write Policy',0
-uc_52 db 'Write Back is faster because it delays RAM writes.',0
-uc_53 db 'Write Through writes RAM too. It is usually slower.',0
+uc_52:
+    ui_string 'Write Back is faster because it delays RAM writes.', uc_52
+uc_53:
+    ui_string 'Write Through writes RAM too. It is usually slower.', uc_53
 uc_54 db 'L2 Segment Controls',0
-uc_55 db 'Enabled honors each memory window cache policy.',0
-uc_56 db 'Disabled can cache devices and return old data.',0
+uc_55:
+    ui_string 'Enabled honors each memory window cache policy.', uc_55
+uc_56:
+    ui_string 'Disabled can cache devices and return old data.', uc_56
 uc_57 db 'Cache Write Turnoff',0
-uc_58 db 'Early ends the SRAM write pulse sooner. Not faster.',0
-uc_59 db 'A short pulse can cause bad writes. Late gives time.',0
+uc_58:
+    ui_string 'Early ends the SRAM write pulse sooner. Not faster.', uc_58
+uc_59:
+    ui_string 'A short pulse can cause bad writes. Late gives time.', uc_59
 uc_60 db 'Fast Internal RC',0
-uc_61 db 'Enabled selects the fast internal RC# signal timing.',0
-uc_62 db 'Speed gain is not proven. Wrong timing can fail.',0
+uc_61:
+    ui_string 'Enabled selects the fast internal RC# signal timing.', uc_61
+uc_62:
+    ui_string 'Speed gain is not proven. Wrong timing can fail.', uc_62
 uc_63 db 'Conditional Waits',0
-uc_64 db 'Disabled can reduce waits and speed memory access.',0
-uc_65 db 'Less wait time can cause RAM or cache errors.',0
+uc_64:
+    ui_string 'Disabled can reduce waits and speed memory access.', uc_64
+uc_65:
+    ui_string 'Less wait time can cause RAM or cache errors.', uc_65
 uc_66 db 'Cache Clock Adjustment',0
-uc_67 db 'Changes cache signal timing. It does not change MHz.',0
-uc_68 db 'Neither mode is always faster. Wrong timing can fail.',0
+uc_67:
+    ui_string 'Changes cache signal timing. It does not change MHz.', uc_67
+uc_68:
+    ui_string 'Neither mode is always faster. Wrong timing can fail.', uc_68
 uc_69 db 'Extra Cache Read Wait',0
-uc_70 db 'Disabled removes a cache read wait and is faster.',0
-uc_71 db 'Slow SRAM can fail at fast reads. Enabled adds time.',0
+uc_70:
+    ui_string 'Disabled removes a cache read wait and is faster.', uc_70
+uc_71:
+    ui_string 'Slow SRAM can fail at fast reads. Enabled adds time.', uc_71
 uc_72 db 'A0000-A3FFF',0
-uc_73 db 'Cacheable speeds reads. Uncached avoids stale data.',0
-uc_74 db 'Write Protected caches ROM and blocks CPU writes.',0
+uc_73:
+    ui_string 'Cacheable speeds reads. Uncached avoids stale data.', uc_73
+uc_74:
+    ui_string 'Write Protected caches ROM and blocks CPU writes.', uc_74
 uc_75 db 'A4000-A7FFF',0
 uc_76 db 'A8000-ABFFF',0
 uc_77 db 'AC000-AFFFF',0
@@ -377,56 +429,90 @@ uc_95 db 'F4000-F7FFF',0
 uc_96 db 'F8000-FBFFF',0
 uc_97 db 'FC000-FFFFF',0
 uc_98 db 'CPU Clock',0
-uc_99 db 'Fast runs the CPU faster. Slow helps old programs.',0
-uc_100 db 'Fast can upset software that needs a slow CPU.',0
+uc_99:
+    ui_string 'Fast runs the CPU faster. Slow helps old programs.', uc_99
+uc_100:
+    ui_string 'Fast can upset software that needs a slow CPU.', uc_100
 uc_101 db 'Fast ISA Divider',0
-uc_102 db 'Smaller is faster. Values show TCLK2 then BUSOSC.',0
-uc_103 db 'The source is wired. Too fast can cause ISA errors.',0
+uc_102:
+    ui_string 'Smaller is faster. Values show TCLK2 then BUSOSC.', uc_102
+uc_103:
+    ui_string 'The source is wired. Too fast can cause ISA errors.', uc_103
 uc_104 db 'Slow CPU Divider',0
-uc_105 db 'Smaller is faster in Slow CPU mode only.',0
-uc_106 db 'A faster slow mode can upset old games or devices.',0
+uc_105:
+    ui_string 'Smaller is faster in Slow CPU mode only.', uc_105
+uc_106:
+    ui_string 'A faster slow mode can upset old games or devices.', uc_106
 uc_107 db 'Slow CPU Waits',0
-uc_108 db 'Smaller is faster in Slow CPU mode only.',0
-uc_109 db 'Larger adds delay for software that needs a slow CPU.',0
+uc_108:
+    ui_string 'Smaller is faster in Slow CPU mode only.', uc_108
+uc_109:
+    ui_string 'Larger adds delay for software that needs a slow CPU.', uc_109
 uc_110 db 'Slow ISA Divider',0
-uc_111 db 'Smaller is faster. Values show TCLK2 then BUSOSC.',0
-uc_112 db 'The source is wired. Too fast can cause ISA errors.',0
+uc_111:
+    ui_string 'Smaller is faster. Values show TCLK2 then BUSOSC.', uc_111
+uc_112:
+    ui_string 'The source is wired. Too fast can cause ISA errors.', uc_112
 uc_113 db 'I/O Address Decode',0
-uc_114 db '16 Bit avoids port aliases. Neither mode is faster.',0
-uc_115 db '10 Bit can make devices respond at unwanted ports.',0
+uc_114:
+    ui_string '16 Bit avoids port aliases. Neither mode is faster.', uc_114
+uc_115:
+    ui_string '10 Bit can make devices respond at unwanted ports.', uc_115
 uc_116 db 'Slot Drive Strength',0
-uc_117 db '24 mA drives a heavier ISA load. It is not faster.',0
-uc_118 db 'Wrong drive strength can cause ISA device errors.',0
+uc_117:
+    ui_string '24 mA drives a heavier ISA load. It is not faster.', uc_117
+uc_118:
+    ui_string 'Wrong drive strength can cause ISA device errors.', uc_118
 uc_119 db 'Disk I/O Timing',0
-uc_120 db 'Fast shortens disk I/O timing. Slow adds time.',0
-uc_121 db 'Too fast can cause disk errors. ATA modes stay fixed.',0
+uc_120:
+    ui_string 'Fast shortens disk I/O timing. Slow adds time.', uc_120
+uc_121:
+    ui_string 'Too fast can cause disk errors. ATA modes stay fixed.', uc_121
 uc_122 db 'I/O Command Delay',0
-uc_123 db '0 SYSCLK is faster. 1 SYSCLK gives devices more time.',0
-uc_124 db 'Too short can cause ISA I/O or 8-bit memory errors.',0
+uc_123:
+    ui_string '0 SYSCLK is faster. 1 SYSCLK gives devices more time.', uc_123
+uc_124:
+    ui_string 'Too short can cause ISA I/O or 8-bit memory errors.', uc_124
 uc_125 db '16-Bit Memory Delay',0
-uc_126 db '0 SYSCLK is faster. 1 SYSCLK gives devices more time.',0
-uc_127 db 'Too short can cause 16-bit ISA memory errors.',0
+uc_126:
+    ui_string '0 SYSCLK is faster. 1 SYSCLK gives devices more time.', uc_126
+uc_127:
+    ui_string 'Too short can cause 16-bit ISA memory errors.', uc_127
 uc_128 db '16-Bit Wait States',0
-uc_129 db 'Smaller is faster. Larger gives ISA memory more time.',0
-uc_130 db 'Too small can corrupt data. READY can add more waits.',0
+uc_129:
+    ui_string 'Smaller is faster. Larger gives ISA memory more time.', uc_129
+uc_130:
+    ui_string 'Too small can corrupt data. READY can add more waits.', uc_130
 uc_131 db '8-Bit Wait States',0
-uc_132 db 'Smaller is faster. Larger gives ISA memory more time.',0
-uc_133 db 'Too small can corrupt data. READY can add more waits.',0
+uc_132:
+    ui_string 'Smaller is faster. Larger gives ISA memory more time.', uc_132
+uc_133:
+    ui_string 'Too small can corrupt data. READY can add more waits.', uc_133
 uc_134 db 'Fast ISA Region',0
-uc_135 db 'Enabled uses the Fast ISA divider in the chosen area.',0
-uc_136 db 'Faster access can help devices or cause bad data.',0
+uc_135:
+    ui_string 'Enabled uses the Fast ISA divider in the chosen area.', uc_135
+uc_136:
+    ui_string 'Faster access can help devices or cause bad data.', uc_136
 uc_137 db 'Fast ISA Address',0
-uc_138 db 'Selects the area that uses the Fast ISA divider.',0
-uc_139 db 'No speed gain unless enabled. A wrong area can fail.',0
+uc_138:
+    ui_string 'Selects the area that uses the Fast ISA divider.', uc_138
+uc_139:
+    ui_string 'No speed gain unless enabled. A wrong area can fail.', uc_139
 uc_140 db 'Region Address / Size',0
-uc_141 db 'Selects ISA card memory. A larger area is not faster.',0
-uc_142 db 'Disable all parts first. RAM holes reduce usable RAM.',0
+uc_141:
+    ui_string 'Selects ISA card memory. A larger area is not faster.', uc_141
+uc_142:
+    ui_string 'Disable all parts first. RAM holes reduce usable RAM.', uc_142
 uc_143 db 'Region Cacheability',0
-uc_144 db 'Cacheable speeds reads. Uncached suits ISA devices.',0
-uc_145 db 'Caching device memory can return old data.',0
+uc_144:
+    ui_string 'Cacheable speeds reads. Uncached suits ISA devices.', uc_144
+uc_145:
+    ui_string 'Caching device memory can return old data.', uc_145
 uc_146 db 'Subregion 0',0
-uc_147 db 'Enabled maps this part to ISA memory. Not faster.',0
-uc_148 db 'RAM holes reduce usable RAM. Shadow conflicts fail.',0
+uc_147:
+    ui_string 'Enabled maps this part to ISA memory. Not faster.', uc_147
+uc_148:
+    ui_string 'RAM holes reduce usable RAM. Shadow conflicts fail.', uc_148
 uc_149 db 'Subregion 1',0
 uc_150 db 'Subregion 2',0
 uc_151 db 'Subregion 3',0
@@ -435,26 +521,40 @@ uc_153 db 'Subregion 5',0
 uc_154 db 'Subregion 6',0
 uc_155 db 'Subregion 7',0
 uc_156 db '8-Bit DMA Wait States',0
-uc_157 db 'Smaller is faster. Larger gives DMA cards more time.',0
-uc_158 db 'Too small can cause bad data. Both 3 WS codes match.',0
+uc_157:
+    ui_string 'Smaller is faster. Larger gives DMA cards more time.', uc_157
+uc_158:
+    ui_string 'Too small can cause bad data. Both 3 WS codes match.', uc_158
 uc_159 db '16-Bit DMA Wait States',0
-uc_160 db 'Smaller is faster. Larger gives DMA cards more time.',0
-uc_161 db 'Too small can cause bad data. Both 3 WS codes match.',0
+uc_160:
+    ui_string 'Smaller is faster. Larger gives DMA cards more time.', uc_160
+uc_161:
+    ui_string 'Too small can cause bad data. Both 3 WS codes match.', uc_161
 uc_162 db 'DMA Clock',0
-uc_163 db 'SYSCLK is faster. SYSCLK / 2 gives DMA more time.',0
-uc_164 db 'Too fast can corrupt data or cause sound problems.',0
+uc_163:
+    ui_string 'SYSCLK is faster. SYSCLK / 2 gives DMA more time.', uc_163
+uc_164:
+    ui_string 'Too fast can corrupt data or cause sound problems.', uc_164
 uc_165 db 'DMA Memory Read',0
-uc_166 db 'Early asserts the DMA read signal one clock sooner.',0
-uc_167 db 'It adds setup time, not speed. Some devices can fail.',0
+uc_166:
+    ui_string 'Early asserts the DMA read signal one clock sooner.', uc_166
+uc_167:
+    ui_string 'It adds setup time, not speed. Some devices can fail.', uc_167
 uc_168 db 'Extended DMA Address',0
-uc_169 db 'Enabled supports extended DMA address registers.',0
-uc_170 db 'No speed gain. DMA software must set the right pages.',0
+uc_169:
+    ui_string 'Enabled supports extended DMA address registers.', uc_169
+uc_170:
+    ui_string 'No speed gain. DMA software must set the right pages.', uc_170
 uc_171 db 'ROM Wait States',0
-uc_172 db 'Smaller is faster for reads from physical ROM.',0
-uc_173 db 'Too small can read bad ROM data and prevent a boot.',0
+uc_172:
+    ui_string 'Smaller is faster for reads from physical ROM.', uc_172
+uc_173:
+    ui_string 'Too small can read bad ROM data and prevent a boot.', uc_173
 uc_174 db 'C0000-C3FFF Shadow',0
-uc_175 db 'Enabled copies ROM to RAM for faster ROM reads.',0
-uc_176 db 'Uses a RAM window. Can conflict with ISA card memory.',0
+uc_175:
+    ui_string 'Enabled copies ROM to RAM for faster ROM reads.', uc_175
+uc_176:
+    ui_string 'Uses a RAM window. Can conflict with ISA card memory.', uc_176
 uc_177 db 'C4000-C7FFF Shadow',0
 uc_178 db 'C8000-CBFFF Shadow',0
 uc_179 db 'CC000-CFFFF Shadow',0
@@ -463,7 +563,8 @@ uc_181 db 'D4000-D7FFF Shadow',0
 uc_182 db 'D8000-DBFFF Shadow',0
 uc_183 db 'DC000-DFFFF Shadow',0
 uc_184 db 'E0000-E3FFF Shadow',0
-uc_185 db 'Uses a RAM window. Can conflict with cards or UMBs.',0
+uc_185:
+    ui_string 'Uses a RAM window. Can conflict with cards or UMBs.', uc_185
 uc_186 db 'E4000-E7FFF Shadow',0
 uc_187 db 'E8000-EBFFF Shadow',0
 uc_188 db 'EC000-EFFFF Shadow',0
@@ -593,20 +694,26 @@ chip_normal db 'Normal',0
 chip_compatibility db 'Compatibility',0
 chip_manual db 'Manual',0
 chip_fast db 'Fast',0
-chip_clock_help1 db 'Configured input. This does not change the clock.',0
-chip_clock_help2 db 'Above 25 through 33 MHz: use 33. Above 33: Manual.',0
-chip_speed_help1 db 'Onboard RAM is 70 ns. Unknown also uses 70 ns.',0
-chip_speed_help2 db '60 ns is experimental with onboard 70 ns RAM.',0
-chip_mode_help1 db 'Normal balances speed. Compatibility adds margin.',0
-chip_mode_help2 db 'Fast uses 2T CAS with L2. Manual unlocks timing.',0
+chip_clock_help1:
+    ui_string 'Configured input. This does not change the clock.', chip_clock_help1
+chip_clock_help2:
+    ui_string 'Above 25 through 33 MHz: use 33. Above 33: Manual.', chip_clock_help2
+chip_speed_help1:
+    ui_string 'Onboard RAM is 70 ns. Unknown also uses 70 ns.', chip_speed_help1
+chip_speed_help2:
+    ui_string '60 ns is experimental with onboard 70 ns RAM.', chip_speed_help2
+chip_mode_help1:
+    ui_string 'Normal balances speed. Compatibility adds margin.', chip_mode_help1
+chip_mode_help2:
+    ui_string 'Fast uses 2T CAS with L2. Manual unlocks timing.', chip_mode_help2
 chip_page_prefix db 'Page ',0
 chip_page_slash db ' / ',0
 chip_cas_title db 'CAS Width',0
 chip_cas_left db 'L2 Disabled',0
 chip_cas_right db 'L2 Enabled',0
 chip_cas_separator db '|',0
-chip_page_keys db 'PgUp/PgDn Page   F1 Help   F4/F5 Theme   F9 Defaults   F10 Save',0
-
+chip_page_keys:
+    ui_string 'PgUp/PgDn Page   F1 Help   F4/F5 Theme   F9 Defaults   F10 Save', chip_page_keys
 ; Calculated numeric choices retain the approved strings exactly.
 chip_range_dash db '-',0
 chip_range_512k db ' / 512 KB',0

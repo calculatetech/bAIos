@@ -22,7 +22,7 @@ OWNED = ROOT/'.agent/test-results/port-update'
 CURRENT = OWNED/'current.json'
 GROUPS = ('prepare', 'checks', 'historical_checks', 'candidates')
 COMMON_TESTS = ('tools/test-port-updates.py','tools/check-public-source.py','shared/tests/test-emulator.py','tools/test-organization.py',
-                'shared/tools/smm_proof.py','shared/tools/stop_grant_proof.py')
+                'shared/tools/smm_proof.py','shared/tools/stop_grant_proof.py','shared/tests/test-listing.py')
 HISTORICAL_COMMON = {'id':'repository-layout-history','argv':['python','tools/test-repository-layout.py'],
     'reason':'One-time private layout audit pins checkpoint e8054520 and the former two-task roadmap, not current firmware.'}
 
@@ -368,6 +368,7 @@ def run(args, data):
               {'id':'layout','argv':['python','tools/check-layout.py']},
               {'id': 'pipeline-self-check', 'argv': ['python','tools/test-port-updates.py']},
               {'id': 'public-source', 'argv': ['python', 'tools/check-public-source.py']},
+              {'id': 'listing-lookup', 'argv': ['python', 'shared/tests/test-listing.py']},
               {'id': 'emulator-helper', 'argv': ['python', 'shared/tests/test-emulator.py', str(run_root/'emulator-helper')]},
               {'id': 'smm-services', 'argv': ['python', 'shared/tools/smm_proof.py']},
               {'id': 'stop-grant', 'argv': ['python', 'shared/tools/stop_grant_proof.py']}]

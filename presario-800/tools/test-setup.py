@@ -5,12 +5,13 @@ import importlib
 import os
 import shutil
 import struct
+import sys
 import tempfile
 import re
 import zlib
 from pathlib import Path
 
-from unicorn import UC_HOOK_CODE, UC_HOOK_INSN, UC_HOOK_MEM_WRITE
+from unicorn import UC_HOOK_CODE, UC_HOOK_INSN, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
 from unicorn import x86_const as x
 
 rtc = importlib.import_module('test-rtc')
@@ -23,10 +24,12 @@ SCANS = {'0': 0x0B, '1': 2, '2': 3, '3': 4, '4': 5, '5': 6, '6': 7,
 
 
 class Setup(rtc.Clock):
-    def __init__(self, binary=False, hour24=True, segment=0x9FC0):
+    def __init__(self, binary=False, hour24=True, segment=0x9FC0, state_kib=1):
         super().__init__(binary, hour24)
         self.segment = segment
         self.base = segment * 16
+        self.cpu.mem_write(self.base,bytes((state_kib,)))
+        self.port92=getattr(self,'port92',0)
         self.cpu.mem_write(0x40E, struct.pack('<H', segment))
         self.cpu.mem_write(self.base + 0xD0, struct.pack('<H', 7168))
         self.cpu.mem_write(self.base + 0x80, bytes((4, 2)))
@@ -137,6 +140,7 @@ class Setup(rtc.Clock):
         super().interrupt(cpu, vector, unused)
 
     def port_in(self, cpu, port, size, unused):
+        if port==0x92:return self.port92
         if port == 0xED:
             return self.chipset.get(self.chipset_index, 0)
         if port == 0x40:
@@ -162,6 +166,9 @@ class Setup(rtc.Clock):
         return super().port_in(cpu, port, size, unused)
 
     def port_out(self, cpu, port, size, value, unused):
+        if port==0x92:
+            self.port92=value
+            return
         if port == 0x3F2:
             if value & 4 and not self.fdc_dor & 4:
                 self.fdc_senses = [(0xC0 | i, 0) for i in range(4)]
@@ -230,7 +237,7 @@ class Setup(rtc.Clock):
             self.fdc_irq = False
             rtc.Clock.interrupt(self, cpu, 0x0E, None)
             return
-        if bytes(cpu.mem_read(address, 1)) == b'\xf4':
+        if size == 1 and bytes(cpu.mem_read(address, 1)) == b'\xf4':
             self.idles += 1
             cpu.reg_write(x.UC_X86_REG_IP, (cpu.reg_read(x.UC_X86_REG_IP) + 1) & 0xFFFF)
             # Natural external clock/timer event, through the production IRQ0.
@@ -249,6 +256,7 @@ class Setup(rtc.Clock):
             super().interrupt(cpu, 8, None)
 
     def call(self, name, flags=0x202, count=50000000):
+        self.ensure_post_ui(name)
         cpu = self.cpu
         for reg, value in ((x.UC_X86_REG_CS, 0xF000), (x.UC_X86_REG_IP, rtc.symbol(name)),
                            (x.UC_X86_REG_DS, 0), (x.UC_X86_REG_ES, 0),
@@ -263,21 +271,63 @@ class Setup(rtc.Clock):
                  cpu.reg_read(x.UC_X86_REG_CS) * 16 + cpu.reg_read(x.UC_X86_REG_IP) ==
                  getattr(self, 'post_terminal', -1))), 'setup did not reach terminal return'
 
-    def scans(self, scans):
+    def scans(self, scans,guest=0x90000):
         for scan in scans:
             self.pending.append(scan)
-            self.cpu.reg_write(x.UC_X86_REG_CS, 0x9000)
+            self.cpu.reg_write(x.UC_X86_REG_CS, guest>>4)
             self.cpu.reg_write(x.UC_X86_REG_IP, 0)
             self.cpu.reg_write(x.UC_X86_REG_SS, 0)
             self.cpu.reg_write(x.UC_X86_REG_SP, 0x7000)
             self.cpu.reg_write(x.UC_X86_REG_EFLAGS, 0x202)
-            self.cpu.mem_write(0x90000, b'\xcd\x09\x90')
-            self.cpu.emu_start(0x90000, 0x90002, count=100000)
+            self.cpu.mem_write(guest, b'\xcd\x09\x90')
+            self.cpu.emu_start(guest, guest+2, count=100000)
             if self.warm:
                 break
 
     def text(self, row, col, length):
         return bytes(self.cpu.mem_read(0xB8000 + (row * 80 + col) * 2, length * 2))[::2].decode('ascii')
+
+    def ensure_post_ui(self, name):
+        """Direct owner tests enter a live POST composition, using its transport.
+
+        Actual startup tests install at the production call site and never use
+        this fixture preparation. No private bytes or pointers are fabricated.
+        """
+        if not hasattr(self,'post_ui_export_names'):
+            api=Path(__file__).resolve().parents[2]/'shared/src/firmware/post-ui-api.inc'
+            self.post_ui_export_names=set(re.findall(r'^post_ui_export (\w+)',api.read_text(),re.M))
+        if name not in self.post_ui_export_names and name!='setup_post_gate':
+            return
+        if any(self.cpu.mem_read(self.base+0x33A,2)):
+            return
+        if not hasattr(self,'physical_rom'):
+            self.map_post_rom()
+        self.call('pnp_module_install')
+        assert any(self.cpu.mem_read(self.base+0x33A,2)), 'POST UI transport did not install'
+
+    def map_post_rom(self):
+        """One external retained-ROM/shadow seam for direct and full POST tests."""
+        if getattr(self,'post_rom_mapped',False):return
+        physical=rtc.BUILD/'baios-presario800-vga60.bin'
+        if not physical.exists():return
+        raw=physical.read_bytes()
+        if raw[0xC000:0xC008] not in (b'BAIPNP2\0',b'BAIZX02\0'):return
+        self.post_rom_mapped=True
+        self.retained_vga=raw[:0x8000];self.vga_shadow=bytearray(0x8000)
+        def vga_read(cpu,access,address,size,value,unused):
+            offset=address-0xC0000
+            mode=self.chipset.get(0x0F,0)>>((offset//0x4000)*2)&3
+            source=self.vga_shadow if mode&2 else self.retained_vga
+            cpu.mem_write(address,bytes(source[offset:offset+size]))
+        def vga_write(cpu,access,address,size,value,unused):
+            offset=address-0xC0000
+            mode=self.chipset.get(0x0F,0)>>((offset//0x4000)*2)&3
+            if mode&1:self.vga_shadow[offset:offset+size]=value.to_bytes(size,'little')
+        self.cpu.hook_add(UC_HOOK_MEM_READ,vga_read,None,0xC0000,0xC7FFF)
+        self.cpu.hook_add(UC_HOOK_MEM_WRITE,vga_write,None,0xC0000,0xC7FFF)
+        if not any(low<=0xFFFC0000<=high for low,high,permission in self.cpu.mem_regions()):
+            self.cpu.mem_map(0xFFFC0000,0x40000)
+        self.cpu.mem_write(0xFFFC0000,raw+raw)
 
     def open(self, script):
         def visible_page(cpu, access, address, size, value, unused):
@@ -852,7 +902,7 @@ def cmos_recovery():
             policy[10] |= 0x80
             policy[17:19] = bytes((4, 1))
             model.draft(policy)
-            model.call('chipset_settings_save')
+            model.save_chipset()
             model.chipset[2], model.chipset[3], model.chipset[4] = 0xCC, 0x88, 0x36
             model.cpu.mem_write(model.base+0x78, struct.pack('<H', 7168))
             model.cmos[bad_record] ^= 0xFF
@@ -866,7 +916,7 @@ def cmos_recovery():
             model.startup(entry='post_clock_alert', through_visible=True)
             assert model.restarts == 1 and model.chipset[4] == 0x16
             assert model.record() == chipset.NORMAL and model.chipset[1] == 0x96
-            assert model.cmos[0x69] == 0xC2 and bytes(model.cmos[0x6B:0x80]+model.cmos[0x33:0x36]) == chipset.NORMAL
+            assert chipset.nv6_valid(model) and model.cmos[0x69] == 0 and chipset.stored_policy(model) == chipset.NORMAL
             assert bytes(model.cmos[0x17:0x19]) == bytes(model.cmos[0x30:0x32]) == struct.pack('<H', 7168)
             assert not model.cmos[0x36] and 'RAM test failed' not in model.console
         else:
@@ -884,7 +934,7 @@ def cmos_recovery():
         if not getattr(model, 'restarts', 0):
             assert model.speaker == 0xA0
         assert model.cpu.mem_read(model.base + 0xF4, 1) == bytes((choice == 'setup',))
-        assert loaded(model) == (bytes((0x40, 1, 1, 1))
+        assert loaded(model) == (bytes((0x40, 1, 3, 1))
                                   if bad_record is not None and choice == 'defaults' else active)
         if choice == 'setup':
             assert bytes(model.cmos[0x10:]) == before[0x10:] and not model.writes
@@ -925,7 +975,7 @@ def cmos_recovery():
     class FailedSave(Setup):
         def port_in(self, cpu, port, size, unused):
             value = super().port_in(cpu, port, size, unused)
-            if port == 0x71 and self.index == 0x10 and (0x38, 66) in self.writes:
+            if port == 0x71 and self.index == 0x10 and (0x38, 0) in self.writes:
                 return 0xFF
             return value
     model = FailedSave()
@@ -978,8 +1028,10 @@ def settings_save():
     model = Setup()
     model.open(DRIVE_EDIT + [0x44, 28])
     record = bytes(model.cmos[0x38:0x40])
-    assert record == bytes((66, 56, 5, 0x31, 2, -(66 + 56 + 5 + 0x53 + 0x31 + 2 + 1) & 255, 1, 0))
-    assert model.writes[0] == (0x38, 0) and model.writes[-1] == (0x38, 66)
+    from shared.tools.post_fixture import migrated_base
+    assert record == migrated_base('presario-800',bytes((66, 56, 5, 0x31, 2, -(66 + 56 + 5 + 0x53 + 0x31 + 2 + 1) & 255, 1, 0)))
+    assert model.writes[0] == (0x38, 0) and model.writes[-1] == (0x69, 0)
+    assert model.writes.index((0x38,66)) < len(model.writes)-1
     assert sum(model.cmos[0x38:0x40]) + model.cmos[0x10] & 255 == 0
     assert model.cmos[0x2E:0x30] == sum(model.cmos[0x10:0x2E]).to_bytes(2, 'big')
     model.call('publish_memory_cmos', flags=2)
@@ -995,7 +1047,7 @@ def settings_save():
     class Mismatch(Setup):
         def port_in(self, cpu, port, size, unused):
             value = super().port_in(cpu, port, size, unused)
-            if port == 0x71 and self.index == 0x3E and (0x38, 66) in self.writes:
+            if port == 0x71 and self.index == 0x3E and (0x38, 0) in self.writes:
                 return value ^ 255
             return value
     model = Mismatch()
@@ -1015,7 +1067,7 @@ def settings_save():
         missed = False
         def port_in(self, cpu, port, size, unused):
             value = super().port_in(cpu, port, size, unused)
-            if port == 0x71 and self.index == 0x3E and (0x38, 66) in self.writes and not self.missed:
+            if port == 0x71 and self.index == 0x3E and (0x38, 0) in self.writes and not self.missed:
                 self.missed = True
                 return value ^ 255
             return value
@@ -1701,9 +1753,7 @@ def run_86box(only=None):
                     '-DEMULATOR_SETUP_RECOVERY', '-DEMULATOR_SETUP_BAD_CMOS',
                     '-I', str(ROOT / 'src') + '/', '-o', str(system),
                     str(ROOT / 'src/bios.asm')], check=True)
-                data = bytearray(system.read_bytes())
-                data[-1] = -sum(data[:-1]) & 255
-                wrapper.write_bytes(production[:65536] + data)
+                wrapper.write_bytes(floppy.fixture_rom(system, production))
                 vm = work / 'recovery'
                 vm.mkdir()
                 disk = vm / 'scratch.img'
@@ -1758,10 +1808,7 @@ def run_86box(only=None):
                 floppy.run_hidden([nasm, '-f', 'bin'] + defines +
                                   ['-I', str(ROOT / 'src') + '/', '-o', str(system),
                                    str(ROOT / 'src/bios.asm')], check=True)
-                data = bytearray(system.read_bytes())
-                assert len(data) == 65536
-                data[-1] = -sum(data[:-1]) & 255
-                wrapper.write_bytes(production[:65536] + data)
+                wrapper.write_bytes(floppy.fixture_rom(system, production))
                 vm = work / label
                 vm.mkdir()
                 disk = vm / 'scratch.img'
@@ -1929,10 +1976,7 @@ def run_boot_86box(only=None):
                         '%include "boot.inc"', '%include "'+boot_include.as_posix()+'"'))
                 floppy.run_hidden([nasm, '-f', 'bin', *defines, '-I', str(ROOT / 'src') + '/',
                                   '-o', str(system), str(source)], check=True)
-                data = bytearray(system.read_bytes())
-                assert len(data) == 65536
-                data[-1] = -sum(data[:-1]) & 255
-                wrapper.write_bytes(production[:65536] + data)
+                wrapper.write_bytes(floppy.fixture_rom(system, production))
                 sectors = {}
                 for unit in (0, 0x80, 1):
                     sector = vm / f'boot-{unit}.bin'
@@ -2164,7 +2208,7 @@ def clock_presentation():
     class Mismatch(Setup):
         def port_in(self, cpu, port, size, unused):
             value = super().port_in(cpu,port,size,unused)
-            if port==0x71 and self.index==0x3B and (0x38,66) in self.writes:
+            if port==0x71 and self.index==0x3B and (0x38,0) in self.writes:
                 return value^0x80
             return value
     n = Mismatch()
@@ -2323,7 +2367,7 @@ def schema2_fixture(model, types=0x40, flags=0x13, order=(1, 2, 0)):
     model.cmos[0x38:0x40] = record
 
 
-def production_post_model(kinds=None, peripherals=False):
+def production_post_model(kinds=None, peripherals=False, isa_bus=None):
     # Opaque external devices only. The changed production POST owners execute.
     chipset = importlib.import_module('test-chipset')
     class ProductionPost(chipset.Chipset, legacy.Disk):
@@ -2331,6 +2375,8 @@ def production_post_model(kinds=None, peripherals=False):
             self.peripheral_device = None
             self.disk_device = None
             super().__init__()
+            self.map_post_rom()
+            if isa_bus is not None: self.setup_isa_device = isa_bus
             self.device_present = True
             self.controller_present = True
             self.kbc_write = None
@@ -2364,6 +2410,8 @@ def production_post_model(kinds=None, peripherals=False):
                 return
             super().interrupt(cpu, vector, unused)
         def port_in(self, cpu, port, size, unused):
+            value = self.setup_isa().input(port, size)
+            if value is not None: return value
             if port == 0x64:
                 return 4 | int(bool(self.pending))
             if port == 0x60:
@@ -2383,6 +2431,7 @@ def production_post_model(kinds=None, peripherals=False):
                 return self.rtc_read_filter(self.index, value)
             return value
         def port_out(self, cpu, port, size, value, unused):
+            if self.setup_isa().output(port,size,value): return
             if port == 0x3F5 and not self.fdc_command and value == 0x4A:
                 if not self.boot_reads or self.boot_reads[-1] != 'Floppy': self.boot_reads.append('Floppy')
             if port == 0x64:
@@ -2923,6 +2972,9 @@ def main():
         'ide-device', 'ide-types', 'ide-block', 'ide-channel', 'ide-submenu', 'ide-none'))
     parser.add_argument('--boot-86box', action='store_true')
     args = parser.parse_args()
+    sys.path.insert(0, str(ROOT.parent))
+    from shared.tools.post_fixture import bind_rtc_candidate
+    bind_rtc_candidate(rtc, rtc.BUILD / 'baios-presario800-system.rom')
     for name in args.case or CASES:
         CASES[name]()
         print(name + ': production setup/IRQ1 path PASS', flush=True)

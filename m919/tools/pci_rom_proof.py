@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from unicorn import UC_HOOK_MEM_WRITE
 from pci_proof import Hardware,Endpoint,compose,post_module,invoke
+from shared.tools.ram_proof import fixture_directory
 
 PORT=Path(__file__).resolve().parents[1]
 
@@ -26,7 +27,8 @@ class ROMHardware(Hardware):
             u.mem_write(0xC8000,self.isa)
             u.mem_write(0xD0000,bytes(self.dbase))
         else:self.dbase[:512]=u.mem_read(0xD0000,512)
-        folder=PORT/'build/hardware-tests/pci-rom';folder.mkdir(parents=True,exist_ok=True)
+        folder=(fixture_directory(self.rom_image,'pci-rom') if hasattr(self,'rom_image') else
+                PORT/'build/tests/pci-rom');folder.mkdir(parents=True,exist_ok=True)
         source=folder/'controller.asm';image=source.with_suffix('.bin')
         source.write_text('''bits 16
 org 0
@@ -141,7 +143,7 @@ def run():
         rows.append({'options':options,'initialized':entered,'terminal':row['terminal'],
                      'command':hardware.card.read(4,2),'rom_decode_off':True,'irq':12,
                      'legacy_provider_retained':True,'one_time_init':True,'boot':boot})
-    rom=PORT/'build/hardware-tests/geometry/baios-m919.bin'
+    rom=PORT/'build/tests/geometry/baios-m919.bin'
     payload={'cases':rows,'rom_sha256':hashlib.sha256(rom.read_bytes()).hexdigest()}
     path=PORT/'build/research/hardware/pci-rom-proof.json';path.write_text(json.dumps(payload,indent=2)+'\n')
     print(f'PCI ROM deployment: {len(rows)} cases PASS',flush=True)

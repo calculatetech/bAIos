@@ -48,7 +48,7 @@ board_smm_initialize:
     push es
     push word 0xE000
     pop es
-    cmp dword [es:0],0x53494142
+    cmp dword [es:0x14],0x53494142
     pop es
     jne .done
     call 0xE000:m919_smm_initialize

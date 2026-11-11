@@ -9,7 +9,8 @@ from unicorn import x86_const as x, UC_HOOK_CODE
 timing = importlib.import_module('test-timing-setup')
 cache = importlib.import_module('test-cache-transitions')
 from core_proof import ACC
-from scenarios import ports_record
+from scenarios import ports_record, saved_chip, saved_ports
+from shared.tools.post_fixture import installed_address
 from shared.tools.peripheral_proof import UART
 
 PORT = Path(__file__).resolve().parents[1]
@@ -38,8 +39,14 @@ def machine(selector=0, pair=1, flags=0, refresh=None):
         idle[0] = idle[0]+1 if not m.starting and not m.script and not m.pending else 0
         assert idle[0] < 100, ('exhausted Setup input', hex(address),
                                bytes(cpu.mem_read(0xB8000,4000))[::2].decode('cp437'))
-    address = 0xF0000+m.listing.symbol('.input','setup_main')
-    m.cpu.hook_add(UC_HOOK_CODE,input_wait,begin=address,end=address)
+    input_hook=[None]
+    def bind_input(cpu,address,size,unused):
+        idle[0]=0
+        if input_hook[0] is not None:cpu.hook_del(input_hook[0])
+        private=installed_address(m.listing,cpu.mem_read,'.input','setup_main')
+        input_hook[0]=cpu.hook_add(UC_HOOK_CODE,input_wait,begin=private,end=private)
+    entry=0xF0000+m.listing.symbol('setup_main')
+    m.cpu.hook_add(UC_HOOK_CODE,bind_input,begin=entry,end=entry)
     return m
 
 
@@ -71,7 +78,7 @@ def isa_choices():
         m.open(ISA_MENU + isa_change(selector) + SAVE)
         selected(m, selector)
         assert visits == list(names), visits
-        assert m.cmos[0x34] >> 4 == selector
+        assert saved_chip(IMAGE,m.cmos)[22] >> 4 == selector
         m.irq_scans([0x1D, 0x38, 0xE0, 0x53])
         assert m.reset_pending and m.registers[6] == 0xB7
         m.complete_reset()
@@ -138,12 +145,12 @@ def isa_menus():
                 captured.extend(labels)
         m.observer = capture
         m.open(ISA_MENU + [28] + tail)
-        assert captured and m.cmos[0x34] >> 4 == alias
+        assert captured and saved_chip(IMAGE,m.cmos)[22] >> 4 == alias
         assert m.registers[6] == register
         m.irq_scans([0x1D, 0x38, 0xE0, 0x53])
         assert m.reset_pending
         m.complete_reset()
-        assert m.cmos[0x34] >> 4 == alias and m.registers[6] == register
+        assert saved_chip(IMAGE,m.cmos)[22] >> 4 == alias and m.registers[6] == register
         rows.append({'jumper': jumper, 'popup': captured, 'saved_alias': alias,
                      'save_and_warm_reset': True})
     print('PASS unique rendered ISA menus and both saved aliases through Save/reset', flush=True)
@@ -168,13 +175,13 @@ def refresh_menus():
         m.observer = capture
         menu = [0x50]*4 + [28] + [0x50]*3 + [28]
         m.open(menu + [28] + tail)
-        assert captured and m.cmos[0x72] == saved, (saved, captured, m.cmos[0x72])
+        assert captured and saved_chip(IMAGE,m.cmos)[7] == saved, (saved, captured)
         assert m.cpu.mem_read(m.base+0x67, 1) == bytes((saved,))
         assert m.registers[5] & 3 == (0, 3, 1, 2)[saved]
         m.irq_scans([0x1D, 0x38, 0xE0, 0x53])
         assert m.reset_pending
         m.complete_reset()
-        assert m.cmos[0x72] == saved and m.registers[5] & 3 == (0, 3, 1, 2)[saved]
+        assert saved_chip(IMAGE,m.cmos)[7] == saved and m.registers[5] & 3 == (0, 3, 1, 2)[saved]
         rows.append({'refresh_code': saved, 'popup': captured, 'unchanged_save_and_cad': True})
     print('PASS sorted refresh popups and all saved codes through Save/reset', flush=True)
     return rows
@@ -207,7 +214,7 @@ def persistence():
         assert seen
         if action == 'defaults-save':
             selected(m, 0)
-            assert m.cmos[0x62] == 1 and m.reset_count == resets+1
+            assert saved_ports(IMAGE,m.cmos)[2] == 1 and m.reset_count == resets+1
         else:
             assert bytes(m.cmos) == before and bytes(m.registers) == registers
             assert m.reset_count == resets
@@ -220,7 +227,7 @@ def persistence():
         # Normal -> selected profile through the existing RAM profile descriptor.
         m.open([0x50]*4 + [28, 0x50, 28] + [0x4D]*profile + SAVE)
         selected(m, 6)
-        assert m.cmos[0x34] == 0x6F
+        assert saved_chip(IMAGE,m.cmos)[22] == 0x6F
         rows.append({'profile': profile, 'divider_and_low_flags_preserved': True})
     for kind in ('extended', 'legacy', 'checksum'):
         chip = bytearray(timing.DEFAULT if kind != 'legacy' else bytes((0,1,1,1,1,0,0,0,0))+bytes(15))
@@ -242,7 +249,7 @@ def serial_pairs():
         m = machine()
         delta = [0x4B] if pair == 0 else [0x4D]*(pair-1)
         m.open(PAIR_MENU + delta + SAVE)
-        assert m.cmos[0x62] == pair
+        assert saved_ports(IMAGE,m.cmos)[2] == pair
         assert struct.unpack('<4H', m.cpu.mem_read(0x400, 8)) == (*expected, 0, 0)
         assert tuple((m.registers[i]&0xFE)<<2 for i in (0xDC,0xDD)) == expected
         assert m.irq_sources() == {3:3, 4:2}
@@ -311,11 +318,21 @@ def cache_and_reset():
     # Cold POST follows the same complete hardware probe, not a direct policy call.
     m.cold_boot()
     selected(m, 6)
-    m.cmos[0x69] = 0
+    m.cmos[0x35] ^= 1
+    notices=[]
+    notice=0xF0000+m.listing.symbol('post_notice_wait')
+    def recover(mm,address):
+        if address==notice:
+            base=int.from_bytes(mm.cpu.mem_read(0x40E,2),'little')<<4
+            assert not notices and mm.cpu.mem_read(base+0x174,1)==b'\0'
+            mm.pending.append(0x20);notices.append('defaults')
+    m.code_observer=recover
     m.cold_boot()
+    assert notices==['defaults']
+    m.code_observer=None
     selected(m, 0)
     assert sum(event['owner']=='option_rom_discovery' for event in chronology) == 6
-    rows.append({'cold_and_cleared_chipset_record': True, 'clock_owner_chronology':chronology})
+    rows.append({'cold_and_invalid_nv6_defaults_recovery': True, 'clock_owner_chronology':chronology})
     for shutdown in (5, 0x0A):
         m = machine(6)
         m.registers[6] = 0xB3
@@ -390,7 +407,7 @@ def screens():
             (0,1,ISA_MENU+[0x3B],[1]+DISCARD_CHIP,'Clear CMOS if startup fails.'),
             (0,1,PAIR_MENU,[1,1,28],'COM3 / IRQ4'),
             (6,1,ISA_MENU,DISCARD_CHIP,'/3'),
-            (0,2,PAIR_MENU,[1,1,28],'2E8h / 3E8h')):
+            (0,2,PAIR_MENU,[1,1,28],'2E8h COM3 / 3E8h COM4')):
         m = machine(selector,pair)
         captured = []
         def capture(mm):

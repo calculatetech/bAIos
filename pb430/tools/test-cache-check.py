@@ -35,10 +35,12 @@ class SRAM:
         self.reads = self.writes = 0
         self.active = False
         self.dram = b''
+        # Dynamic hooks can miss accesses already translated in the current block.
+        self.memory_hooks = (
+            machine.cpu.hook_add(UC_HOOK_MEM_READ, self.read, begin=0, end=0x9FFFF),
+            machine.cpu.hook_add(UC_HOOK_MEM_WRITE, self.write, begin=0, end=0x9FFFF))
         self.first = 0xF0000 + machine.listing.symbol('cache_test')
         self.last = 0xF0000 + machine.listing.symbol('cache_test_end')
-        machine.cpu.hook_add(UC_HOOK_MEM_READ, self.read, begin=0, end=0x9FFFF)
-        machine.cpu.hook_add(UC_HOOK_MEM_WRITE, self.write, begin=0, end=0x9FFFF)
         machine.cpu.hook_add(UC_HOOK_INSN, self.out, None, 1, 0, x.UC_X86_INS_OUT)
 
     def checking(self, cpu):
@@ -51,9 +53,9 @@ class SRAM:
         assert not cpu.reg_read(x.UC_X86_REG_EFLAGS) & 0x200
         return True
 
-    def offset(self, address):
+    def offset(self, address, checking):
         # Inject the check fault after reference discovery has established size.
-        mask = self.capacity//2-1 if self.fault == 'alias' and self.checking(self.m.cpu) else self.capacity-1
+        mask = self.capacity//2-1 if self.fault == 'alias' and checking else self.capacity-1
         if self.fault == 'low_alias':
             mask &= ~0x100
         return address & mask
@@ -67,35 +69,37 @@ class SRAM:
     def read(self, cpu, access, address, size, value, unused):
         if not self.direct(cpu, address, size):
             return
-        if self.checking(cpu):
+        checking=self.checking(cpu)
+        if checking:
             self.reads += 1
         if not self.selected_word(address):
             # Bench capture: an undriven read returned the loop's bus bytes.
             cpu.mem_write(address, bytes.fromhex('83c70475')[:size])
             return
         # Capacity does not imply that the next address mirrors valid SRAM.
-        if self.checking(cpu) and address >= 0x10000+self.capacity:
+        if checking and address >= 0x10000+self.capacity:
             cpu.mem_write(address, b'\xff'*size)
             return
-        payload = bytearray(self.data[self.offset(address+i)] for i in range(size)) if self.capacity else bytearray(b'\xff'*size)
+        payload = bytearray(self.data[self.offset(address+i,checking)] for i in range(size)) if self.capacity else bytearray(b'\xff'*size)
         corrupt = self.fault in ('data', 'boundary') or (self.fault == 'complement' and self.reads > self.capacity//2)
         last = 0x1FFFE if self.fault == 'boundary' else 0x10000+self.capacity-2
-        if corrupt and address == last and self.checking(cpu):
+        if corrupt and address == last and checking:
             payload[0] ^= 1
         cpu.mem_write(address, bytes(payload))
 
     def write(self, cpu, access, address, size, value, unused):
         if not self.direct(cpu, address, size):
             return
-        if self.checking(cpu):
+        checking=self.checking(cpu)
+        if checking:
             self.writes += 1
         if not self.selected_word(address):
             return
-        if self.checking(cpu) and address >= 0x10000+self.capacity:
+        if checking and address >= 0x10000+self.capacity:
             return
         if self.capacity:
             for i, byte in enumerate(value.to_bytes(size, 'little')):
-                self.data[self.offset(address+i)] = byte
+                self.data[self.offset(address+i,checking)] = byte
 
     def out(self, cpu, port, size, value, unused):
         active = self.m.registers[0x1A] & 0x18 == 0x10
@@ -111,6 +115,63 @@ class SRAM:
         if active:
             assert port != 0x80, 'POST I/O inserted in SRAM mode'
         self.active = active
+
+
+def hook_window_check(image):
+    """Short authored x86 events; no BIOS startup or complete SRAM sweep."""
+    from types import SimpleNamespace
+    from unicorn import Uc, UC_ARCH_X86, UC_MODE_16
+    from shared.tools.ram_proof import Listing
+    listing = Listing(Path(image).with_suffix('.lst'))
+
+    class CountedSRAM(SRAM):
+        def read(self, *args):
+            self.callbacks += 1
+            return super().read(*args)
+        def write(self, *args):
+            self.callbacks += 1
+            return super().write(*args)
+
+    def model():
+        cpu = Uc(UC_ARCH_X86, UC_MODE_16);cpu.mem_map(0, 0x100000)
+        m = SimpleNamespace(cpu=cpu, registers=bytearray(256), listing=listing, starting=False)
+        selected = [0]
+        def output(u, port, size, value, unused):
+            assert size == 1
+            if port == 0xF2:selected[0] = value
+            elif port == 0xF3:m.registers[selected[0]] = value
+        cpu.hook_add(UC_HOOK_INSN, output, None, 1, 0, x.UC_X86_INS_OUT)
+        sram = CountedSRAM(m, 128)
+        sram.callbacks = 0
+        for reg, value in ((x.UC_X86_REG_CS,0x9000),(x.UC_X86_REG_DS,0x1000),
+                           (x.UC_X86_REG_SS,0),(x.UC_X86_REG_SP,0x7000),(x.UC_X86_REG_EFLAGS,2)):
+            cpu.reg_write(reg,value)
+        def run(code):
+            cpu.mem_write(0x90000,bytes.fromhex(code))
+            cpu.emu_start(0x90000,0x90000+len(bytes.fromhex(code)),count=100)
+            assert cpu.reg_read(x.UC_X86_REG_IP) == len(bytes.fromhex(code))
+        return m,sram,run
+
+    enter = 'fa ba f2 00 b0 1a ee 42 b0 90 ee'
+    leave = 'ba f2 00 b0 1a ee 42 b0 80 ee'
+    rows=[];m,sram,run=model();handles=sram.memory_hooks
+    for cycle in range(2):
+        run('c7 06 00 00 34 12')
+        run(enter+' c7 06 00 00 aa 55 a1 00 00')
+        assert sram.active and m.cpu.reg_read(x.UC_X86_REG_AX)==0x55AA
+        assert sram.data[0x10000:0x10002]==b'\xAA\x55'
+        run(leave+' a1 00 00')
+        assert not sram.active and m.cpu.reg_read(x.UC_X86_REG_AX)==0x1234
+        assert m.cpu.mem_read(0x10000,2)==b'\x34\x12' and sram.memory_hooks==handles
+    rows.append({'same_block_OUT_and_memory':True,'cycles':2,'callbacks':sram.callbacks})
+    for name,code in (('stack','50'),('interrupts-enabled','fb a1 00 00'),('post-output','e6 80')):
+        m,sram,run=model()
+        try:run(enter+' '+code)
+        except AssertionError as error:
+            assert sram.active and len(sram.memory_hooks)==2
+            rows.append({'guard':name,'failure':str(error)})
+        else:raise AssertionError(('missing active SRAM guard',name))
+    return rows
 
 
 def component(image, kib, fault=None):
@@ -161,6 +222,7 @@ def post(image, fault=None, kib=512, ram_mib=None, transitions=True):
     chip = bytearray(timing.DEFAULT)
     chip[6] = 1
     m = timing.model(image, chip, ACCReadback)
+    timing.without_post_delay(m)
     if ram_mib is not None:
         def floating(cpu, access, address, size, value, unused):
             cpu.mem_write(address, b'\xFF'*size)
@@ -228,6 +290,10 @@ def post(image, fault=None, kib=512, ram_mib=None, transitions=True):
 
 
 if __name__ == '__main__':
+    if len(sys.argv)>1 and sys.argv[1]=='--hook-window-check':
+        image = Path(sys.argv[2]) if len(sys.argv)>2 else PORT/'build/baios-pb430.bin'
+        print(json.dumps(hook_window_check(image),indent=2))
+        raise SystemExit(0)
     image = Path(sys.argv[1]) if len(sys.argv) > 1 else PORT/'build/cache-check/baios-pb430.bin'
     rows = [component(image, kib) for kib in (128, 256, 512)]
     rows += [component(image, 512, fault) for fault in ('data', 'alias')]

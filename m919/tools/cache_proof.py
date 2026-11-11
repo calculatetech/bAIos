@@ -15,6 +15,7 @@ PORT=Path(__file__).resolve().parents[1]
 REPOSITORY=PORT.parent
 sys.path.insert(0,str(REPOSITORY))
 from geometry_proof import DRAM, mapped
+from shared.tools.ram_proof import fixture_directory
 
 
 class SRAM(DRAM):
@@ -263,6 +264,20 @@ class SRAM(DRAM):
             super().write(tag*self.ordinary_capacity()+index,16,int.from_bytes(data,'little'))
         self.l2_dirty.remove(index);self.l2_copybacks+=1
 
+    def preservation_snapshot(self):
+        """Effective bytes before reset, without flushing or changing cache state."""
+        snapshot=super().preservation_snapshot()
+        def overlay(address,data):
+            for offset,value in enumerate(data):
+                key=self.physical(address+offset)
+                if key is not None:snapshot[key]=value
+        for index in self.l2_dirty:
+            tag,data=self.lines[index]
+            overlay(tag*self.ordinary_capacity()+index,data)
+        # A dirty CPU line is newer than the corresponding external-cache line.
+        for line in self.l1_dirty:overlay(line,self.l1[line])
+        return snapshot
+
     def ordinary_capacity(self):
         code=dict.get(self.registers,0x50,0)&7
         assert 1<=code<=5,code
@@ -390,7 +405,7 @@ class POSTHardware(SRAM):
 
     def prepare(self,u):
         from geometry_proof import Listing
-        listing=Listing(getattr(self, 'rom_image', PORT/'build/hardware-tests/geometry/baios-m919.bin').with_suffix('.lst'))
+        listing=Listing(getattr(self, 'rom_image', PORT/'build/tests/geometry/baios-m919.bin').with_suffix('.lst'))
         self.cache_entry=0xF0000+listing.symbol('cache_initialize')
         self.qualify_entry=0xF0000+listing.symbol('cache_qualify')
         self.qualify_exit=0xF0000+listing.symbol('.done','cache_qualify')
@@ -399,8 +414,10 @@ class POSTHardware(SRAM):
         self.ram_protected=0xF0000+listing.symbol('.protected','chipset_visible_ram_test')
         self.ram_done=0xF0000+listing.symbol('.done','chipset_visible_ram_test')
         self.ram_entry_policy=None
+        self.final_cache_policy=None
         # The VGA expansion ROM is an external device, not bAIos code.
-        folder=PORT/'build/hardware-tests/cache-guests';folder.mkdir(parents=True,exist_ok=True)
+        folder=(fixture_directory(self.rom_image,'cache-guests') if hasattr(self,'rom_image') else
+                PORT/'build/tests/cache-guests');folder.mkdir(parents=True,exist_ok=True)
         source=folder/'vga-seam.asm';image=folder/'vga-seam.bin'
         source.write_text('bits 16\norg 0\ndw 0xAA55\ndb 1\n'
                           'push ax\npush es\nxor ax,ax\nmov es,ax\nmov word [es:0x40],handler\n'
@@ -458,9 +475,17 @@ class POSTHardware(SRAM):
                 u.reg_write(x.UC_X86_REG_IP,int.from_bytes(frame[:2],'little'))
                 return
             point=self.points.get(address)
+            if point=='setup_main':
+                from shared.tools.post_fixture import installed_address
+                self.key_points|={installed_address(self.listing,self.read,name,owner) for name,owner in
+                    (('.input','setup_main'),('.wait','setup_confirm'),('.wait','setup_choices'),('.wait','chipset_ui_choices'))}
             if point:
                 if point!='post_keyboard_wait' or point not in self.post_visits:self.post_visits.append(point)
-                if point in ('chipset_visible_ram_test','setup_post_gate','chipset_late_cache'):
+                late_gate=point=='setup_post_gate' and self.final_cache_policy is not None
+                if late_gate:
+                    assert (self.registers[0x50]&0x80,self.registers.get(0x5A,0)&0x40,
+                            u.reg_read(x.UC_X86_REG_CR0)&0x60000000)==self.final_cache_policy
+                if point in ('chipset_visible_ram_test','setup_post_gate','chipset_late_cache') and not late_gate:
                     assert not self.registers[0x50]&0x80 and not self.registers.get(0x5A,0)&0x40,point
                     selected=self.read((u.reg_read(x.UC_X86_REG_FS)<<4)+self.state['C_CHIP']+1,1)[0]
                     policy=0 if selected else 0x60000000
@@ -468,6 +493,9 @@ class POSTHardware(SRAM):
                     if point=='chipset_visible_ram_test':self.ram_entry_policy=policy
                 if point=='post_ui_cache':
                     phase=self.read((u.reg_read(x.UC_X86_REG_FS)<<4)+self.state['P_PHASE'],1)[0]
+                    if phase==5:
+                        self.final_cache_policy=(self.registers[0x50]&0x80,self.registers.get(0x5A,0)&0x40,
+                                                 u.reg_read(x.UC_X86_REG_CR0)&0x60000000)
                     self.ui_snapshots.append({'phase':phase,'enabled':bool(self.registers[0x50]&0x80),
                                               'l1':not bool(u.reg_read(x.UC_X86_REG_CR0)&0x40000000)})
                 if point=='post_notice_wait' and not self.defaults_requested:
@@ -530,9 +558,10 @@ def composed(kib=64,l2=0,l1=0,record='valid',keys=(),memory=None,missing_late=Fa
     d.stop=None;d.keys=list(keys);d.keys_sent=[];d.key_log=[];d.queue=[];d.escaped=False;d.setup_requested=False;d.defaults_requested=False
     d.post_visits=[];d.ui_snapshots=[];d.enable_attempts=0;d.reset_requests=[];d.require_late=True
     d.prime_reads={'before':0,'after':0};d.cache_interval_instructions=0;d.qualification_policies=set()
-    row,fixture=mapped(d.modules,expected=d.modules[0][0],memory=d,cpu_signature=cpu_signature)
+    row,fixture=mapped(d.modules,expected=d.modules[0][0],memory=d,cpu_signature=cpu_signature,
+                       rom_image=getattr(d,'rom_image',None))
     u,d,listing,state,cmos,step=fixture;code=u.reg_read(x.UC_X86_REG_CS)<<4
-    d.state=state;d.active_cmos=cmos;d.qualifying=False
+    d.state=state;d.listing=listing;d.active_cmos=cmos;d.qualifying=False
     if rom_change:
         image=bytearray(u.mem_read(code,0x10000));image[0xFE00]^=1
         image[0xFFEF]=(image[0xFFEF]-sum(image))&255
@@ -543,12 +572,11 @@ def composed(kib=64,l2=0,l1=0,record='valid',keys=(),memory=None,missing_late=Fa
     d.ui_returns=set()
     for i,line in enumerate(listing.lines):
         if 'call post_ui_cache' in line:d.ui_returns.add(code+listing.offset(i))
-    d.key_points={code+listing.symbol('.input','setup_main'),code+listing.symbol('.wait','setup_confirm'),
-                  code+listing.symbol('.wait','setup_choices'),code+listing.symbol('.wait','chipset_ui_choices')}
+    d.key_points=set() # Resolved from the real installed module at Setup entry.
     if missing_late:
         index=next(i for i,line in enumerate(listing.lines) if 'call chipset_late_cache' in line)
         offset=listing.offset(index-1)
-        image=PORT/'build/hardware-tests/geometry/baios-m919.bin'
+        image=PORT/'build/tests/geometry/baios-m919.bin'
         raw=bytearray(image.read_bytes());call=raw[0x10000+offset:0x10000+offset+3]
         assert call[0]==0xE8 and (offset+3+int.from_bytes(call[1:],'little',signed=True))&0xFFFF==listing.symbol('chipset_late_cache')
         raw[0x10000+offset:0x10000+offset+3]=b'\x90'*3
@@ -558,7 +586,8 @@ def composed(kib=64,l2=0,l1=0,record='valid',keys=(),memory=None,missing_late=Fa
     # Preserve the startup's existing return frame; execute the caller, not helpers.
     extra=d.modules[0][0]*0x100000*3 if cmos[0x69]==0x56 and cmos[0x71]&1 else 0
     if not d.ram_escape:extra+=d.modules[0][0]*0x100000*20
-    u.emu_start(code+u.reg_read(x.UC_X86_REG_IP),code+0xFFFF,count=2000000+d.capacity*40+extra)
+    budget=2000000+d.capacity*40+extra
+    step.execute(code+u.reg_read(x.UC_X86_REG_IP),code+0xFFFF,budget)
     assert d.stop or d.reset_requests or d.ports.get(0x80)==0xE7,(u.reg_read(x.UC_X86_REG_IP),d.post_visits,d.ports.get(0x80),d.keys,d.key_log)
     d.saved_cmos=bytes(cmos)
     row.update(measured_code=d.read((state_seg:=u.reg_read(x.UC_X86_REG_FS)<<4)+0x1036,1)[0],
@@ -628,7 +657,7 @@ def policy():
     try:composed(missing_late=True)
     except AssertionError as error:
         assert str(error)=='Actual POST caller skipped late cache',str(error)
-        image=PORT/'build/hardware-tests/geometry/missing-late-negative.bin'
+        image=PORT/'build/tests/geometry/missing-late-negative.bin'
         results.append({'negative':'actual POST late-cache call replaced by three NOPs',
                         'expected_rejection':str(error),'mutated_rom_sha256':hashlib.sha256(image.read_bytes()).hexdigest()})
     else:raise AssertionError('Missing actual late-cache call was not detected')
@@ -680,7 +709,7 @@ def settings():
 
 def guest(fixture,name,body,reset=False):
     u,d,listing,state,cmos,step=fixture
-    folder=PORT/'build/hardware-tests/cache-guests';folder.mkdir(parents=True,exist_ok=True)
+    folder=PORT/'build/tests/cache-guests';folder.mkdir(parents=True,exist_ok=True)
     source=folder/(name+'.asm');image=folder/(name+'.bin')
     source.write_text('bits 16\norg 0x7000\n'+body+'\nmov al,0xF9\nout 0x80,al\nhlt\n')
     post_module().assemble(source,image,[folder])
@@ -856,7 +885,7 @@ def recovery_boundaries_live():
             self.fault=None  # Restrict the external fault to the late runtime check.
             super().prepare(u)
             from geometry_proof import Listing
-            listing=Listing(PORT/'build/hardware-tests/geometry/baios-m919.lst')
+            listing=Listing(PORT/'build/tests/geometry/baios-m919.lst')
             self.runtime_point=0xF0000+listing.symbol('chipset_runtime_ram_check')
 
         def observe(self,u,address,size):
@@ -1031,7 +1060,7 @@ def failure_report_live():
         def prepare(self,u):
             super().prepare(u)
             from geometry_proof import Listing
-            listing=Listing(PORT/'build/hardware-tests/geometry/baios-m919.lst')
+            listing=Listing(PORT/'build/tests/geometry/baios-m919.lst')
             self.dram_check=0xF0000+listing.symbol('.dram_check','cache_qualify')
 
         def observe(self,u,address,size):

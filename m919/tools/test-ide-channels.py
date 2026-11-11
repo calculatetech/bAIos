@@ -34,7 +34,7 @@ def run(image, baseline=None):
     # Real keyboard edits and reloads must retain every physical device's policy.
     for method in ('arrow', 'popup'):
         for target in range(3):
-            m = Screen(image, (None,)*4, requests=(5,)*4)
+            m = Screen(image, (None,)*4, requests=(5,)*4, post=True)
             before = bytes(m.cpu.mem_read(m.base + 0xA00, 51))
             chip = bytes(m.cpu.mem_read(m.base + m.state['C_CHIP'], 24))
             m.keys = [0x5000, 9] + [0x5000]*6
@@ -46,7 +46,7 @@ def run(image, baseline=None):
             m.call('setup_main', count=10000000)
             assert not m.keys and m.reset and not m.io
             assert method != 'popup' or m.popup_seen
-            fresh = PIO(image)
+            fresh = PIO(image, post=True)
             fresh.cmos[:] = m.cmos
             fresh.writes.clear()
             fresh.call('settings_load')
@@ -67,7 +67,7 @@ def run(image, baseline=None):
         d, f, base, state = fixture(image)
         d.devices[0x91] = {0:0x60, 1:0x10, 2:0x3A, 3:0x67, 0xB:1, 0xA:1, 9:0x8A, 0x42:0x40}
         f[4][:] = saved_cmos
-        invoke(f, 'settings_load')
+        invoke(f, 'pnp_early',count=3000000)
         assert d.read(base + state['C_IDE'], 1) == bytes((enabled,))
         assert bool(d.read(base + state['C_CHIP'] + 23, 1)[0] & 16) == bool(secondary)
         d.write(base + 0x1034, 2, 0xFFFF)
@@ -91,7 +91,7 @@ def run(image, baseline=None):
         assert links == ([14, 15] if not enabled else [255, 15] if secondary else [255, 255]), links
         rows.append(dict(enabled=enabled, secondary_disabled=secondary, decode=ide[0x41], peer_fields_unchanged=True, irq_links=links))
 
-        m = PIO(image, ('ata', 'ata', 'packet', 'ata'))
+        m = PIO(image, ('ata', 'ata', 'packet', 'ata'), post=True)
         m.cmos[:] = saved_cmos
         m.call('settings_load')
         # Forward the actual PCI owner's decode/timing state into the ATA seam.
@@ -116,16 +116,16 @@ def run(image, baseline=None):
     if baseline:
         # Earlier saved records retain both channels, including explicit global Off.
         for enabled in (0, 1):
-            old = PIO(baseline, requests=(1, 2, 4, 5), controller=enabled)
+            old = PIO(baseline, requests=(1, 2, 4, 5), controller=enabled, post=True)
             old.keys = [0x4400, ord('y')]
             old.call('setup_main', count=10000000)
-            fresh = PIO(image)
+            fresh = PIO(image, post=True)
             fresh.cmos[:] = old.cmos
             fresh.call('settings_load')
             assert fresh.get('C_IDE') == enabled
             assert fresh.cpu.mem_read(fresh.base + 0x60, 24) == old.cpu.mem_read(old.base + 0x60, 24)
             rows.append(dict(old_saved_record=True, controller=enabled, both_channels_preserved=True))
-        old = PIO(baseline)
+        old = PIO(baseline, post=True)
         policy(old, 1, 1)
         old.call('ata_detect_primary')
         assert any(pos >= 2 for _, _, pos in old.io), 'Prior candidate unexpectedly honored secondary disable'

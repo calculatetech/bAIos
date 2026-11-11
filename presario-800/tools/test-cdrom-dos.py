@@ -110,10 +110,7 @@ def run(args, vm):
     floppy.run_hidden([nasm, '-f', 'bin', '-DVGA_BIOS_141', '-DEMULATOR_POST_SUMMARY_TEST',
                        '-I', str(floppy.ROOT / 'src') + '/', '-o', str(system),
                        str(floppy.ROOT / 'src/bios.asm')], check=True)
-    data = bytearray(system.read_bytes())
-    assert len(data) == 65536
-    data[-1] = -sum(data[:-1]) & 255
-    wrapper.write_bytes(production[:65536] + data)
+    wrapper.write_bytes(floppy.fixture_rom(system, production))
     print(f'START {args.driver.name}, EMM386={not args.no_emm}: {vm}', flush=True)
     try:
         result = floppy.run_hidden([exe, '-P', str(vm), '-R', str(roms), '-L', str(vm / '86box.log'), '-N'], timeout=60)

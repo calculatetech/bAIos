@@ -14,19 +14,53 @@ chipset_defaults:
 
 chipset_settings_load:
     pushad
+    call settings_recovery_read
+    cmp al,0xD2
+    je .safe
+    call chipset_settings_load_raw
+    call settings_recovery_read
+    cmp al,0xD2
+    jne .done
+.safe:
+    mov di,C_CHIP
+    call chipset_safe_defaults
+.done:
+    popad
+    ret
+; Read and validate saved policy even when recovery selects safe live timings.
+; D2 replaced a legacy tag; the original tag is admitted only by its checksum.
+chipset_settings_load_raw:
+    pushad
     mov di, C_CHIP
     call chipset_defaults
+    call settings_nv6_present
+    jne .legacy
+    call settings_nv6_chip_load
+    jc .bad
+    mov si,C_CHIP
+    call chipset_valid
+    jc .bad
+    jmp .done
+.legacy:
 %if BOARD_ATA_DEVICE_COUNT = 4
     call settings_format
     cmp al,1
     je .packed
     test al,al
-    jnz .bad
+    jz .unpacked
+    call settings_recovery_read
+    cmp al,0xD2
+    jne .bad
+.unpacked:
 %endif
     mov al, 0x69
     call rtc_read
-    cmp al, 0xD2
-    je .recovery
+    xor dh,dh
+    cmp al,0xD2
+    jne .tag
+    mov dh,1
+    mov al,CHIP_RECORD_TAG
+.tag:
     cmp al,0x56
     je .record
     cmp al,CHIP_RECORD_TAG
@@ -45,8 +79,14 @@ chipset_settings_load:
     jb .byte
     mov al, 0x6A
     call rtc_read
-    add bl, al
-    jnz .bad
+    add bl,al
+    jz .checksum
+    test dh,dh
+    jz .bad
+    cmp bl,1
+    jne .bad
+    mov dl,0x56
+.checksum:
     cmp dl,0x56
     jne .validate
     ; The old record's tail is a certificate, not current tuning choices.
@@ -64,7 +104,7 @@ chipset_settings_load:
     jmp .done
 %if BOARD_ATA_DEVICE_COUNT = 4
 .packed:
-    call chipset_packed_load
+    call chipset_packed_load_raw
     jnc .done
 %endif
 .bad:
@@ -72,9 +112,6 @@ chipset_settings_load:
     call chipset_defaults
     mov byte [fs:C_VALID], 0
     jmp .done
-.recovery:
-    mov di,C_CHIP
-    call chipset_safe_defaults
 .done:
     popad
     ret
@@ -87,98 +124,34 @@ chipset_settings_save:
 
 ; SI=active or draft record. Preserve verified publication and D2 on failure.
 chipset_record_save:
-    pushad
-%if BOARD_ATA_DEVICE_COUNT = 4
-    call settings_format
-    cmp al,1
-    je .packed
-    test al,al
-    jnz .format_bad
-%endif
-    xor dx,dx
-    mov al,0x69
-    call rtc_read
-    cmp al,0xD2
-    jne .validate
-    mov dl,0xD2
-.validate:
-    mov bx,20                 ; Legacy marker bytes must remain zero.
-.clear_reserved:
-    mov byte [fs:si+bx],0
-    inc bx
-    cmp bx,CHIP_SIZE
-    jb .clear_reserved
     call chipset_valid
-    jc .bad
-.publish:
-    mov ax,0x0069
-    mov ah,dl
-    call rtc_write
-    mov bl,CHIP_RECORD_TAG
-    xor bp,bp
-.byte:
-    mov al,[cs:chipset_cmos+bp]
-    mov ah,[fs:si+bp]
-    add bl,ah
-    call rtc_write
-    inc bp
-    cmp bp,CHIP_SIZE
-    jb .byte
-    neg bl
-    mov al,0x6A
-    mov ah,bl
-    call rtc_write
-    mov al,0x6A
-    call settings_verify_byte
-    jne .bad
-    xor bp,bp
-.verify:
-    mov al,[cs:chipset_cmos+bp]
-    mov ah,[fs:si+bp]
-    call settings_verify_byte
-    jne .bad
-    inc bp
-    cmp bp,CHIP_SIZE
-    jb .verify
-    mov ax,(CHIP_RECORD_TAG << 8) | 0x69
-    call rtc_write
-    mov ax,(CHIP_RECORD_TAG << 8) | 0x69
-    call settings_verify_byte
-    jne .bad
-    popad
-    clc
-    ret
-.bad:
-    mov ax,0x0069
-    mov ah,dl
-    call rtc_write
-    popad
-    stc
-    ret
-%if BOARD_ATA_DEVICE_COUNT = 4
-.packed:
-    call chipset_packed_save
-    popad
-    ret
-.format_bad:
-    popad
-    stc
-    ret
+    jc settings_nv6_bad
+    jmp settings_nv6_chip_save
 
+%if BOARD_ATA_DEVICE_COUNT = 4
 ; CMOS71..7F: tag/checksum plus13 bytes of mask-selected policy bits.
-chipset_packed_load:
+chipset_packed_load_raw:
     pushad
     sub sp,28
     mov bp,sp
-    mov al,0x71
-    call rtc_read
-    cmp al,0xD2
-    je .recovery
     mov di,bp
     mov al,0x71
     mov cx,15
     call settings_record_read
-    jc .bad
+    jnc .tag
+    cmp byte [ss:bp],0xD2
+    jne .bad
+    mov byte [ss:bp],CHIP_RECORD_TAG
+    mov di,bp
+    mov cx,15
+    xor bl,bl
+.recovered_checksum:
+    add bl,[ss:di]
+    inc di
+    loop .recovered_checksum
+    test bl,bl
+    jnz .bad
+.tag:
     cmp byte [ss:bp],CHIP_RECORD_TAG
     jne .bad
     lea di,[bp+2]
@@ -210,65 +183,12 @@ chipset_packed_load:
     popad
     clc
     ret
-.recovery:
-    mov di,C_CHIP
-    call chipset_safe_defaults
-    lea sp,[bp+28]
-    popad
-    clc
-    ret
 .bad:
     lea sp,[bp+28]
     popad
     stc
     ret
 
-chipset_packed_save:
-    pushad
-    sub sp,15
-    mov bp,sp
-    mov bx,CHIP_OPTION_BYTES
-    jmp .reserved_test
-.reserved:
-    mov byte [fs:si+bx],0
-    inc bx
-.reserved_test:
-    cmp bx,CHIP_SIZE
-    jb .reserved
-    call chipset_valid
-    jc .bad
-    mov di,bp
-    mov cx,15
-.zero:
-    mov byte [ss:di],0
-    inc di
-    loop .zero
-    mov byte [ss:bp],CHIP_RECORD_TAG
-    lea di,[bp+2]
-    mov bx,chipset_masks
-    mov cx,CHIP_OPTION_BYTES
-    call settings_pack
-    mov di,bp
-    mov cx,15
-    mov bx,1
-    call settings_record_checksum
-    mov al,0x71
-    call rtc_read
-    mov ah,0
-    cmp al,0xD2
-    jne .write
-    mov ah,0xD2
-.write:
-    mov al,0x71
-    call settings_record_write
-    lea sp,[bp+15]
-    popad
-    ret
-.bad:
-    lea sp,[bp+15]
-    popad
-    stc
-    ret
 %endif
 
 chipset_cmos db 0x6B,0x6C,0x6D,0x6E,0x6F,0x70,0x71,0x72,0x73,0x74,0x75

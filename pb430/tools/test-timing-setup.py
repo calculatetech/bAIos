@@ -11,9 +11,24 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_16
 PORT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(PORT.parent))
 from core_proof import ACC
+from shared.tools.checkpoint_proof import draft_from_active
+from shared.tools.ram_proof import constants
 suite=importlib.import_module('test-port')
 DEFAULT=bytes((0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0x15,0,0,0,0,0,0x10,0,0xA3))
 BASE={1:0xBF,2:0xF9,4:0x15,5:0x9C,0x0B:0x15,0x12:9,0x14:6,0x16:0,0x18:0,0x19:8}
+STATE=constants(PORT.parent/'shared/src/pc/state.inc')|constants(PORT.parent/'shared/src/setup/layout.inc')
+
+
+def without_post_delay(m):
+    """Select zero delay through the real saved-setting owner, before POST."""
+    before=bytes(m.cpu.mem_read(m.base+STATE['C_CHIP'],24))
+    read=lambda at,size:bytes(m.cpu.mem_read(m.base+at,size))
+    write=lambda at,data:m.cpu.mem_write(m.base+at,data)
+    draft_from_active(read,write,m.call)
+    write(STATE['U_POST_DELAY'],b'\0');m.call('settings_save')
+    assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS)&1
+    m.call('settings_load')
+    assert read(STATE['C_POST_DELAY'],1)==b'\0' and read(STATE['C_CHIP'],24)==before
 
 def record(chip):
     n=suite.nvram();n[0x69]=0xC2;n[0x6A]=(-0xC2-sum(chip))&255

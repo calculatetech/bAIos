@@ -132,8 +132,14 @@ board_sio_diagnostic_end:
 %endif
 
 ports_record_valid:
+    push esi
+    movzx esi,si
+    call ports_record_valid32
+    pop esi
+    ret
+ports_record_valid32:
     push ax
-    mov al,[fs:si]
+    mov al,[fs:esi]
     cmp al,0
     je .b
     cmp al,1
@@ -141,7 +147,7 @@ ports_record_valid:
     cmp al,3
     jne .bad
 .b:
-    mov al,[fs:si+1]
+    mov al,[fs:esi+1]
     test al,al
     jz .lpt
     cmp al,2
@@ -149,7 +155,7 @@ ports_record_valid:
     cmp al,4
     jne .bad
 .lpt:
-    cmp byte [fs:si+3],1
+    cmp byte [fs:esi+3],1
     je .bad
     pop ax
     clc
@@ -268,12 +274,19 @@ ports_apply:
     dec dx
     cmp byte [fs:C_PORTS+3],0
     je .lock
-    cmp si,2
-    jne .lock
     mov al,0xC3
     out dx,al
     inc dx
     in al,dx
+    ; Complete AMI route tuples: C1.08/C3.30=1/00(378),0/20(278).
+    ; Preserve all other C3 fields, including DMA selection outside ECP mode.
+    and al,0xCF
+    cmp byte [fs:C_PORTS+3],3
+    jne .lpt_route
+    or al,0x20
+.lpt_route:
+    cmp si,2
+    jne .dma
     and al,0xBF
     test byte [fs:C_CHIP+22],2
     jz .dma

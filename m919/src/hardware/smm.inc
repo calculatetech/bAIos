@@ -1,7 +1,12 @@
 ; UMC Intel-compatible software SMI; reference control fields are request-local.
-db 'BAISMM1',0
+; Intel ICU uses a 16-bit byte length, so each reservation must be below 64 KiB.
+db 0x55,0xAA,0x04,0xCB
+times 8-($-$$) db 0xFF
 db 'BAICLK1',0
 dw board_clock_command,CFG_ROM_CODE_SEGMENT
+db 'BAISMM1',0
+db 0                         ; Visible E-bank checksum is refreshed after shadowing.
+%include "hardware/rom-identity.inc"
 %include "pc/smm.inc"
 ; Pre-install qualification is independent of final readiness. No enable writes.
 m919_smm_qualify:
@@ -300,14 +305,28 @@ m919_smm_command:
     je board_clock_smm_entry
     cmp word [cs:0xFFD4],3
     je board_clock_smm_entry
+    cmp word [cs:0xFFD4],4
+    je board_escd_smm_entry
+    cmp word [cs:0xFFD4],5
+    je board_escd_smm_entry
 %%done:
 %endmacro
 board_smm_image:
     smm_handler board_smm_entry,0xA0000
+; Both headers stay in read-only firmware; together they also reserve ESCD NVS.
+times 0x800-($-$$) db 0xFF
+rom_reservation_tail:
+    db 0x55,0xAA,0x7C,0xCB
+    times 0x1C-($-rom_reservation_tail) db 0
+rom_reservation_tail_checksum:
+    db 0
+    times 0x20-($-rom_reservation_tail) db 0
 %include "hardware/clock-trial.inc"
+%include "hardware/escd-smm.inc"
 board_smm_trace:
     db 0
 board_smm_image_end:
+times -((0x8000+($-board_smm_image)) > SMM_ESCD_BUFFER) db 0
 
 m919_idle_command:
     mov ax,3

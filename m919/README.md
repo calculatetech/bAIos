@@ -14,7 +14,13 @@ Normal defaults request enabled caches and write-back where supported. A failed 
 
 This board uses serial mice and has no PS/2 mouse connector. PS/2 mouse initialization is disabled. There is no game-port setting. Floppy Controller is in Drives, parallel-port DMA is in Devices, and DRAM timings are in Chipset > Memory.
 
+Setup > Plug and Play assigns resources to compatible expansion cards. Read the [Plug and Play guide](../docs/plug-and-play.md) for BIOS/operating-system policy and manual reservations for older cards.
+
+Intel ICU and WINICU use the ESCD database in the BIOS flash. Saving it requires a supported writable chip and the correct programming-voltage setting for that chip. This port supports the Macronix MX28F1000P and SST29EE010. The MX28F1000P requires a 12 V programming setting. Use your board revision's jumper diagram. The Intel utility may list only motherboard and ISA devices even when the startup summary detects PCI cards.
+
 ## Known limitations
+
+Intel ICU, WINICU, and Creative CTCM and CTCU passed on an M919 with version 0.26.16. Version 0.26.17 corrects how the BIOS exchanges data with DOS memory managers. Windows 95 hardware testing is in progress.
 
 Revision3.4 can fail to warm reset with Microsoft EMM386 loaded. Its recurring floppy-controller problem is also unresolved. A successful boot with different memory managers does not remove those limitations.
 

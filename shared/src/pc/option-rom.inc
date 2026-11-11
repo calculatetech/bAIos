@@ -33,6 +33,7 @@ rom_validate:
 
 ; ROM may replace all registers and its stack. Restore the firmware's own
 ; stack from private state before consuming saved flags and register frames.
+%ifndef BOARD_PNP_SUPPORT
 option_rom_enter:
     pushf
     pushad
@@ -57,7 +58,12 @@ option_rom_enter:
     cld
     ret
 
+%endif
+
 scan_option_roms:
+%ifdef BOARD_PNP_SUPPORT
+    jmp option_rom_discovery
+%else
     mov ax,ROM_FIRST_SEG
     mov [fs:ROM_SCAN_SEG],ax
 .scan:
@@ -95,3 +101,4 @@ scan_option_roms:
     jmp .scan
 .done:
     ret
+%endif

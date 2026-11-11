@@ -17,6 +17,7 @@ def machine(fast_boot=1):
     chip[6] = fast_boot
     chip[14] = 1
     m = timing.model(IMAGE, chip)
+    m.ensure_post_ui('post_ram_start')
     m.cpu.mem_write(m.base + 0x78, struct.pack('<H', 15360))
     m.cpu.mem_write(m.base + 0x51, b'\x04')  # P_PHASE: existing POST row.
     m.cpu.mem_write(0x49E, b'\x01')          # Presario POST key handling stays open.
@@ -144,11 +145,11 @@ def run():
     rows.append({'production_dram_fault_reset_safe_retry_and_setup': True})
     print('PASS production DRAM fault, controlled reset, safe retry and Setup', flush=True)
 
-    # Fail late base-record verification after the valid chipset draft was saved.
+    # Failed base verification must leave the complete NV6 record unpublished.
     class SaveMismatch(timing.ACC):
         def port_in(self, cpu, port, size, unused):
             value = super().port_in(cpu, port, size, unused)
-            if port == 0x71 and self.index == 0x3E and (0x38, 66) in self.writes:
+            if port == 0x71 and self.index == 0x3E and (0x38, 0) in self.writes:
                 return value ^ 255
             return value
     m = timing.model(IMAGE, cls=SaveMismatch)
@@ -158,7 +159,9 @@ def run():
     def save_error(mm):
         if 'CMOS verification failed.' in mm.text(19, 23, 46):
             assert mm.cmos[0x69] == 0xD2 and mm.cmos[0x36] == 0x1A
-            assert (0x69, 0xC2) in mm.writes and (0x38, 66) in mm.writes
+            assert (0x33, 0) in mm.writes and (0x34, 6) in mm.writes
+            assert (0x38, 0) in mm.writes and (0x38,66) not in mm.writes and (0x69, 0xC2) not in mm.writes
+            assert mm.cmos[0x33] == 0
             assert not mm.reset_count
             errors.append(True)
             mm.observer = None
@@ -235,6 +238,7 @@ def run():
     m.call('chipset_timing_trial_finish')
     assert m.cmos[0x36] == 0x1A
     # A complete verified save clears the retry guard; an invalid draft does not.
+    m.call('setup_defaults')
     m.cpu.mem_write(m.base + 0x260, timing.DEFAULT)
     m.cpu.mem_write(m.base + 0x26E, b'\xff')
     m.call('settings_save')

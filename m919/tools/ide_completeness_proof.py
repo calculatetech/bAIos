@@ -12,13 +12,16 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from shared.tools.ram_proof import Listing, constants
 from shared.tools.cd_fixture import disc
+from shared.tools.checkpoint_proof import NV6_INDICES, nv6_payload, nv6_fixture, selected_bits
 
 
 class Machine:
     base = 0x80000
 
-    def __init__(self, image, kinds=('ata',)*4, enabled=(1,)*4, controller=1, usable=1, chs=False, device_count=4):
+    def __init__(self, image, kinds=('ata',)*4, enabled=(1,)*4, controller=1, usable=1, chs=False, device_count=4, post=False):
         self.listing = Listing(image.with_suffix('.lst'))
+        from functools import cache
+        self.listing.symbol=cache(self.listing.symbol)
         self.state = constants(ROOT/'shared/src/pc/state.inc')
         self.state.update(constants(ROOT/'shared/src/setup/layout.inc'))
         for name, off in re.findall(r'%define\s+(\w+)\s+STATE_BASE\s*\+\s*(\d+)',
@@ -31,7 +34,11 @@ class Machine:
         raw=image.read_bytes()
         self.cpu.mem_write(0x100000-len(raw),raw)
         self.cpu.mem_write(0x40E, struct.pack('<H', self.base >> 4))
-        self.cpu.mem_write(0x413, struct.pack('<H', 640))
+        prefix=next(int(m[1],0) for line in self.listing.lines if (m:=re.search(r'%define\s+CFG_PLATFORM_STATE_KIB\s+(0x[0-9A-Fa-f]+|[0-9]+)',line)))
+        self.cpu.mem_write(self.base,bytes((prefix,)))
+        self.cpu.mem_write(0x413, struct.pack('<H', self.base>>10))
+        from shared.tools.post_fixture import ComponentROM
+        self.component_rom=ComponentROM(self.cpu,image)
         self.kinds, self.enabled = kinds, enabled
         self.chs, self.geometry = chs, [(7, 29)]*4
         self.regs = [bytearray(8) for _ in kinds]
@@ -41,6 +48,7 @@ class Machine:
         self.written = [bytearray() for _ in kinds]
         self.commands, self.io, self.eois, self.writes, self.keys, self.views = [], [], [], [], [], []
         self.cmos, self.index, self.pci = bytearray(128), 0, 0
+        self.pit_counter,self.pit_byte=0xFFFF,0
         self.cmos[0x0D] = 0x80
         self.ports = {0xA1: 255, 0x21: 255}
         self.reset = False
@@ -64,6 +72,11 @@ class Machine:
         self.cpu.mem_write(self.base+0x1034, b'\x90\x00')
         self.cpu.mem_write(self.base+0x1039, bytes((usable,)))
         self.io.clear()
+        if post:self.prepare_post()
+
+    def prepare_post(self):
+        from shared.tools.post_fixture import ensure_module
+        ensure_module(self.listing,'setup_main',self.cpu.mem_read,lambda owner:self.call(owner))
 
     def put(self, name, value, size=1, position=0):
         self.cpu.mem_write(self.base+position*512+self.state[name], value.to_bytes(size, 'little'))
@@ -115,6 +128,11 @@ class Machine:
         return None
 
     def incoming(self, cpu, port, size, _):
+        value=self.component_rom.input(port)
+        if value is not None:return value
+        if port==0x40:
+            value=self.pit_counter>>(self.pit_byte*8)&255;self.pit_byte^=1
+            return value
         if port == 0x71:
             return self.cmos[self.index & 127]
         if 0xCFC <= port <= 0xCFF:
@@ -147,6 +165,9 @@ class Machine:
         return self.regs[pos][offset]
 
     def outgoing(self, cpu, port, size, value, _):
+        if self.component_rom.output(port,value):return
+        if port==0x43 and value==0:
+            self.pit_counter=(self.pit_counter-4096)&0xFFFF;self.pit_byte=0
         if port == 0x70:
             self.index = value
         elif port == 0x71:
@@ -425,7 +446,7 @@ def cd_positions(image):
 def setup_navigation(image):
     rows = []
     for discovered, controller, usable in ((False, 1, 1), (False, 0, 1), (False, 1, 0), (True, 1, 1)):
-        m = Machine(image, controller=controller, usable=usable)
+        m = Machine(image, controller=controller, usable=usable, post=True)
         if discovered:
             m.call('ata_detect_primary')
         active = bytes(m.cpu.mem_read(m.base+0xA00, 51))
@@ -443,7 +464,7 @@ def setup_navigation(image):
         rows.append(dict(discovered=discovered, controller=controller, four_forms=True, cancel_preserves_active=True))
     # Actual early Setup save/restart; absent and disabled controller needs no probe.
     for controller in (0, 1):
-        m = Machine(image, ('ata', None, 'ata', 'ata'), controller=controller)
+        m = Machine(image, ('ata', None, 'ata', 'ata'), controller=controller, post=True)
         m.keys = [0x5000, 9, 0x5000, 0x5000]
         for n in range(4):
             m.keys += [13, 0x4D00, 27]
@@ -452,7 +473,7 @@ def setup_navigation(image):
         m.keys += [0x4400, ord('y')]
         m.call('setup_main', count=8000000)
         assert m.reset and not m.io and not m.keys
-        restarted = Machine(image, m.kinds)
+        restarted = Machine(image, m.kinds, post=True)
         restarted.cmos[:] = m.cmos
         restarted.call('settings_load')
         assert restarted.get('C_IDE') == controller
@@ -487,7 +508,7 @@ def setup_presentation(image):
                         body = bytes(cpu.mem_read(0xB8000+19*160+25*2, 90))[::2]
                         assert body.startswith(b'Auto detects hard disks and CD drives'), body
             return super().interrupt(cpu, number, data)
-    m = Screen(image)
+    m = Screen(image, post=True)
     m.keys = [0x5000, 9, 0x5000, 0x5000]
     for policy in range(4):
         m.keys += [0x3B00, 27]+([0x5000] if policy < 3 else [])
@@ -519,7 +540,7 @@ def setup_full_policies(image):
                        struct.pack('<HBBHH', *numbers))
     expected = b'\x01'+b''.join(records)+b'\x01\x01'
     for action in ('cancel', 'save'):
-        m = Machine(image, ('ata', None, 'ata', 'ata'))
+        m = Machine(image, ('ata', None, 'ata', 'ata'), post=True)
         for policy in range(4):
             m.cpu.mem_write(m.base+0xA01+policy*12, b'\x30'+auto[1:])
         original = bytes(m.cpu.mem_read(m.base+0xA00, 51))
@@ -533,7 +554,7 @@ def setup_full_policies(image):
             assert not m.reset and not m.writes
         else:
             assert m.reset
-            restored = Machine(image, m.kinds)
+            restored = Machine(image, m.kinds, post=True)
             restored.cmos[:] = m.cmos
             restored.call('settings_load')
             assert bytes(restored.cpu.mem_read(m.base+0xA00, 51)) == expected
@@ -608,17 +629,23 @@ def persistence(image):
         m.put(name, value)
     m.call('settings_save')
     assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-    assert m.cmos[0x33:0x36] == bytes.fromhex('3402CA')
-    assert m.cmos[0x40:0x6C] == packed_ide(records)
-    assert m.cmos[0x6C:0x71] == packed_ports and m.cmos[0x71:0x80] == packed_chip
-    golden = bytes(m.cmos)
+    ide_masks=bytes((1,))+bytes((0x3F,3,15,1)+ (255,)*8)*4+b'\x01\x01'
+    nv6_expected=(selected_bits(bytes((1,))+b''.join(records)+extra,ide_masks)+
+                  port_bits.to_bytes(2,'little')+selected_bits(chip,masks)+bytes(13))
+    assert m.cmos[0x33:0x35] == b'N\x06' and nv6_payload(m.cmos)==nv6_expected
+    golden_nv6=bytes(m.cmos)
+    # Independent former packed input remains a legacy loader oracle.
+    golden=bytearray(m.cmos)
+    golden[0x33:0x36]=bytes.fromhex('3402CA')
+    golden[0x40:0x6C]=packed_ide(records)
+    golden[0x6C:0x71],golden[0x71:0x80]=packed_ports,packed_chip
+    golden=bytes(golden)
     publication = list(m.writes)
-    assert publication[0] == (0x38, 0) and publication[-1] == (0x38, ord('B'))
-    marker_at = publication.index((0x33, 0x34))
-    assert marker_at < next(i for i, (address, _) in enumerate(publication) if 0x40 <= address <= 0x7F)
-    for address, tag in ((0x40, ord('I')), (0x6C, ord('P')), (0x71, ord('W'))):
-        assert publication.index((address, tag)) < len(publication)-1
-    rows.append(dict(case='format and owner publication', marker_before_overlap=True, base_signature_last=True))
+    assert publication[0] == (0x38, 0) and publication[-1] == (0x69,0)
+    marker_at=publication.index((0x33,0))
+    assert marker_at < next(i for i,(address,_) in enumerate(publication) if address in NV6_INDICES)
+    assert publication.index((0x38,ord('B'))) < publication.index((0x33,ord('N'))) < len(publication)-1
+    rows.append(dict(case='format and owner publication', marker_before_overlap=True, complete_verified_record_before_recovery_release=True))
     active = bytes((1,))+b''.join(records)+extra
     auto = bytes(4)+struct.pack('<HBBHH', 1024, 16, 63, 0xFFFF, 1024)
     defaults = {'C_IDE': b'\x01'+auto*4+b'\x01\x01',
@@ -630,7 +657,7 @@ def persistence(image):
     assert (m.get('C_HDD'), m.get('C_SLAVE')) == (1, 0)
     rows.append(dict(case='four full policies', independent_bytes=True, no_write_load=True))
     fresh = Machine(image)
-    fresh.cmos[:] = golden
+    fresh.cmos[:] = golden_nv6
     fresh.call('settings_load')
     assert bytes(fresh.cpu.mem_read(base+s['C_IDE'], 51)) == active
     assert bytes(fresh.cpu.mem_read(base+s['C_PORTS'], 8)) == ports
@@ -638,7 +665,7 @@ def persistence(image):
     fresh.writes.clear()
     fresh.call('chipset_record_save', SI=s['C_CHIP'])
     assert not fresh.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-    assert fresh.cmos == golden and all(0x71 <= address <= 0x7F for address, _ in fresh.writes)
+    assert fresh.cmos == golden_nv6 and all(address in set(NV6_INDICES)|{0x0E,0x2E,0x2F,0x33,0x34,0x35} for address,_ in fresh.writes)
     rows.append(dict(case='fresh packed load and standalone save', full_records=True, unrelated_owners_retained=True))
     for policy, bad_record in ((2, bytes((15,))+records[2][1:]),
                                (3, records[3][:6]+b'\0'+records[3][7:])):
@@ -656,7 +683,7 @@ def persistence(image):
     m.writes.clear()
     m.call('settings_save')
     assert m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-    assert m.cmos[0x38] == 0 and m.cmos[0x6C] == 0
+    assert m.cmos[0x38] == 0 and m.cmos[0x33] == 0
     assert (0x38, ord('B')) not in m.writes
     m.failed_write = None
     rows.append(dict(case='packed readback failure', failed_owner_unpublished=True, base_unpublished=True))
@@ -713,11 +740,11 @@ def persistence(image):
     load()
     assert read('C_CHIP', 3)[1:] == b'\x00\x01'
     prior = bytes(m.cmos)
+    m.writes.clear()
     m.call('chipset_record_save', SI=s['C_CHIP'])
-    assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-    assert m.cmos[0x33:0x36] == bytes(3) and m.cmos[0x69] == 0x57
-    assert m.cmos[0x40:0x69] == prior[0x40:0x69]
-    rows.append(dict(case='legacy recovery', standalone_save_keeps_format=True))
+    assert m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
+    assert bytes(m.cmos)==prior and not m.writes
+    rows.append(dict(case='legacy recovery', standalone_save_rejected_without_writes=True))
     for source, recovery in ((legacy, 0x69), (golden, 0x71)):
         m.cmos[:] = source
         m.cmos[recovery] = 0xD2
@@ -725,14 +752,14 @@ def persistence(image):
         m.failed_write = 0x3B
         m.call('settings_save')
         assert m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-        assert m.cmos[0x33:0x36] == bytes.fromhex('3402CA') and m.cmos[0x71] == 0xD2
-        assert m.cmos[0x40:0x6C] == packed_ide(records) and m.cmos[0x6C:0x71] == packed_ports
+        assert m.cmos[0x33]==0 and m.cmos[0x34]==6 and m.cmos[0x69] == 0xD2
+        assert nv6_payload(m.cmos)==nv6_expected
         fresh.cmos[:] = m.cmos
         fresh.call('settings_load')
         assert bytes(fresh.cpu.mem_read(base+s['C_CHIP']+1, 2)) == b'\x00\x01'
         assert fresh.get('C_VALID') == 0
         m.failed_write = None
-        rows.append(dict(case='failed base save retains recovery', source_tag=recovery, destination_tag=0x71))
+        rows.append(dict(case='failed base save retains recovery', source_tag=recovery, destination_tag=0x69))
     modified = list(records)
     modified[3] = modified[3][:8]+struct.pack('<H', 0xD212)+modified[3][10:]
     m.cmos[:] = golden
@@ -842,7 +869,7 @@ def physical_policy_cases(image,baseline=None):
                         assert screen[18*80+25:18*80+25+len(label)]==label
             return super().interrupt(cpu,number,data)
     if baseline:
-        old=PIO(baseline,(None,None,'ata',None),requests=(1,2,4,5));old.call('ata_detect_primary')
+        old=PIO(baseline,(None,None,'ata',None),requests=(1,2,4,5), post=True);old.call('ata_detect_primary')
         got=[old.get('S_POLICY_INDEX',position=p) for p in range(4)]
         assert got!=list(range(4)) and old.get('S_PIO_REQUEST',position=2)!=4
         rows.append(dict(baseline_sha256=hashlib.sha256(baseline.read_bytes()).hexdigest(),baseline_rejected=True,mapping=got,secondary_request=old.get('S_PIO_REQUEST',position=2)))
@@ -852,7 +879,7 @@ def physical_policy_cases(image,baseline=None):
                ('full',('ata',)*4,(1,)*4)]
     requests=(1,2,4,5)
     for name,kinds,enabled in scenarios:
-        m=Screen(image,kinds,requests=requests)
+        m=Screen(image,kinds,requests=requests, post=True)
         m.put('C_HDD',enabled[0]);m.put('C_SLAVE',enabled[1]);m.cpu.mem_write(m.base+0xA31,bytes(enabled[2:]))
         for p in range(4):m.cpu.mem_write(m.base+0xA01+p*12,bytes((0,p,p+2,0))+bytes(8))
         m.cpu.mem_write(m.base+m.state['C_CHIP']+13,b'\x0A')
@@ -871,7 +898,7 @@ def physical_policy_cases(image,baseline=None):
         assert not m.keys and m.reset and len(m.io)==io,'Setup performed device I/O'
         expected=bytearray(before);expected[1+2*12+3]=1
         assert bytes(m.cpu.mem_read(m.base+0xA40,51))==expected
-        fresh=PIO(image,kinds,requests=0);fresh.cmos[:]=m.cmos;fresh.writes.clear();fresh.call('settings_load')
+        fresh=PIO(image,kinds,requests=0, post=True);fresh.cmos[:]=m.cmos;fresh.writes.clear();fresh.call('settings_load')
         assert not fresh.writes and bytes(fresh.cpu.mem_read(fresh.base+0xA00,51))==expected
         assert bytes(fresh.cpu.mem_read(fresh.base+fresh.state['C_PORTS'],8))==ports
         assert bytes(fresh.cpu.mem_read(fresh.base+fresh.state['C_CHIP'],24))==chip
@@ -894,7 +921,7 @@ def physical_policy_cases(image,baseline=None):
                          actual_edit_save_reload=True,Setup_no_ATA_IO=True,physical_requests=requests,
                          public_ATA_positions=published,payloads_match=True,other_records_unchanged=True))
     # Early Setup remains a pure policy editor without discovering attached devices.
-    early=Screen(image,(None,None,'ata',None));io=len(early.io)
+    early=Screen(image,(None,None,'ata',None), post=True);io=len(early.io)
     early.keys=[0x5000,9]+[0x5000]*4+[13,0x4D00,27,27,27,ord('y')]
     early.call('setup_main',count=5000000)
     assert not early.keys and len(early.io)==io and not early.writes

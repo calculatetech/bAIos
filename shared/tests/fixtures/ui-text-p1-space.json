@@ -1,0 +1,1280 @@
+{
+  "source_checkpoint": "57e8c394c27c3df7547d8ec0cd550c32099de39b",
+  "purpose": "Supplementary eligible Setup plaintext frozen from compiled P1 production images before P2 representation changes; no vendor bytes.",
+  "ports": {
+    "m919": {
+      "image_sha256": "946de8f2544805efd40b0cd7288f43960f9a423544c5d60d28133a119e8bd941",
+      "strings": {
+        "u_standard_title": {
+          "hex": "6241496f73205365747570203e205374616e64617264205365747570",
+          "source_address": 41679,
+          "saving": 8
+        },
+        "u_drives_title": {
+          "hex": "6241496f73205365747570203e20447269766573",
+          "source_address": 41708,
+          "saving": 3
+        },
+        "u_boot_title": {
+          "hex": "6241496f73205365747570203e20426f6f74",
+          "source_address": 41729,
+          "saving": 2
+        },
+        "u_exit_title": {
+          "hex": "6241496f73205365747570203e2045786974205365747570",
+          "source_address": 41748,
+          "saving": 5
+        },
+        "u_save_trace": {
+          "hex": "434d4f53207265672f65787065637465642f726561643a",
+          "source_address": 42370,
+          "saving": 4
+        },
+        "u_save_confirm": {
+          "hex": "5361766520616e6420726573746172743f20456e7465722f59203d205965732020204573632f4e203d2043616e63656c",
+          "source_address": 42394,
+          "saving": 15
+        },
+        "u_discard_confirm": {
+          "hex": "446973636172642073657474696e67733f20456e7465722f59203d205965732020204573632f4e203d2043616e63656c",
+          "source_address": 42443,
+          "saving": 17
+        },
+        "u_defaults_confirm": {
+          "hex": "4c6f61642064656661756c74733f20456e7465722f59203d205965732020204573632f4e203d2043616e63656c",
+          "source_address": 42492,
+          "saving": 11
+        },
+        "chip_boot_speed": {
+          "hex": "426f6f7420435055205370656564",
+          "source_address": 57965,
+          "saving": 1
+        },
+        "chip_burst": {
+          "hex": "4c322052656164204275727374",
+          "source_address": 56321,
+          "saving": 2
+        },
+        "chip_bus_lock": {
+          "hex": "504349204c6f636b204d6574686f64",
+          "source_address": 57176,
+          "saving": 1
+        },
+        "chip_cache": {
+          "hex": "43505520616e64204361636865",
+          "source_address": 55790,
+          "saving": 4
+        },
+        "chip_copyback": {
+          "hex": "4452414d20427572737420577269746573",
+          "source_address": 56810,
+          "saving": 7
+        },
+        "chip_cyrix_linear": {
+          "hex": "4379726978204c696e656172204275727374",
+          "source_address": 58042,
+          "saving": 4
+        },
+        "chip_cyrix_lsser": {
+          "hex": "4379726978204c6f61642f53746f72652054756e696e67",
+          "source_address": 58091,
+          "saving": 5
+        },
+        "chip_deturbo": {
+          "hex": "4465747572626f205370656564",
+          "source_address": 57006,
+          "saving": 3
+        },
+        "chip_devsel": {
+          "hex": "5043492044657669636520526573706f6e7365",
+          "source_address": 57124,
+          "saving": 4
+        },
+        "chip_early": {
+          "hex": "4561726c79204361636865205772697465",
+          "source_address": 56361,
+          "saving": 6
+        },
+        "chip_edo_burst": {
+          "hex": "45444f2052656164204275727374",
+          "source_address": 55982,
+          "saving": 2
+        },
+        "chip_ide_trigger": {
+          "hex": "50434920494445204952512054726967676572",
+          "source_address": 58773,
+          "saving": 1
+        },
+        "chip_io_recovery": {
+          "hex": "49534120492f4f205265636f76657279",
+          "source_address": 57501,
+          "saving": 1
+        },
+        "chip_irq_1": {
+          "hex": "494e544120496e74657272757074",
+          "source_address": 58713,
+          "saving": 2
+        },
+        "chip_irq_2": {
+          "hex": "494e544220496e74657272757074",
+          "source_address": 58728,
+          "saving": 1
+        },
+        "chip_irq_3": {
+          "hex": "494e544320496e74657272757074",
+          "source_address": 58743,
+          "saving": 1
+        },
+        "chip_irq_4": {
+          "hex": "494e544420496e74657272757074",
+          "source_address": 58758,
+          "saving": 1
+        },
+        "chip_irqs": {
+          "hex": "50434920496e7465727275707473",
+          "source_address": 57919,
+          "saving": 1
+        },
+        "chip_isa_clock": {
+          "hex": "49534120436c6f636b2044697669646572",
+          "source_address": 57426,
+          "saving": 5
+        },
+        "chip_kbc_clock": {
+          "hex": "4b6579626f61726420436c6f636b",
+          "source_address": 57574,
+          "saving": 7
+        },
+        "chip_l1": {
+          "hex": "496e7465726e616c20435055204361636865",
+          "source_address": 56134,
+          "saving": 4
+        },
+        "chip_l2": {
+          "hex": "45787465726e616c204361636865",
+          "source_address": 56188,
+          "saving": 4
+        },
+        "chip_ldev": {
+          "hex": "4c6f63616c204465766963652053616d706c696e67",
+          "source_address": 56895,
+          "saving": 6
+        },
+        "chip_local_bus": {
+          "hex": "4c6f63616c20427573",
+          "source_address": 57934,
+          "saving": 1
+        },
+        "chip_mapping": {
+          "hex": "446576696365204e756d626572204d617070696e67",
+          "source_address": 58181,
+          "saving": 7
+        },
+        "chip_mem_lock": {
+          "hex": "4452414d205265736f75726365204c6f636b",
+          "source_address": 56857,
+          "saving": 5
+        },
+        "chip_memory": {
+          "hex": "4d656d6f7279",
+          "source_address": 55783,
+          "saving": 1
+        },
+        "chip_palette": {
+          "hex": "5647412050616c6574746520536e6f6f70",
+          "source_address": 58260,
+          "saving": 3
+        },
+        "chip_parity": {
+          "hex": "4d656d6f727920506172697479",
+          "source_address": 56072,
+          "saving": 4
+        },
+        "chip_park": {
+          "hex": "50434920427573205061726b696e67",
+          "source_address": 57216,
+          "saving": 3
+        },
+        "chip_pci_burst": {
+          "hex": "43505520427572737420577269746573",
+          "source_address": 56502,
+          "saving": 4
+        },
+        "chip_pci_clock": {
+          "hex": "50434920436c6f636b20526174696f",
+          "source_address": 57384,
+          "saving": 3
+        },
+        "chip_pci_parity": {
+          "hex": "5043492050617269747920436865636b",
+          "source_address": 57313,
+          "saving": 3
+        },
+        "chip_pci_posted": {
+          "hex": "50434920506f7374656420577269746573",
+          "source_address": 57077,
+          "saving": 4
+        },
+        "chip_policy": {
+          "hex": "45787465726e616c20436163686520506f6c696379",
+          "source_address": 56251,
+          "saving": 6
+        },
+        "chip_posted": {
+          "hex": "43505520506f73746564205772697465205761697473",
+          "source_address": 56424,
+          "saving": 5
+        },
+        "chip_preempt": {
+          "hex": "504349204d617374657220507265656d7074696f6e",
+          "source_address": 57261,
+          "saving": 5
+        },
+        "chip_read": {
+          "hex": "4452414d2052656164205761697473",
+          "source_address": 55820,
+          "saving": 4
+        },
+        "chip_refresh": {
+          "hex": "4452414d2052656672657368",
+          "source_address": 56024,
+          "saving": 4
+        },
+        "chip_rom": {
+          "hex": "524f4d20536861646f7720616e64204361636865",
+          "source_address": 57944,
+          "saving": 6
+        },
+        "chip_turbo": {
+          "hex": "547572626f20537769746368",
+          "source_address": 56944,
+          "saving": 2
+        },
+        "chip_type": {
+          "hex": "4d656d6f72792054797065",
+          "source_address": 55922,
+          "saving": 2
+        },
+        "chip_video_cache": {
+          "hex": "566964656f2042494f5320436163686561626c65",
+          "source_address": 58338,
+          "saving": 9
+        },
+        "chip_write": {
+          "hex": "4452414d205772697465205761697473",
+          "source_address": 55856,
+          "saving": 5
+        },
+        "u_chip_title": {
+          "hex": "6241496f73205365747570203e2043686970736574",
+          "source_address": 55749,
+          "saving": 4
+        },
+        "u_swap": {
+          "hex": "5377617020466c6f70707920447269766573",
+          "source_address": 42218,
+          "saving": 3
+        },
+        "u_save": {
+          "hex": "5361766520616e642045786974",
+          "source_address": 42291,
+          "saving": 4
+        },
+        "u_discard": {
+          "hex": "4469736361726420616e642045786974",
+          "source_address": 42305,
+          "saving": 7
+        },
+        "u_title": {
+          "hex": "6241496f73205365747570",
+          "source_address": 41087,
+          "saving": 2
+        },
+        "u_standard": {
+          "hex": "5374616e64617264205365747570",
+          "source_address": 41641,
+          "saving": 5
+        },
+        "u_exit": {
+          "hex": "45786974205365747570",
+          "source_address": 41668,
+          "saving": 2
+        },
+        "u_version": {
+          "hex": "56657273696f6e3a",
+          "source_address": 41859,
+          "saving": 1
+        },
+        "u_clock_format": {
+          "hex": "54696d6520466f726d6174",
+          "source_address": 41868,
+          "saving": 2
+        },
+        "u_date": {
+          "hex": "53797374656d2044617465",
+          "source_address": 41940,
+          "saving": 2
+        },
+        "u_time": {
+          "hex": "53797374656d2054696d65",
+          "source_address": 41952,
+          "saving": 2
+        },
+        "u_total": {
+          "hex": "546f74616c204d656d6f7279",
+          "source_address": 41964,
+          "saving": 3
+        },
+        "u_hdd_policy": {
+          "hex": "5072696d61727920494445204d6173746572",
+          "source_address": 42065,
+          "saving": 4
+        },
+        "u_slave_policy": {
+          "hex": "5072696d6172792049444520536c617665",
+          "source_address": 42084,
+          "saving": 3
+        },
+        "u_boot_order": {
+          "hex": "466972737420426f6f7420446576696365",
+          "source_address": 42130,
+          "saving": 5
+        },
+        "u_boot_second": {
+          "hex": "5365636f6e6420426f6f7420446576696365",
+          "source_address": 42148,
+          "saving": 6
+        },
+        "u_boot_third": {
+          "hex": "546869726420426f6f7420446576696365",
+          "source_address": 42167,
+          "saving": 4
+        },
+        "u_boot_fourth": {
+          "hex": "466f7572746820426f6f7420446576696365",
+          "source_address": 42185,
+          "saving": 5
+        },
+        "u_numlock": {
+          "hex": "426f6f74204e756d204c6f636b",
+          "source_address": 42204,
+          "saving": 1
+        },
+        "u_halt": {
+          "hex": "48616c74204f6e",
+          "source_address": 42237,
+          "saving": 1
+        },
+        "u_seek": {
+          "hex": "466c6f707079205365656b",
+          "source_address": 42279,
+          "saving": 2
+        },
+        "u_fast_boot": {
+          "hex": "4661737420426f6f74",
+          "source_address": 42885,
+          "saving": 1
+        },
+        "u_ide_controller": {
+          "hex": "4f6e626f6172642049444520436f6e74726f6c6c6572",
+          "source_address": 45928,
+          "saving": 7
+        },
+        "u_ide_enabled": {
+          "hex": "446576696365",
+          "source_address": 45987,
+          "saving": 2
+        },
+        "u_ide_type": {
+          "hex": "4469736b2054797065",
+          "source_address": 45994,
+          "saving": 1
+        },
+        "u_ide_translation": {
+          "hex": "5472616e736c6174696f6e",
+          "source_address": 46009,
+          "saving": 3
+        },
+        "u_ide_block": {
+          "hex": "426c6f636b204d6f6465",
+          "source_address": 46021,
+          "saving": 3
+        },
+        "u_ide_cyl": {
+          "hex": "43796c696e64657273",
+          "source_address": 46032,
+          "saving": 1
+        },
+        "u_ide_sectors": {
+          "hex": "536563746f72732070657220547261636b",
+          "source_address": 46048,
+          "saving": 5
+        },
+        "u_ide_precomp": {
+          "hex": "577269746520507265636f6d70656e736174696f6e",
+          "source_address": 46066,
+          "saving": 5
+        },
+        "u_ide_landing": {
+          "hex": "4c616e64696e67205a6f6e65",
+          "source_address": 46088,
+          "saving": 4
+        },
+        "u_ide_edd": {
+          "hex": "494e54313320457874656e73696f6e73",
+          "source_address": 46101,
+          "saving": 1
+        },
+        "u_ide_type_columns": {
+          "hex": "5479706520202020202020202020202043796c73202020204865616473202020536563746f7273",
+          "source_address": 46152,
+          "saving": 12
+        },
+        "u_ide_number_prompt": {
+          "hex": "456e7465722076616c7565",
+          "source_address": 46216,
+          "saving": 4
+        },
+        "u_devices": {
+          "hex": "44657669636573",
+          "source_address": 47055,
+          "saving": 2
+        },
+        "u_devices_title": {
+          "hex": "6241496f73205365747570203e2044657669636573",
+          "source_address": 47063,
+          "saving": 5
+        },
+        "u_fdc": {
+          "hex": "466c6f70707920436f6e74726f6c6c6572",
+          "source_address": 47168,
+          "saving": 4
+        },
+        "pnp_title": {
+          "hex": "6241496f73205365747570203e20506c756720616e6420506c6179",
+          "source_address": 49062,
+          "saving": 5
+        },
+        "pnp_menu": {
+          "hex": "506c756720616e6420506c6179",
+          "source_address": 49090,
+          "saving": 2
+        },
+        "pnp_dmas": {
+          "hex": "444d41205265736572766174696f6e73",
+          "source_address": 49140,
+          "saving": 3
+        },
+        "pnp_memory": {
+          "hex": "5570706572204d656d6f7279",
+          "source_address": 49169,
+          "saving": 3
+        },
+        "pnp_config": {
+          "hex": "436f6e66696775726174696f6e",
+          "source_address": 49182,
+          "saving": 3
+        },
+        "pnp_clear": {
+          "hex": "436c6561722045534344206f6e205265736574",
+          "source_address": 49196,
+          "saving": 4
+        },
+        "pnp_io1": {
+          "hex": "57696e646f7720312042617365",
+          "source_address": 49224,
+          "saving": 1
+        },
+        "pnp_len1": {
+          "hex": "57696e646f772031204c656e677468",
+          "source_address": 49238,
+          "saving": 2
+        },
+        "pnp_io2": {
+          "hex": "57696e646f7720322042617365",
+          "source_address": 49254,
+          "saving": 1
+        },
+        "pnp_len2": {
+          "hex": "57696e646f772032204c656e677468",
+          "source_address": 49268,
+          "saving": 2
+        }
+      },
+      "predicted_gain": 378
+    },
+    "mp386": {
+      "image_sha256": "a91240c2102b6596c70510ab9b2dd518c6d9825eec19f6847ce245d4049e8d65",
+      "strings": {
+        "u_standard_title": {
+          "hex": "6241496f73205365747570203e205374616e64617264205365747570",
+          "source_address": 37617,
+          "saving": 8
+        },
+        "u_drives_title": {
+          "hex": "6241496f73205365747570203e20447269766573",
+          "source_address": 37646,
+          "saving": 3
+        },
+        "u_boot_title": {
+          "hex": "6241496f73205365747570203e20426f6f74",
+          "source_address": 37667,
+          "saving": 2
+        },
+        "u_exit_title": {
+          "hex": "6241496f73205365747570203e2045786974205365747570",
+          "source_address": 37686,
+          "saving": 5
+        },
+        "u_save_trace": {
+          "hex": "434d4f53207265672f65787065637465642f726561643a",
+          "source_address": 38308,
+          "saving": 4
+        },
+        "u_save_confirm": {
+          "hex": "5361766520616e6420726573746172743f20456e7465722f59203d205965732020204573632f4e203d2043616e63656c",
+          "source_address": 38332,
+          "saving": 15
+        },
+        "u_discard_confirm": {
+          "hex": "446973636172642073657474696e67733f20456e7465722f59203d205965732020204573632f4e203d2043616e63656c",
+          "source_address": 38381,
+          "saving": 17
+        },
+        "u_defaults_confirm": {
+          "hex": "4c6f61642064656661756c74733f20456e7465722f59203d205965732020204573632f4e203d2043616e63656c",
+          "source_address": 38430,
+          "saving": 11
+        },
+        "u_swap": {
+          "hex": "5377617020466c6f70707920447269766573",
+          "source_address": 38156,
+          "saving": 3
+        },
+        "u_save": {
+          "hex": "5361766520616e642045786974",
+          "source_address": 38229,
+          "saving": 4
+        },
+        "u_discard": {
+          "hex": "4469736361726420616e642045786974",
+          "source_address": 38243,
+          "saving": 7
+        },
+        "u_title": {
+          "hex": "6241496f73205365747570",
+          "source_address": 37019,
+          "saving": 2
+        },
+        "u_standard": {
+          "hex": "5374616e64617264205365747570",
+          "source_address": 37579,
+          "saving": 5
+        },
+        "u_exit": {
+          "hex": "45786974205365747570",
+          "source_address": 37606,
+          "saving": 2
+        },
+        "u_version": {
+          "hex": "56657273696f6e3a",
+          "source_address": 37797,
+          "saving": 1
+        },
+        "u_clock_format": {
+          "hex": "54696d6520466f726d6174",
+          "source_address": 37806,
+          "saving": 2
+        },
+        "u_date": {
+          "hex": "53797374656d2044617465",
+          "source_address": 37878,
+          "saving": 2
+        },
+        "u_time": {
+          "hex": "53797374656d2054696d65",
+          "source_address": 37890,
+          "saving": 2
+        },
+        "u_total": {
+          "hex": "546f74616c204d656d6f7279",
+          "source_address": 37902,
+          "saving": 3
+        },
+        "u_hdd_policy": {
+          "hex": "5072696d61727920494445204d6173746572",
+          "source_address": 38003,
+          "saving": 4
+        },
+        "u_slave_policy": {
+          "hex": "5072696d6172792049444520536c617665",
+          "source_address": 38022,
+          "saving": 3
+        },
+        "u_boot_order": {
+          "hex": "466972737420426f6f7420446576696365",
+          "source_address": 38068,
+          "saving": 5
+        },
+        "u_boot_second": {
+          "hex": "5365636f6e6420426f6f7420446576696365",
+          "source_address": 38086,
+          "saving": 6
+        },
+        "u_boot_third": {
+          "hex": "546869726420426f6f7420446576696365",
+          "source_address": 38105,
+          "saving": 4
+        },
+        "u_boot_fourth": {
+          "hex": "466f7572746820426f6f7420446576696365",
+          "source_address": 38123,
+          "saving": 5
+        },
+        "u_numlock": {
+          "hex": "426f6f74204e756d204c6f636b",
+          "source_address": 38142,
+          "saving": 1
+        },
+        "u_halt": {
+          "hex": "48616c74204f6e",
+          "source_address": 38175,
+          "saving": 1
+        },
+        "u_seek": {
+          "hex": "466c6f707079205365656b",
+          "source_address": 38217,
+          "saving": 2
+        },
+        "u_fast_boot": {
+          "hex": "4661737420426f6f74",
+          "source_address": 38811,
+          "saving": 1
+        },
+        "u_ide_controller": {
+          "hex": "5072696d6172792049444520436f6e74726f6c6c6572",
+          "source_address": 41396,
+          "saving": 5
+        },
+        "u_ide_enabled": {
+          "hex": "446576696365",
+          "source_address": 41455,
+          "saving": 2
+        },
+        "u_ide_type": {
+          "hex": "4469736b2054797065",
+          "source_address": 41462,
+          "saving": 1
+        },
+        "u_ide_translation": {
+          "hex": "5472616e736c6174696f6e",
+          "source_address": 41477,
+          "saving": 3
+        },
+        "u_ide_block": {
+          "hex": "426c6f636b204d6f6465",
+          "source_address": 41489,
+          "saving": 3
+        },
+        "u_ide_cyl": {
+          "hex": "43796c696e64657273",
+          "source_address": 41500,
+          "saving": 1
+        },
+        "u_ide_sectors": {
+          "hex": "536563746f72732070657220547261636b",
+          "source_address": 41516,
+          "saving": 5
+        },
+        "u_ide_precomp": {
+          "hex": "577269746520507265636f6d70656e736174696f6e",
+          "source_address": 41534,
+          "saving": 5
+        },
+        "u_ide_landing": {
+          "hex": "4c616e64696e67205a6f6e65",
+          "source_address": 41556,
+          "saving": 4
+        },
+        "u_ide_edd": {
+          "hex": "494e54313320457874656e73696f6e73",
+          "source_address": 41569,
+          "saving": 1
+        },
+        "u_ide_type_columns": {
+          "hex": "5479706520202020202020202020202043796c73202020204865616473202020536563746f7273",
+          "source_address": 41620,
+          "saving": 12
+        },
+        "u_ide_number_prompt": {
+          "hex": "456e7465722076616c7565",
+          "source_address": 41684,
+          "saving": 4
+        },
+        "u_devices": {
+          "hex": "44657669636573",
+          "source_address": 42571,
+          "saving": 2
+        },
+        "u_devices_title": {
+          "hex": "6241496f73205365747570203e2044657669636573",
+          "source_address": 42579,
+          "saving": 5
+        },
+        "u_fdc": {
+          "hex": "466c6f70707920436f6e74726f6c6c6572",
+          "source_address": 42684,
+          "saving": 4
+        }
+      },
+      "predicted_gain": 187
+    },
+    "pb430": {
+      "image_sha256": "acb95d841cc595dd068b2c0ec20666598dd5866fdefecc0aaa95b567de30b75b",
+      "strings": {
+        "u_standard_title": {
+          "hex": "6241496f73205365747570203e205374616e64617264205365747570",
+          "source_address": 35435,
+          "saving": 8
+        },
+        "u_drives_title": {
+          "hex": "6241496f73205365747570203e20447269766573",
+          "source_address": 35464,
+          "saving": 3
+        },
+        "u_boot_title": {
+          "hex": "6241496f73205365747570203e20426f6f74",
+          "source_address": 35485,
+          "saving": 2
+        },
+        "u_exit_title": {
+          "hex": "6241496f73205365747570203e2045786974205365747570",
+          "source_address": 35504,
+          "saving": 5
+        },
+        "u_save_trace": {
+          "hex": "434d4f53207265672f65787065637465642f726561643a",
+          "source_address": 36126,
+          "saving": 4
+        },
+        "u_save_confirm": {
+          "hex": "5361766520616e6420726573746172743f20456e7465722f59203d205965732020204573632f4e203d2043616e63656c",
+          "source_address": 36150,
+          "saving": 15
+        },
+        "u_discard_confirm": {
+          "hex": "446973636172642073657474696e67733f20456e7465722f59203d205965732020204573632f4e203d2043616e63656c",
+          "source_address": 36199,
+          "saving": 17
+        },
+        "u_defaults_confirm": {
+          "hex": "4c6f61642064656661756c74733f20456e7465722f59203d205965732020204573632f4e203d2043616e63656c",
+          "source_address": 36248,
+          "saving": 11
+        },
+        "u_swap": {
+          "hex": "5377617020466c6f70707920447269766573",
+          "source_address": 35974,
+          "saving": 3
+        },
+        "u_save": {
+          "hex": "5361766520616e642045786974",
+          "source_address": 36047,
+          "saving": 4
+        },
+        "u_discard": {
+          "hex": "4469736361726420616e642045786974",
+          "source_address": 36061,
+          "saving": 7
+        },
+        "u_title": {
+          "hex": "6241496f73205365747570",
+          "source_address": 34838,
+          "saving": 2
+        },
+        "u_standard": {
+          "hex": "5374616e64617264205365747570",
+          "source_address": 35397,
+          "saving": 5
+        },
+        "u_exit": {
+          "hex": "45786974205365747570",
+          "source_address": 35424,
+          "saving": 2
+        },
+        "u_version": {
+          "hex": "56657273696f6e3a",
+          "source_address": 35615,
+          "saving": 1
+        },
+        "u_clock_format": {
+          "hex": "54696d6520466f726d6174",
+          "source_address": 35624,
+          "saving": 2
+        },
+        "u_date": {
+          "hex": "53797374656d2044617465",
+          "source_address": 35696,
+          "saving": 2
+        },
+        "u_time": {
+          "hex": "53797374656d2054696d65",
+          "source_address": 35708,
+          "saving": 2
+        },
+        "u_total": {
+          "hex": "546f74616c204d656d6f7279",
+          "source_address": 35720,
+          "saving": 3
+        },
+        "u_hdd_policy": {
+          "hex": "5072696d61727920494445204d6173746572",
+          "source_address": 35821,
+          "saving": 4
+        },
+        "u_slave_policy": {
+          "hex": "5072696d6172792049444520536c617665",
+          "source_address": 35840,
+          "saving": 3
+        },
+        "u_boot_order": {
+          "hex": "466972737420426f6f7420446576696365",
+          "source_address": 35886,
+          "saving": 5
+        },
+        "u_boot_second": {
+          "hex": "5365636f6e6420426f6f7420446576696365",
+          "source_address": 35904,
+          "saving": 6
+        },
+        "u_boot_third": {
+          "hex": "546869726420426f6f7420446576696365",
+          "source_address": 35923,
+          "saving": 4
+        },
+        "u_boot_fourth": {
+          "hex": "466f7572746820426f6f7420446576696365",
+          "source_address": 35941,
+          "saving": 5
+        },
+        "u_numlock": {
+          "hex": "426f6f74204e756d204c6f636b",
+          "source_address": 35960,
+          "saving": 1
+        },
+        "u_halt": {
+          "hex": "48616c74204f6e",
+          "source_address": 35993,
+          "saving": 1
+        },
+        "u_seek": {
+          "hex": "466c6f707079205365656b",
+          "source_address": 36035,
+          "saving": 2
+        },
+        "u_fast_boot": {
+          "hex": "4661737420426f6f74",
+          "source_address": 36629,
+          "saving": 1
+        },
+        "u_ide_controller": {
+          "hex": "5072696d6172792049444520436f6e74726f6c6c6572",
+          "source_address": 39214,
+          "saving": 5
+        },
+        "u_ide_enabled": {
+          "hex": "446576696365",
+          "source_address": 39273,
+          "saving": 2
+        },
+        "u_ide_type": {
+          "hex": "4469736b2054797065",
+          "source_address": 39280,
+          "saving": 1
+        },
+        "u_ide_translation": {
+          "hex": "5472616e736c6174696f6e",
+          "source_address": 39295,
+          "saving": 3
+        },
+        "u_ide_block": {
+          "hex": "426c6f636b204d6f6465",
+          "source_address": 39307,
+          "saving": 3
+        },
+        "u_ide_cyl": {
+          "hex": "43796c696e64657273",
+          "source_address": 39318,
+          "saving": 1
+        },
+        "u_ide_sectors": {
+          "hex": "536563746f72732070657220547261636b",
+          "source_address": 39334,
+          "saving": 5
+        },
+        "u_ide_precomp": {
+          "hex": "577269746520507265636f6d70656e736174696f6e",
+          "source_address": 39352,
+          "saving": 5
+        },
+        "u_ide_landing": {
+          "hex": "4c616e64696e67205a6f6e65",
+          "source_address": 39374,
+          "saving": 4
+        },
+        "u_ide_edd": {
+          "hex": "494e54313320457874656e73696f6e73",
+          "source_address": 39387,
+          "saving": 1
+        },
+        "u_ide_type_columns": {
+          "hex": "5479706520202020202020202020202043796c73202020204865616473202020536563746f7273",
+          "source_address": 39438,
+          "saving": 12
+        },
+        "u_ide_number_prompt": {
+          "hex": "456e7465722076616c7565",
+          "source_address": 39502,
+          "saving": 4
+        },
+        "u_devices": {
+          "hex": "44657669636573",
+          "source_address": 40389,
+          "saving": 2
+        },
+        "u_devices_title": {
+          "hex": "6241496f73205365747570203e2044657669636573",
+          "source_address": 40397,
+          "saving": 5
+        },
+        "u_fdc": {
+          "hex": "466c6f70707920436f6e74726f6c6c6572",
+          "source_address": 40502,
+          "saving": 4
+        },
+        "pnp_title": {
+          "hex": "6241496f73205365747570203e20506c756720616e6420506c6179",
+          "source_address": 62057,
+          "saving": 5
+        },
+        "pnp_menu": {
+          "hex": "506c756720616e6420506c6179",
+          "source_address": 62085,
+          "saving": 2
+        },
+        "pnp_dmas": {
+          "hex": "444d41205265736572766174696f6e73",
+          "source_address": 62135,
+          "saving": 3
+        },
+        "pnp_memory": {
+          "hex": "5570706572204d656d6f7279",
+          "source_address": 62164,
+          "saving": 3
+        },
+        "pnp_config": {
+          "hex": "436f6e66696775726174696f6e",
+          "source_address": 62177,
+          "saving": 3
+        },
+        "pnp_clear": {
+          "hex": "436c6561722045534344206f6e205265736574",
+          "source_address": 62191,
+          "saving": 4
+        },
+        "pnp_io1": {
+          "hex": "57696e646f7720312042617365",
+          "source_address": 62219,
+          "saving": 1
+        },
+        "pnp_len1": {
+          "hex": "57696e646f772031204c656e677468",
+          "source_address": 62233,
+          "saving": 2
+        },
+        "pnp_io2": {
+          "hex": "57696e646f7720322042617365",
+          "source_address": 62249,
+          "saving": 1
+        },
+        "pnp_len2": {
+          "hex": "57696e646f772032204c656e677468",
+          "source_address": 62263,
+          "saving": 2
+        }
+      },
+      "predicted_gain": 213
+    },
+    "presario-800": {
+      "image_sha256": "b58dcc6e816a7e6def424d53a62bad92975aeefb7e2138c3dc2561a288a48574",
+      "strings": {
+        "u_standard_title": {
+          "hex": "6241496f73205365747570203e205374616e64617264205365747570",
+          "source_address": 32064,
+          "saving": 8
+        },
+        "u_drives_title": {
+          "hex": "6241496f73205365747570203e20447269766573",
+          "source_address": 32093,
+          "saving": 3
+        },
+        "u_boot_title": {
+          "hex": "6241496f73205365747570203e20426f6f74",
+          "source_address": 32114,
+          "saving": 2
+        },
+        "u_exit_title": {
+          "hex": "6241496f73205365747570203e2045786974205365747570",
+          "source_address": 32133,
+          "saving": 5
+        },
+        "u_save_trace": {
+          "hex": "434d4f53207265672f65787065637465642f726561643a",
+          "source_address": 32755,
+          "saving": 4
+        },
+        "u_save_confirm": {
+          "hex": "5361766520616e6420726573746172743f20456e7465722f59203d205965732020204573632f4e203d2043616e63656c",
+          "source_address": 32779,
+          "saving": 15
+        },
+        "u_discard_confirm": {
+          "hex": "446973636172642073657474696e67733f20456e7465722f59203d205965732020204573632f4e203d2043616e63656c",
+          "source_address": 32828,
+          "saving": 17
+        },
+        "u_defaults_confirm": {
+          "hex": "4c6f61642064656661756c74733f20456e7465722f59203d205965732020204573632f4e203d2043616e63656c",
+          "source_address": 32877,
+          "saving": 11
+        },
+        "u_swap": {
+          "hex": "5377617020466c6f70707920447269766573",
+          "source_address": 32603,
+          "saving": 3
+        },
+        "u_save": {
+          "hex": "5361766520616e642045786974",
+          "source_address": 32676,
+          "saving": 4
+        },
+        "u_discard": {
+          "hex": "4469736361726420616e642045786974",
+          "source_address": 32690,
+          "saving": 7
+        },
+        "u_title": {
+          "hex": "6241496f73205365747570",
+          "source_address": 31466,
+          "saving": 2
+        },
+        "u_standard": {
+          "hex": "5374616e64617264205365747570",
+          "source_address": 32026,
+          "saving": 5
+        },
+        "u_exit": {
+          "hex": "45786974205365747570",
+          "source_address": 32053,
+          "saving": 2
+        },
+        "u_version": {
+          "hex": "56657273696f6e3a",
+          "source_address": 32244,
+          "saving": 1
+        },
+        "u_clock_format": {
+          "hex": "54696d6520466f726d6174",
+          "source_address": 32253,
+          "saving": 2
+        },
+        "u_date": {
+          "hex": "53797374656d2044617465",
+          "source_address": 32325,
+          "saving": 2
+        },
+        "u_time": {
+          "hex": "53797374656d2054696d65",
+          "source_address": 32337,
+          "saving": 2
+        },
+        "u_total": {
+          "hex": "546f74616c204d656d6f7279",
+          "source_address": 32349,
+          "saving": 3
+        },
+        "u_hdd_policy": {
+          "hex": "5072696d61727920494445204d6173746572",
+          "source_address": 32450,
+          "saving": 4
+        },
+        "u_slave_policy": {
+          "hex": "5072696d6172792049444520536c617665",
+          "source_address": 32469,
+          "saving": 3
+        },
+        "u_boot_order": {
+          "hex": "466972737420426f6f7420446576696365",
+          "source_address": 32515,
+          "saving": 5
+        },
+        "u_boot_second": {
+          "hex": "5365636f6e6420426f6f7420446576696365",
+          "source_address": 32533,
+          "saving": 6
+        },
+        "u_boot_third": {
+          "hex": "546869726420426f6f7420446576696365",
+          "source_address": 32552,
+          "saving": 4
+        },
+        "u_boot_fourth": {
+          "hex": "466f7572746820426f6f7420446576696365",
+          "source_address": 32570,
+          "saving": 5
+        },
+        "u_numlock": {
+          "hex": "426f6f74204e756d204c6f636b",
+          "source_address": 32589,
+          "saving": 1
+        },
+        "u_halt": {
+          "hex": "48616c74204f6e",
+          "source_address": 32622,
+          "saving": 1
+        },
+        "u_seek": {
+          "hex": "466c6f707079205365656b",
+          "source_address": 32664,
+          "saving": 2
+        },
+        "u_ide_controller": {
+          "hex": "5072696d6172792049444520436f6e74726f6c6c6572",
+          "source_address": 35782,
+          "saving": 5
+        },
+        "u_ide_enabled": {
+          "hex": "446576696365",
+          "source_address": 35841,
+          "saving": 2
+        },
+        "u_ide_type": {
+          "hex": "4469736b2054797065",
+          "source_address": 35848,
+          "saving": 1
+        },
+        "u_ide_translation": {
+          "hex": "5472616e736c6174696f6e",
+          "source_address": 35863,
+          "saving": 3
+        },
+        "u_ide_block": {
+          "hex": "426c6f636b204d6f6465",
+          "source_address": 35875,
+          "saving": 3
+        },
+        "u_ide_cyl": {
+          "hex": "43796c696e64657273",
+          "source_address": 35886,
+          "saving": 1
+        },
+        "u_ide_sectors": {
+          "hex": "536563746f72732070657220547261636b",
+          "source_address": 35902,
+          "saving": 5
+        },
+        "u_ide_precomp": {
+          "hex": "577269746520507265636f6d70656e736174696f6e",
+          "source_address": 35920,
+          "saving": 5
+        },
+        "u_ide_landing": {
+          "hex": "4c616e64696e67205a6f6e65",
+          "source_address": 35942,
+          "saving": 4
+        },
+        "u_ide_edd": {
+          "hex": "494e54313320457874656e73696f6e73",
+          "source_address": 35955,
+          "saving": 1
+        },
+        "u_ide_type_columns": {
+          "hex": "5479706520202020202020202020202043796c73202020204865616473202020536563746f7273",
+          "source_address": 36006,
+          "saving": 12
+        },
+        "u_ide_number_prompt": {
+          "hex": "456e7465722076616c7565",
+          "source_address": 36070,
+          "saving": 4
+        },
+        "u_devices": {
+          "hex": "44657669636573",
+          "source_address": 36957,
+          "saving": 2
+        },
+        "u_devices_title": {
+          "hex": "6241496f73205365747570203e2044657669636573",
+          "source_address": 36965,
+          "saving": 5
+        },
+        "u_fdc": {
+          "hex": "466c6f70707920436f6e74726f6c6c6572",
+          "source_address": 37070,
+          "saving": 4
+        },
+        "pnp_title": {
+          "hex": "6241496f73205365747570203e20506c756720616e6420506c6179",
+          "source_address": 63113,
+          "saving": 5
+        },
+        "pnp_menu": {
+          "hex": "506c756720616e6420506c6179",
+          "source_address": 63141,
+          "saving": 2
+        },
+        "pnp_dmas": {
+          "hex": "444d41205265736572766174696f6e73",
+          "source_address": 63191,
+          "saving": 3
+        },
+        "pnp_memory": {
+          "hex": "5570706572204d656d6f7279",
+          "source_address": 63220,
+          "saving": 3
+        },
+        "pnp_config": {
+          "hex": "436f6e66696775726174696f6e",
+          "source_address": 63233,
+          "saving": 3
+        },
+        "pnp_clear": {
+          "hex": "436c6561722045534344206f6e205265736574",
+          "source_address": 63247,
+          "saving": 4
+        },
+        "pnp_io1": {
+          "hex": "57696e646f7720312042617365",
+          "source_address": 63275,
+          "saving": 1
+        },
+        "pnp_len1": {
+          "hex": "57696e646f772031204c656e677468",
+          "source_address": 63289,
+          "saving": 2
+        },
+        "pnp_io2": {
+          "hex": "57696e646f7720322042617365",
+          "source_address": 63305,
+          "saving": 1
+        },
+        "pnp_len2": {
+          "hex": "57696e646f772032204c656e677468",
+          "source_address": 63319,
+          "saving": 2
+        }
+      },
+      "predicted_gain": 212
+    }
+  }
+}

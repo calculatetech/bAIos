@@ -16,6 +16,10 @@ settings_load:
     mov byte [fs:U_THEME_ACTIVE], 0
     xor bp, bp
     mov byte [fs:C_CLOCK24], 0
+    mov byte [fs:C_POST_DELAY],1
+%ifdef BOARD_PCI_VIDEO_ORDER
+    mov byte [fs:C_VIDEO_ORDER],1
+%endif
     mov al, 0x10
     call rtc_read
     mov dl, al
@@ -37,16 +41,10 @@ settings_load:
     add bl, al
     mov al, 0x3A
     call rtc_read
-    cmp al, 1
-    je .schema
-    cmp al, 2
-    je .schema
-    cmp al, 3
-    je .schema
-    cmp al, 4
-    je .schema
-    cmp al, 5
-    jne .done
+    cmp al,1
+    jb .done
+    cmp al,6
+    ja .done
 .schema:
     mov ch, al
     xor bh, bh              ; Legacy records have no fourth target.
@@ -65,7 +63,7 @@ settings_load:
     cmp ch, 4
     jb .first_boot
     cmp ch, 5
-    je .schema5_theme
+    jae .schema5_theme
     test al, 0xC0
     jnz .done
     movzx bp, al
@@ -90,7 +88,7 @@ settings_load:
     cmp al, 3
     je .boot_valid
     cmp ch, 5
-    jne .done
+    jb .done
     cmp al, 4
     ja .done
 .boot_valid:
@@ -141,7 +139,7 @@ settings_load:
     call rtc_read
     add bl, al
     cmp ch, 5
-    jne .second_plain
+    jb .second_plain
     test al, 0xC0
     jnz .done
     mov ah, al
@@ -154,7 +152,7 @@ settings_load:
     cmp al, 4
     ja .done
     cmp ch, 5
-    je .second_valid
+    jae .second_valid
     cmp al, 3
     ja .done
     cmp ch, 4
@@ -165,10 +163,30 @@ settings_load:
     movzx si, al
     mov al, 0x3F
     call rtc_read
+    add bl,al              ; Include all stored schema6 bits in the checksum.
+    cmp ch,6
+    jb .third_plain
+    movzx di,al
+    shr di,3
+%ifdef BOARD_PCI_VIDEO_ORDER
+    cmp di,6
+    ja .done
+    mov ah,al
+    and ah,0x18
+    cmp ah,0x18
+    je .done
+%else
+    cmp di,2
+    ja .done
+%endif
+    shl di,8
+    or bp,di               ; Retain new fields until the entire base validates.
+    and al,7
+.third_plain:
     cmp al, 4
     ja .done
     cmp ch, 5
-    je .third_valid
+    jae .third_valid
     cmp al, 3
     ja .done
     cmp ch, 4
@@ -177,7 +195,7 @@ settings_load:
     ja .done
 .third_valid:
     movzx di, al
-    add bl, al
+    test bl, bl
     jnz .done
     test cl, cl
     jz .second_duplicate
@@ -241,6 +259,15 @@ settings_load:
 .publish:
     mov ax, bp
     mov [fs:C_THEME], al
+    cmp ch,6
+    jne .old_delay
+    mov [fs:C_POST_DELAY],ah
+    and byte [fs:C_POST_DELAY],3
+%ifdef BOARD_PCI_VIDEO_ORDER
+    shr ah,2
+    mov [fs:C_VIDEO_ORDER],ah
+%endif
+.old_delay:
     mov [fs:C_TYPES], dl
     mov byte [fs:C_BASE_VALID], 1
     mov byte [fs:C_VALID], 1
@@ -252,6 +279,22 @@ settings_load:
     call ide_settings_load
     call ports_settings_load
     call chipset_settings_load
+%ifdef BOARD_PNP_SUPPORT
+    mov di,C_PNP
+    call pnp_defaults
+    call settings_nv6_present
+    jne .pnp_done
+    call settings_nv6_pnp_load
+    jc .pnp_bad
+    mov si,C_PNP
+    call pnp_settings_valid
+    jnc .pnp_done
+.pnp_bad:
+    mov di,C_PNP
+    call pnp_defaults
+    mov byte [fs:C_VALID],0
+.pnp_done:
+%endif
     pop fs
     popad
     ret
@@ -279,165 +322,142 @@ settings_save:
     pushad
     push fs
     call load_bios_state
-    call settings_recovery_read
-    movzx di, al            ; Keep prior recovery selection until the whole save succeeds.
-    mov bh, [fs:U_SLAVE]
-    xor bh, 1
-    shl bh, 1
-    mov al, [fs:U_HDD]
-    xor al, 1
-    or bh, al
-    shl bh, 2
-    or bh, [fs:U_HALT]
-    shl bh, 1
-    or bh, [fs:U_SWAP]
-    shl bh, 1
-    or bh, [fs:U_SEEK]
-    shl bh, 1
-    or bh, [fs:U_NUMLOCK]
-    mov al, [fs:U_CLOCK24]
-    shl al, 7
-    or bh, al
-    call settings_logical_types
-    mov bl, ah
-    add bl, 'B' + '8' + 5
-    add bl, bh
-    call settings_theme_boot
-    add bl, ah
-    call settings_second_fourth
-    add bl, ah
-    add bl, [fs:U_BOOT_THIRD]
-    neg bl
-.write:
-    mov ax, 0x0038          ; Invalidate before data; signature published last.
-    call rtc_write
-%if BOARD_ATA_DEVICE_COUNT = 4
-    call settings_format_prepare
+    sub sp,74
+    mov di,sp
+    call settings_nv6_build_all
+    jc .done
+    add di,66
+    call settings_base_pack
+    movzx edi,sp
+    mov ebp,1
+    call settings_commit32
+.done:
     jc .bad
-%endif
-    call ide_settings_save
-    jc .bad
-    call ports_settings_save
-    jc .bad
-    call chipset_settings_save
-    jc .bad
-    call settings_logical_types
-    mov al, 0x10
-    call rtc_write
-    mov ax, ('8' << 8) | 0x39
-    call rtc_write
-    mov ax, 0x053A
-    call rtc_write
-    mov al, 0x3B
-    mov ah, bh
-    call rtc_write
-    mov al, 0x3C
-    call settings_theme_boot
-    call rtc_write
-    mov al, 0x3D
-    mov ah, bl
-    call rtc_write
-    mov al, 0x3E
-    call settings_second_fourth
-    call rtc_write
-    mov al, 0x3F
-    mov ah, [fs:U_BOOT_THIRD]
-    call rtc_write
-    call update_cmos_checksum
-    mov ax, ('B' << 8) | 0x38
-    call rtc_write
-    call settings_logical_types
-    mov al, 0x10
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x38
-    mov ah, 'B'
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x39
-    mov ah, '8'
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x3A
-    mov ah, 5
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x3B
-    mov ah, bh
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x3C
-    call settings_theme_boot
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x3D
-    mov ah, bl
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x3E
-    call settings_second_fourth
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x3F
-    mov ah, [fs:U_BOOT_THIRD]
-    call settings_verify_byte
-    jne .bad
-%ifdef BOARD_SETTINGS_SAVED
-    call BOARD_SETTINGS_SAVED
-    jc .bad
-%endif
+    lea sp,[di]             ; EDI is restored by the commit core.
+    add sp,74
     pop fs
     popad
     popf
     clc
     ret
 .bad:
-    cmp di, 0xD2
-    jne .restore
-    call settings_recovery_publish ; A later failure must retain Compatibility.
-.restore:
+    lea sp,[di]
+    add sp,74
     pop fs
     popad
     popf
     stc
     ret
 
-; AH=packed theme/first boot. AL retains the caller's CMOS index.
-settings_theme_boot:
-    mov ah, [fs:U_THEME]
-    shl ah, 3
-    or ah, [fs:U_BOOT]
+; SS:DI=8-byte canonical base (CMOS10,39..3F);38 is the fixed 'B'.
+; Both live and draft snapshots use the same encoder and field order.
+settings_base_pack:
+    pushad
+    mov si,settings_base_draft_fields
+    jmp settings_base_encode
+settings_base_active_pack:
+    pushad
+    mov si,settings_base_active_fields
+settings_base_encode:
+    call settings_base_value
+    xor al,1
+    shl al,1
+    mov dl,al
+    call settings_base_value
+    xor al,1
+    or dl,al
+    shl dl,2
+    call settings_base_value
+    or dl,al
+    shl dl,1
+    call settings_base_value
+    or dl,al
+    shl dl,1
+    call settings_base_value
+    or dl,al
+    shl dl,1
+    call settings_base_value
+    or dl,al
+    call settings_base_value
+    shl al,7
+    or dl,al
+    mov [ss:di+3],dl
+    call settings_base_value
+    test dl,4
+    jz .types
+    ror al,4
+.types:
+    mov [ss:di],al
+    mov word [ss:di+1],0x0638
+    call settings_base_value
+    shl al,3
+    mov dh,al
+    call settings_base_value
+    or al,dh
+    mov [ss:di+4],al
+    call settings_base_value
+    shl al,3
+    mov dh,al
+    call settings_base_value
+    or al,dh
+    mov [ss:di+6],al
+    call settings_base_value
+    mov dl,al
+    call settings_base_value
+    shl al,3
+    or dl,al
+%ifdef BOARD_PCI_VIDEO_ORDER
+    call settings_base_value
+    shl al,5
+    or dl,al
+%endif
+    mov [ss:di+7],dl
+    mov al,'B'
+    mov cx,8
+.sum:
+    cmp cx,3
+    je .next
+    add al,[ss:di]
+.next:
+    inc di
+    loop .sum
+    neg al
+    mov [ss:di-3],al
+    popad
     ret
-
-; Schema5 CMOS3E: second in bits0..2, fourth in bits3..5.
-settings_second_fourth:
-    mov ah, [fs:U_BOOT_FOURTH]
-    shl ah, 3
-    or ah, [fs:U_BOOT_SECOND]
+settings_base_value:
+    mov bx,[cs:si]
+    add si,2
+    mov al,[fs:bx]
     ret
-
-; AH=logical CMOS10 types, without changing the physical Setup draft.
-settings_logical_types:
-    mov ah, [fs:U_TYPES]
-    cmp byte [fs:U_SWAP], 0
-    je .done
-    ror ah, 4
-.done:
-    ret
+%ifndef PRESARIO_SHARED_OWNER
+%include "firmware/settings-base-fields.inc"
+%endif
 
 ; ZF reports equality. A persisted byte must not fail on one transient read.
 settings_verify_byte:
     mov [fs:U_SAVE_TRACE], al
     mov [fs:U_SAVE_TRACE + 1], ah
+    call settings_verify_byte_core
+    mov [fs:U_SAVE_TRACE + 2], al
+    ret
+
+; EBP selects the existing Setup trace facade or a selector-safe core.
+settings_verify_buffer_byte:
+    test ebp,ebp
+    jnz settings_verify_byte
+settings_verify_byte_core:
+    push bx
+    mov bl,al
     call rtc_read
-    cmp al, ah
+    cmp al,ah
     je .done
-    mov al, [fs:U_SAVE_TRACE]
+    mov al,bl
     call kbc_delay_2ms
     call rtc_read
-    cmp al, ah
+    cmp al,ah
 .done:
-    mov [fs:U_SAVE_TRACE + 2], al
+    pop bx
     ret
 
 post_success_tone:
@@ -659,6 +679,10 @@ post_track_zero:
 setup_draft_defaults:
     mov byte [fs:U_THEME], 0
     mov byte [fs:U_CLOCK24], 0
+    mov byte [fs:U_POST_DELAY],1
+%ifdef BOARD_PCI_VIDEO_ORDER
+    mov byte [fs:U_VIDEO_ORDER],1
+%endif
     mov dword [fs:U_TYPES], (0x01010100 | FLOPPY_DEFAULT_TYPES)
     mov byte [fs:U_SLAVE], 1
     mov byte [fs:U_NUMLOCK], 1
@@ -678,31 +702,22 @@ setup_defaults:
     call ports_defaults
     mov di, U_CHIP
     call chipset_defaults
+%ifdef BOARD_PNP_SUPPORT
+    mov di,U_PNP
+    call pnp_defaults
+%endif
     ret
 
 post_numlock_apply:
-    pushf
-    cli
-    pushad
-    push ds
-    call load_bios_state
-    mov ax, 0x40
-    mov ds, ax
-    and byte [KB_FLAGS], 0xDF
-    cmp byte [fs:C_NUMLOCK], 0
-    je .led
-    or byte [KB_FLAGS], 0x20
-.led:
-    mov byte [KB_LED_APPLIED], 0xFF
-    cmp byte [KB_LED_PHASE], 0xFF
-    jne .tick
-    mov byte [KB_LED_PHASE], 0
-.tick:
-    call keyboard_led_tick
-    pop ds
-    popad
-    popf
+%ifdef BOARD_PNP_SUPPORT
+    push bx
+    mov bx,pnp_post_numlock
+    call pnp_post_invoke
+    pop bx
     ret
+%else
+%include "firmware/post-numlock.inc"
+%endif
 
 post_keyboard_presence:
     pushad
@@ -723,6 +738,7 @@ post_keyboard_presence:
     popad
     ret
 
+
 post_error_notice:
     cmp byte [fs:C_HALT], 1
     je .done
@@ -737,133 +753,15 @@ post_error_notice:
 
 ; Called after VGA and keyboard arming. Getters retain RTC validation ownership.
 post_clock_alert:
-    pushad
-    push ds
-    push fs
-    call load_bios_state
-    xor ax, ax
-    mov ds, ax
-    ; A reset during the tone must not leave the previous POST beep active.
-    in al, 0x61
-    test al, 3
-    jz .clock
-    and al, 0xFC
-    out 0x61, al
-.clock:
-    cmp byte [fs:C_VALID], 1
-    je .date
-    or byte [fs:C_ERROR], 4
-.date:
-    xor bl, bl              ; Invalid clock domains: time=1, date=2.
-    mov ah, 4
-    int 0x1A
-    jnc .time
-    or bl, 2
-.time:
-    mov ah, 2
-    int 0x1A
-    jnc .clock_checked
-    or bl, 1
-.clock_checked:
-    test bl, bl
-    jz .checked
-    or byte [fs:C_ERROR], 1
-.checked:
-    test byte [fs:C_ERROR], 5
-    jz .done
-.alert:
-    cmp byte [fs:P_PHASE], 0
-    je .alert_cursor_ready
-    pushad
-    call post_message_cursor
-    popad                    ; BL retains the invalid clock domains.
-.alert_cursor_ready:
-    mov ax, [0x041C]
-    mov [0x041A], ax          ; A stale queued key must not dismiss this notice.
-    mov al, [fs:C_ERROR]
-    and al, 5
-    cmp al, 5
-    jne .settings_notice
-    mov si, u_cmos_clock_invalid
-    call print_string
-    jmp .choices
-.settings_notice:
-    test byte [fs:C_ERROR], 4
-    jz .clock_notice
-    mov si, u_cmos_invalid
-    call print_string
-.clock_notice:
-    test byte [fs:C_ERROR], 1
-    jz .choices
-    mov si, u_clock_unset
-    call print_string
-.choices:
-    cmp byte [fs:C_BASE_VALID], 1
-    jne .recover
-    cmp byte [fs:C_HALT], 1
-    je .done
-.recover:
-    mov si, u_cmos_recover
-    call print_string
-    call post_error_tone
-.choice:
-    call post_notice_wait
-    cmp byte [fs:S_SETUP_REQUEST], 1
-    je .done
-    cmp al, 13
-    je .defaults
-    or al, 0x20
-    cmp al, 'd'
-    jne .choice
-.defaults:
-    test bl, 2
-    jz .default_time
-    mov cx, 0x1980
-    mov dx, 0x0101
-    mov ah, 5
-    int 0x1A
-    jc .clock_error
-.default_time:
-    test bl, 1
-    jz .verify_clock
-    mov al, 0x0B
-    call rtc_read
-    xor cx, cx
-    xor dx, dx
-    and al, 1
-    mov dl, al              ; Retain the native daylight-saving flag.
-    mov ah, 3
-    int 0x1A
-    jc .clock_error
-.verify_clock:
-    mov ah, 4
-    int 0x1A
-    jc .clock_error
-    mov ah, 2
-    int 0x1A
-    jc .clock_error
-    test byte [fs:C_ERROR], 4
-    jz .done                 ; Keep valid settings when only the clock failed.
-    call setup_defaults
-    call settings_save
-    jc .settings_error
-    call settings_load
-    cmp byte [fs:C_VALID], 1
-    jne .settings_error
-    jmp controlled_defaults_restart
-.clock_error:
-    mov si, u_clock_save_error
-    jmp .save_error
-.settings_error:
-    mov si, u_save_error
-.save_error:
-    call print_string
-    mov byte [fs:S_SETUP_REQUEST], 1
-.done:
-    pop fs
-    pop ds
-    popad
+%ifdef BOARD_PRIVATE_POST_CLOCK
+    push bx
+    mov bx,pnp_post_clock_alert
+    call pnp_post_invoke
+    pop bx
     ret
+%else
+%include "firmware/post-clock-alert.inc"
+%endif
 
 ; Shared fresh-key gate. Caller has resolved FS and supplies DS=0.
 post_notice_wait:
@@ -910,789 +808,45 @@ setup_post_gate:
     popad
     ret
 
+%ifdef BOARD_PNP_SUPPORT
 setup_main:
+    post_ui_facade setup_main
+setup_video_mode:
+    post_ui_facade setup_video_mode
+%else
+%include "firmware/setup-loop.inc"
+%endif
+
+post_summary_base_memory:
     pushad
     push ds
     push es
-    push fs
-    cld
-    call load_bios_state
-    xor ax, ax
-    mov es, ax
-    mov byte [es:0x0400 + KB_POST_STATE], 0
-    mov ax, [es:0x041C]
-    mov [es:0x041A], ax       ; Discard only old POST input, not the controller.
-    mov byte [fs:S_SETUP_REQUEST], 0
-    mov dword [fs:U_PAGE], 0
-    mov byte [fs:U_CONFIRMED], 0
-    mov byte [fs:U_POSITION], 0
-    mov al, [fs:C_THEME]
-    mov [fs:U_THEME], al
-    mov byte [fs:U_THEME_ACTIVE], 1
-    mov al, [fs:C_CLOCK24]
-    mov [fs:U_CLOCK24], al
-    mov eax, [fs:C_TYPES]
-    mov [fs:U_TYPES], eax
-    mov al, [fs:C_SLAVE]
-    mov [fs:U_SLAVE], al
-    mov al, [fs:C_NUMLOCK]
-    mov [fs:U_NUMLOCK], al
-    mov al, [fs:C_SWAP]
-    mov [fs:U_SWAP], al
-    mov al, [fs:C_HALT]
-    mov [fs:U_HALT], al
-    mov ax, [fs:C_BOOT_SECOND]
-    mov [fs:U_BOOT_SECOND], ax
-    mov al, [fs:C_BOOT_FOURTH]
-    mov [fs:U_BOOT_FOURTH], al
-    mov si, C_IDE
-    mov di, U_IDE
-    mov cx, IDE_SETTINGS_SIZE
-    call ide_copy_bytes
-    mov si, C_PORTS
-    mov di, U_PORTS
-    mov cx, 8
-    call ide_copy_bytes
-    mov si, C_CHIP
-    mov di, U_CHIP
-    mov cx, CHIP_SIZE
-    call ide_copy_bytes
-    mov byte [fs:U_CHIP_SCREEN], 0
-    mov byte [fs:U_IDE_DEVICE], 0xFF
-    call setup_video_mode
-    push cs
-    pop ds
-    mov ax, 0xB800
-    mov es, ax
-.redraw:
-    mov cl, [fs:U_FIELD]
-.normalize_field:
-    call setup_field_available
-    jnc .draw
-%ifdef BOARD_SETUP_READONLY_PAGES
-    test cl,cl
-    jnz .previous_field
-    mov byte [fs:U_FOCUS],0
-    jmp .draw
-.previous_field:
-%endif
-    dec cl
-    jmp .normalize_field
-.draw:
-    mov [fs:U_FIELD], cl
-    call setup_draw
-.input:
-%ifdef EMULATOR_CHIPSET_TEST
-    call chipset_test_capture_drain
-%endif
-%ifdef EMULATOR_PORTS_TEST
-    call ports_test_capture_drain
-%endif
-    call setup_clock
-    mov ah, 1
-    int 0x16
-    jnz .key
-    sti
-    hlt
-    jmp .input
-.key:
-    xor ah, ah
-    int 0x16
-    cmp ah, 0x3E
-    je .theme
-    cmp ah, 0x3F
-    je .theme
-    cmp ah, 0x3B
-    je .help
-    cmp byte [fs:U_EDIT], 0
-    jne .edit_key
-    cmp ah, 0x43
-    je .defaults
-    cmp ah, 0x44
-    je .save
-    cmp al, 27
-    je .escape
-    cmp al, 9
-    je .tab
-    cmp ah, 0x48
-    je .up
-    cmp ah, 0x50
-    je .down
-    cmp ah, 0x49
-    je .chip_page
-    cmp ah, 0x51
-    je .chip_page
-    cmp ah, 0x4B
-    je .change
-    cmp ah, 0x4D
-    je .change
-    cmp al, 13
-    jne .input
-    cmp byte [fs:U_FOCUS], 0
-    je .select_page
-    mov cl, [fs:U_FIELD]
-    call setup_field_available
-    jc .input
-    cmp byte [fs:U_PAGE], 0
-    jne .non_clock_enter
-    cmp byte [fs:U_FIELD], 2
-    jb .start_edit
-    jmp .choices
-.non_clock_enter:
-    cmp byte [fs:U_PAGE], 4
-    je .exit_action
-    cmp byte [fs:U_PAGE], 1
-    jne .choices
-    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
-    jbe .ide_select
-    cmp byte [fs:U_FIELD], 2
-    jb .choices
-    cmp byte [fs:U_FIELD], BOARD_ATA_DEVICE_COUNT+1
-    ja .choices
-    mov al, [fs:U_FIELD]
-    sub al, 2
-    mov [fs:U_IDE_DEVICE], al
-    mov byte [fs:U_FIELD], 0
-    jmp .redraw
-.ide_select:
-    call ide_ui_select
-    jmp .redraw
-.choices:
-    cmp byte [fs:U_PAGE], 5
-    jne .ordinary_choices
-    call chipset_ui_select
-    jmp .redraw
-.ordinary_choices:
-    call setup_choices
-    jmp .redraw
-.theme:
-    mov al, [fs:U_THEME]
-    cmp ah, 0x3E
-    jne .next_theme
-    dec al
-    cmp al, 0xFF
-    jne .theme_selected
-    mov al, THEME_COUNT - 1
-    jmp .theme_selected
-.next_theme:
-    inc al
-    cmp al, THEME_COUNT
-    jb .theme_selected
-    xor al, al
-.theme_selected:
-    mov [fs:U_THEME], al
-    jmp .redraw
-.select_page:
-    mov byte [fs:U_FOCUS], 1
-    jmp .redraw
-.start_edit:
-    call setup_edit_begin
-    jmp .redraw
-.tab:
-    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
-    ja .tab_pane
-    mov byte [fs:U_IDE_DEVICE], 0xFF
-    mov byte [fs:U_FIELD], 0
-.tab_pane:
-    xor byte [fs:U_FOCUS], 1
-    jmp .redraw
-.chip_page:
-    cmp byte [fs:U_PAGE], 5
-    jne .input
-    cmp byte [fs:U_FOCUS], 1
-    jne .input
-    call chipset_ui_page
-    jmp .redraw
-.up:
-    cmp byte [fs:U_FOCUS], 0
-    jne .field
-    cmp byte [fs:U_PAGE], 0
-    je .input
-    mov al, [fs:U_PAGE]
-    cmp al, 4
-    je .up_exit
-    cmp al, 5
-    jne .up_regular
-    mov al, 4
-.up_regular:
-    dec al
-    jmp .sidebar_selected
-.up_exit:
-    mov al, 5
-.sidebar_selected:
-    mov [fs:U_PAGE], al
-    mov byte [fs:U_FIELD], 0
-    jmp .redraw
-.down:
-    cmp byte [fs:U_FOCUS], 0
-    jne .field
-    mov al, [fs:U_PAGE]
-    cmp al, 4
-    je .input
-    cmp al, 5
-    jne .down_regular
-    mov al, 4
-    jmp .sidebar_selected
-.down_regular:
-    inc al
-    cmp al, 4
-    jne .sidebar_selected
-    mov al, 5
-    jmp .sidebar_selected
-.field:
-    mov bl, 1
-    cmp byte [fs:U_PAGE], 0
-    jne .field_count
-    mov bl, 2
-.field_count:
-    cmp byte [fs:U_PAGE], 5
-    jne .non_chip_field
-    call chipset_ui_count
-    mov bl, cl
-    dec bl
-.non_chip_field:
-    cmp byte [fs:U_PAGE], 3
-    jne .old_field
-%ifdef BOARD_PORTS_SETUP_COUNT
-    mov bl, BOARD_PORTS_SETUP_COUNT-1
-%else
-    mov bl, 6
-%endif
-.old_field:
-    cmp byte [fs:U_PAGE], 2
-    jne .drive_field_limit
-    mov bl, BOOT_FIELD_COUNT-1
-.drive_field_limit:
-    cmp byte [fs:U_PAGE], 1
-    jne .field_limit
-    mov bl, BOARD_ATA_DEVICE_COUNT+4
-    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
-    ja .field_limit
-    mov bl, IDE_FIELD_COUNT-1
-.field_limit:
-    mov cl, [fs:U_FIELD]
-    cmp ah, 0x48
-    jne .field_down
-.field_up:
-    test cl, cl
-    je .input
-    dec cl
-    call setup_field_available
-    jc .field_up
-    jmp .field_selected
-.field_down:
-    cmp cl, bl
-    jae .input
-    inc cl
-    call setup_field_available
-    jc .field_down
-.field_selected:
-    mov [fs:U_FIELD], cl
-    jmp .redraw
-.change:
-    cmp byte [fs:U_FOCUS], 1
-    jne .input
-    mov cl, [fs:U_FIELD]
-    call setup_field_available
-    jc .input
-    cmp byte [fs:U_PAGE], 0
-    jne .non_clock_change
-    cmp byte [fs:U_FIELD], 2
-    jb .input
-.non_clock_change:
-    cmp byte [fs:U_PAGE], 4
-    je .input
-    cmp byte [fs:U_PAGE], 1
-    jne .old_change
-    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
-    ja .old_change
-    call ide_ui_change
-    jmp .redraw
-.old_change:
-    call setup_change
-    jmp .redraw
-.escape:
-    cmp byte [fs:U_PAGE], 5
-    jne .non_chip_escape
-%ifndef BOARD_SETUP_READONLY_PAGES
-    cmp byte [fs:U_FOCUS], 1
-    jne .non_chip_escape
-%endif
-    cmp byte [fs:U_CHIP_SCREEN], 0
-    je .non_chip_escape
-    mov al, [fs:U_CHIP_SCREEN]
-    dec al
-    mov [fs:U_FIELD], al
-    mov byte [fs:U_CHIP_SCREEN], 0
-%ifdef BOARD_SETUP_READONLY_PAGES
-    mov byte [fs:U_FOCUS], 1
-%endif
-    jmp .redraw
-.non_chip_escape:
-    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
-    ja .escape_pane
-    mov al, [fs:U_IDE_DEVICE]
-    add al, 2
-    mov [fs:U_FIELD], al
-    mov byte [fs:U_IDE_DEVICE], 0xFF
-    jmp .redraw
-.escape_pane:
-    cmp byte [fs:U_FOCUS], 0
-    je .discard
-    mov byte [fs:U_FOCUS], 0
-    jmp .redraw
-.help:
-    call setup_help
-    jmp .redraw
-.exit_action:
-    cmp byte [fs:U_FIELD], 0
-    je .save
-.discard:
-    mov si, u_discard_confirm
-    call setup_confirm
-    jc .redraw
-    call setup_restore_text
-    pop fs
+    xor ax,ax
+    mov ds,ax
+    movzx eax,word [0x0413]
+    push word 0xB800
+    pop es
+    call setup_number
     pop es
     pop ds
     popad
-    ret
-.defaults:
-    mov si, u_defaults_confirm
-    call setup_confirm
-    jc .redraw
-    call setup_defaults
-    jmp .redraw
-.save:
-    mov si, u_save_confirm
-    call setup_confirm
-    jc .redraw
-    call settings_save
-    jc .save_error
-    call setup_restore_text
-    mov ax, 0x0040
-    mov ds, ax
-    jmp warm_reset
-.save_error:
-    ui_text 19, 23, u_save_error, 0x0C
-    ui_text 20, 23, u_save_trace, 0x07
-    mov di, 20 * 160 + 49 * 2
-    mov bx, U_SAVE_TRACE
-    mov cx, 3
-.save_byte:
-    mov al, [fs:bx]
-    call setup_hex8
-    mov ax, 0x0720
-    push ax
-    call setup_color
-    stosw
-    pop ax
-    inc bx
-    loop .save_byte
-    jmp .input
-.edit_key:
-    cmp al, 27
-    je .cancel_edit
-    cmp al, 13
-    je .apply_edit
-    cmp al, 8
-    je .backspace
-    cmp byte [fs:U_EDIT], 2
-    jne .edit_digit
-    cmp byte [fs:U_CLOCK24], 0
-    jne .edit_digit
-    cmp al, 'A'
-    je .meridiem
-    cmp al, 'a'
-    je .meridiem
-    cmp al, 'P'
-    je .meridiem
-    cmp al, 'p'
-    je .meridiem
-.edit_digit:
-    cmp al, '0'
-    jb .input
-    cmp al, '9'
-    ja .input
-    movzx bx, byte [fs:U_POSITION]
-    mov [fs:U_BUFFER + bx], al
-    inc bl
-    cmp byte [fs:U_EDIT], 1
-    jne .time_position
-    cmp bl, 2
-    je .skip_separator
-    cmp bl, 5
-    je .skip_separator
-    cmp bl, 10
-    jb .position
-    xor bl, bl
-    jmp .position
-.time_position:
-    cmp bl, 2
-    je .skip_separator
-    cmp bl, 5
-    je .skip_separator
-    cmp bl, 8
-    jb .position
-    xor bl, bl
-    jmp .position
-.skip_separator:
-    inc bl
-.position:
-    mov [fs:U_POSITION], bl
-    jmp .redraw
-.meridiem:
-    and al, 0xDF
-    mov [fs:U_BUFFER + 9], al
-    jmp .redraw
-.backspace:
-    mov bl, [fs:U_POSITION]
-    test bl, bl
-    jz .input
-    dec bl
-    cmp byte [fs:U_EDIT], 1
-    jne .back_time
-    cmp bl, 2
-    je .back_separator
-    cmp bl, 5
-    je .back_separator
-    jmp .position
-.back_time:
-    cmp bl, 2
-    je .back_separator
-    cmp bl, 5
-    jne .position
-.back_separator:
-    dec bl
-    jmp .position
-.apply_edit:
-    call setup_edit_apply
-    jc .invalid
-.cancel_edit:
-    mov byte [fs:U_EDIT], 0
-    jmp .redraw
-.invalid:
-    ui_text 20, 23, u_invalid, 0x0C
-    jmp .input
-
-setup_video_mode:
-    push fs
-    push gs
-    mov ax, 0x1202
-    mov bl, 0x30
-    int 0x10
-    mov ax, 3
-    int 0x10
-    mov ax, 0x1114
-    xor bx, bx
-    int 0x10
-    mov ax, 0x1003
-    xor bx, bx             ; Bright backgrounds, no blinking in Setup.
-    int 0x10
-    mov ah, 1
-    mov cx, 0x2000
-    int 0x10
-    pop gs
-    pop fs
-    cld
     ret
 
 ; Read-only snapshot of active settings. Setup entry is already closed.
+%ifdef BOARD_PNP_SUPPORT
 post_debug_summary:
-    pushad
-    push ds
-    push es
-    push fs
-    call load_bios_state
-%ifdef EMULATOR_CHIPSET_SUMMARY_LONG
-    call summary_test_prepare_long
-%endif
-    call setup_restore_text
-    push cs
-    pop ds
-    mov ax, 0xB800
-    mov es, ax
-    xor di, di
-    mov ax, 0x0720
-    mov cx, 2000
-    cld
-    push ax
-    call setup_color
-    rep stosw
-    pop ax
-    ; Header at row0; complete frame on rows1..11, blank row12.
-    mov di, 1*160
-    mov cx, 9+BOARD_ATA_DEVICE_COUNT
-.frame:
-    mov word [es:di], 0x0BBA
-    mov word [es:di+158], 0x0BBA
-    add di, 160
-    loop .frame
-    mov di, 1*160
-    call .rule
-    mov word [es:1*160], 0x0BC9
-    mov word [es:1*160+158], 0x0BBB
-    mov di, 5*160
-    call .rule
-    mov di, 8*160
-    call .rule
-    mov di, (9+BOARD_ATA_DEVICE_COUNT)*160
-    call .rule
-    mov word [es:(9+BOARD_ATA_DEVICE_COUNT)*160], 0x0BC8
-    mov word [es:(9+BOARD_ATA_DEVICE_COUNT)*160+158], 0x0BBC
-    call post_header
-    ui_text 2, 3, u_summary_processor, 0x0B
-    call post_processor_name
-    mov di, 2*160+(20+BOARD_POST_SUMMARY_SHIFT)*2
-    mov bh, 7
-    call setup_text
-    ui_text 3, 3, u_summary_fpu, 0x0B
-    mov si, u_absent
-    push ds
-    xor ax, ax
-    mov ds, ax
-    test word [0x0410], 2
-    pop ds
-    jz .fpu
-    mov si, u_detected
-.fpu:
-    mov di, 3*160+(20+BOARD_POST_SUMMARY_SHIFT)*2
-    mov bh, 7
-    call setup_text
-    ui_text 4, 3, u_l2, 0x0B
-    call post_summary_cache
-.memory:
-    ui_text 2, 40, u_base, 0x0B
-    push ds
-    xor ax, ax
-    mov ds, ax
-    movzx eax, word [0x0413]
-    pop ds
-    mov di, 2*160+(58+BOARD_POST_SUMMARY_SHIFT)*2
-    call setup_number
-    ui_text 2, 64+BOARD_POST_SUMMARY_SHIFT, u_kb, 0x07
-    ui_text 3, 40, u_extended, 0x0B
-    memory_extended_kib eax
-    mov di, 3*160+(58+BOARD_POST_SUMMARY_SHIFT)*2
-    call setup_number
-    ui_text 3, 64+BOARD_POST_SUMMARY_SHIFT, u_kb, 0x07
-    ui_text 4, 40, u_summary_banks, 0x0B
-    mov di, 4*160+(58+BOARD_POST_SUMMARY_SHIFT)*2
-    call post_memory_banks
-    ui_text 6, 3, u_drive_a, 0x0B
-    mov al, [fs:F_TYPES]
-    mov di, 6*160+(20+BOARD_POST_SUMMARY_SHIFT)*2
-    call .floppy
-    ui_text 7, 3, u_drive_b, 0x0B
-    mov al, [fs:F_TYPES+1]
-    mov di, 7*160+(20+BOARD_POST_SUMMARY_SHIFT)*2
-    call .floppy
-    call ports_summary
-    push fs
-    mov bp,9*160
-    mov cx,BOARD_ATA_DEVICE_COUNT
-.disk:
-    push cx
-    call post_device_label
-    mov di,bp
-    add di,3*2
-    mov bh,0x0B
-    call setup_text
-    call .device
-    mov ax,fs
-    add ax,0x20
-    mov fs,ax
-    add bp,160
-    pop cx
-    loop .disk
-    pop fs
-    mov bp, 11+BOARD_ATA_DEVICE_COUNT                    ; First message row after the blank separator.
-    cmp byte [fs:C_ERROR], 0
-    je .recovery
-    mov bp, 12+BOARD_ATA_DEVICE_COUNT
-    ui_text 11+BOARD_ATA_DEVICE_COUNT, 3, u_warnings, 0x0E
-    test byte [fs:C_ERROR], 1
-    jz .floppy_warning
-    ui_text 11+BOARD_ATA_DEVICE_COUNT, 18, u_clock_warning, 0x0E
-.floppy_warning:
-    test byte [fs:C_ERROR], 2
-    jz .settings_warning
-    ui_text 11+BOARD_ATA_DEVICE_COUNT, 24, u_floppy_warning, 0x0E
-.settings_warning:
-    test byte [fs:C_ERROR], 4
-    jz .keyboard_warning
-    ui_text 11+BOARD_ATA_DEVICE_COUNT, 31, u_settings_warning, 0x0E
-.keyboard_warning:
-    test byte [fs:C_ERROR], 8
-    jz .rom_warning
-    ui_text 11+BOARD_ATA_DEVICE_COUNT, 40, u_keyboard_warning, 0x0E
-.rom_warning:
-    test byte [fs:C_ERROR], 0x10
-    jz .recovery
-    ui_text 11+BOARD_ATA_DEVICE_COUNT, 49, u_rom_warning, 0x0E
-.recovery:
-    mov al, 0x36
-    call rtc_read
-    and al, 0xBF
-    cmp al, 0x1A
-    jne .done
-    mov bp, 12+BOARD_ATA_DEVICE_COUNT
-    ui_text 11+BOARD_ATA_DEVICE_COUNT, 54, u_summary_recovery, 0x0C
-.done:
-%ifdef BOARD_FLOPPY_POST_DETAILS
-    test byte [fs:C_ERROR],2
-    jz .no_floppy_details
-    call BOARD_FLOPPY_POST_DETAILS
-    mov bp,13+BOARD_ATA_DEVICE_COUNT
-.no_floppy_details:
-%endif
-    mov dx, bp
-    shl dx, 8
-    xor bx, bx
-    mov ah, 2
-    int 0x10                      ; Normal BIOS/OS output continues from here.
-%ifdef EMULATOR_POST_SUMMARY_TEST
-    call summary_test_begin
-%endif
-%ifdef EMULATOR_TEST
-%ifndef EMULATOR_POST_SUMMARY_TEST
-%ifndef EMULATOR_CHIPSET_PREVIEW
-    call summary_test_begin
-%endif
-%endif
-%endif
-    pop fs
-    pop es
-    pop ds
-    popad
-    ret
-.rule:
-    mov ax, 0x0BCD
-    mov cx, 80
-    push ax
-    call setup_color
-    rep stosw
-    pop ax
-    mov word [es:di-160], 0x0BCC
-    mov word [es:di-2], 0x0BB9
-    ret
-.floppy:
-    movzx bx, al
-    mov si, u_floppies
-.enum:
-    shl bx, 1
-    mov si, [si+bx]
-    mov bh, 7
-    jmp setup_text
-.device:
-    mov di, bp
-    add di, (23+BOARD_POST_SUMMARY_SHIFT)*2
-    mov si, u_absent
-    cmp byte [fs:S_PRESENT], 1
-    je .model
-    cmp byte [fs:S_ATAPI], 1
-    jne .device_done
-.model:
-    mov si, S_MODEL
-    mov cx, 40                     ; Full ATA model, columns23..62 before the port layout shift.
-.model_char:
-    mov al, [fs:si]
-    inc si
-    test al, al
-    jz .kind
-    mov ah, 7
-    push ax
-    call setup_color
-    stosw
-    pop ax
-    loop .model_char
-.kind:
-    mov di, bp
-    add di, (64+BOARD_POST_SUMMARY_SHIFT)*2
-    mov ax, 0x0B5B                 ; Teal brackets around compact device details.
-    call setup_color
-    stosw
-    mov si, msg_atapi
-    cmp byte [fs:S_ATAPI], 1
-    je .pio
-    mov eax, [fs:S_CAPACITY]
-    shr eax, 11
-    call setup_number
-.size_end:
-    cmp byte [es:di], ' '          ; Number preserves DI; find its trailing blank.
-    je .size_unit
-    add di, 2
-    jmp .size_end
-.size_unit:
-    mov si, u_summary_mb
-    mov bh, 7
-    call setup_text
-    add di, 3*2
-    jmp .pio_label
-.pio:
-    mov bh, 7
-    call setup_text
-    add di, 5*2
-.pio_label:
-    mov si, u_summary_pio
-    mov bh, 7
-    call setup_text
-    add di, 4*2
-%ifdef BOARD_ATA_PIO_MAX
-%ifdef BOARD_ATA_PIO_ADAPTER
-    mov al,[fs:S_PIO_MODE]
-    add al,'0'
-    mov ah,7
-    call setup_color
-    stosw
+    post_ui_facade post_debug_summary
 %else
-    call ide_pio_mode_text
+%include "firmware/post-summary.inc"
 %endif
-%endif
-    mov ax, 0x0B5D
-    call setup_color
-    stosw
-    ret
-.device_done:
-    mov bh, 7
-    jmp setup_text
 
+%ifdef BOARD_PNP_SUPPORT
 post_header:
-    pushad
-    push ds
-    push es
-    push cs
-    pop ds
-    mov ax, 0xB800
-    mov es, ax
-    xor di, di
-    mov ax, 0x1F20
-    mov cx, 80
-    push ax
-    call setup_color
-    rep stosw
-    pop ax
-    ui_text 0, 3, u_platform, 0x1B
-    ui_text 0, 37, u_summary, 0x1F
-    ui_text 0, 58, u_build, 0x1B
-    mov di, 69*2
-    mov si, 0xFFF5
-    mov cx, 8
-.date:
-    lodsb
-    mov ah, 0x1F
-    push ax
-    call setup_color
-    stosw
-    pop ax
-    loop .date
-    pop es
-    pop ds
-    popad
-    ret
+    post_ui_facade post_header
+%else
+%include "firmware/post-header.inc"
+%endif
 
-; Intel AP-485 reset signature, retained across software warm POST.
-; Report the model, without deriving a core clock from a timing profile.
 post_processor_name:
     call board_cpu_detect_name
     test si,si
@@ -1793,464 +947,28 @@ setup_hex_number:
     popad
     ret
 
+%ifdef BOARD_PNP_SUPPORT
 setup_restore_text:
-    push fs
-    push gs
-    mov byte [fs:U_THEME_ACTIVE], 0
-    xor ax, ax
-    mov ds, ax
-    mov es, ax
-    mov ax, 0x1202
-    mov bl, 0x30
-    int 0x10
-    mov ax, 0x0003           ; Restore retained 80x25 / 8x16 font before boot.
-    int 0x10
-    mov ax, 0x1114
-    xor bx, bx
-    int 0x10
-    mov ax, 0x1003
-    mov bx, 1              ; Restore normal POST/OS text blink behavior.
-    int 0x10
-    mov ax,0x0500
-    int 0x10
-    pop gs
-    pop fs
-    cld
-    ret
-
-; AH selects Left/Right. Non-clock edits stay in the draft, not active state.
+    post_ui_facade setup_restore_text
 setup_change:
-    cmp byte [fs:U_PAGE], 0
-    jne .non_clock
-    xor byte [fs:U_CLOCK24], 1
-    ret
-.non_clock:
-    cmp byte [fs:U_PAGE], 5
-    je chipset_ui_change
-    cmp byte [fs:U_PAGE], 3
-    je ports_ui_change
-    mov dl, 1
-    cmp ah, 0x4B
-    jne .field
-    mov dl, -1
-.field:
-    mov bx, U_TYPES
-    mov cl, [fs:U_FIELD]
-    mov ch, 5
-    cmp byte [fs:U_PAGE], 1
-    jne .boot
-    cmp cl, 2
-    jae .hdd
-    mov al, [fs:bx]
-    test cl, cl
-    jnz .low
-    shr al, 4
-.low:
-    and al, 15
-    call .cycle
-    test cl, cl
-    jnz .b
-    shl al, 4
-    and byte [fs:bx], 15
-    or [fs:bx], al
-    ret
-.b:
-    and byte [fs:bx], 0xF0
-    or [fs:bx], al
-    ret
-.hdd:
-    cmp cl, BOARD_ATA_DEVICE_COUNT+4
-    jne .fdc
-    mov bx, U_SWAP
-    mov ch, 1
-    jmp .enum
-.fdc:
-    cmp cl, BOARD_ATA_DEVICE_COUNT+3
-    jne .ide
-    mov bx, U_PORTS+P_FLOPPY
-    mov ch, 1
-    jmp .enum
-.ide:
-    cmp cl, BOARD_ATA_DEVICE_COUNT+2
-    jne .device_policy
-    call setup_ide_controller_parameters
-    mov ch,cl
-    dec ch
-    jmp .enum
-.device_policy:
-    mov al,cl
-    sub al,2
-    call ide_ui_enable_index
-.hdd_limit:
-    mov ch, 1
-    jmp .enum
-.boot:
-    push dx
-    call setup_boot_parameters
-    pop dx
-    mov ch, cl
-    dec ch
-.enum:
-    mov al, [fs:bx]
-.candidate:
-    call .cycle
-    call setup_boot_choice_valid
-    jc .candidate
-    call setup_enum_store
-    ret
-.cycle:
-    add al, dl
-    cmp al, 0xFF
-    jne .upper
-    mov al, ch
-.upper:
-    cmp al, ch
-    jbe .done
-    xor al, al
-.done:
-    ret
-
+    post_ui_facade setup_change
 setup_enum_store:
-    pushf
-    pushad
-    cmp byte [fs:U_PAGE],1
-    jne .boot
-    cmp byte [fs:U_IDE_DEVICE],BOARD_ATA_DEVICE_COUNT-1
-    ja .controller
-    popad
-    popf
-    jmp ide_ui_store
-.controller:
-%ifdef BOARD_IDE_SECONDARY_DISABLE_POLICY
-    cmp byte [fs:U_FIELD],BOARD_ATA_DEVICE_COUNT+2
-    jne .boot
-    popad
-    popf
-    jmp setup_ide_controller_store
-%endif
-.boot:
-%ifdef BOARD_PORTS_SETUP_COMMIT
-    cmp byte [fs:U_PAGE],3
-    jne .ordinary_store
-    popad
-    popf
-    jmp BOARD_PORTS_SETUP_COMMIT
-.ordinary_store:
-%endif
-    cmp byte [fs:U_PAGE], 2
-    jne .store
-    cmp byte [fs:U_FIELD], 4
-    jae .store
-    test al, al
-    jz .store
-    movzx dx, byte [fs:U_FIELD]
-    xor di, di
-.find:
-    mov si, di
-    shl si, 1
-    mov si, [cs:u_boot_pointers+si]
-    cmp al, [fs:si]
-    je .move
-    inc di
-    cmp di, 4
-    jb .find
-    jmp .store
-.move:
-    mov si, di
-    shl si, 1
-    mov si, [cs:u_boot_pointers+si]
-    cmp di, dx
-    je .store
-    jb .left
-    dec di
-    jmp .copy
-.left:
-    inc di
-.copy:
-    mov bx, di
-    shl bx, 1
-    mov bx, [cs:u_boot_pointers+bx]
-    mov ah, [fs:bx]
-    mov [fs:si], ah
-    jmp .move
-.store:
-    popad
-    popf
-    mov [fs:bx], al
-    ret
-
-; All saved boot targets share the existing enum popup and quick-change path.
+    post_ui_facade setup_enum_store
 setup_boot_parameters:
-    movzx bx, byte [fs:U_FIELD]
-    shl bx, 1
-    mov bx, [cs:u_boot_pointers + bx]
-    mov si, u_boot_values
-    mov cx, 5
-    cmp byte [fs:U_FIELD], 4
-    jb .done
-    mov si, u_seek_values
-    mov cx, 2
-    cmp byte [fs:U_FIELD], 6
-    jne .done
-    mov si, u_halt_values
-    mov cx, 3
-.done:
-    ret
-
-; Allocated targets remain selectable; setup_enum_store moves their slots.
+    post_ui_facade setup_boot_parameters
 setup_boot_choice_valid:
-    clc
-    ret
-
-; Shared presentation; the board declares storage and owns channel hardware.
+    post_ui_facade setup_boot_choice_valid
 setup_ide_controller_parameters:
-    mov bx,U_IDE
-    mov si,u_seek_values
-    mov cx,2
-%ifdef BOARD_IDE_SECONDARY_DISABLE_POLICY
-    xor al,al
-    cmp byte [fs:bx],0
-    jne .enabled
-    inc al
-    jmp .selected
-.enabled:
-    test byte [fs:U_CHIP+(BOARD_IDE_SECONDARY_DISABLE_POLICY-C_CHIP)],BOARD_IDE_SECONDARY_DISABLE_MASK
-    jz .selected
-    mov al,2
-.selected:
-    mov bx,U_CHIP_VALUE
-    mov [fs:bx],al
-    mov si,u_ide_controller_choices
-    mov cx,3
-%endif
-    ret
+    post_ui_facade setup_ide_controller_parameters
 %ifdef BOARD_IDE_SECONDARY_DISABLE_POLICY
 setup_ide_controller_store:
-    pushf
-    pushad
-    cmp al,2
-    ja .done
-    and byte [fs:U_CHIP+(BOARD_IDE_SECONDARY_DISABLE_POLICY-C_CHIP)],~BOARD_IDE_SECONDARY_DISABLE_MASK
-    mov byte [fs:U_IDE],0
-    cmp al,1
-    je .done
-    mov byte [fs:U_IDE],1
-    cmp al,2
-    jne .done
-    or byte [fs:U_CHIP+(BOARD_IDE_SECONDARY_DISABLE_POLICY-C_CHIP)],BOARD_IDE_SECONDARY_DISABLE_MASK
-.done:
-    popad
-    popf
-    ret
+    post_ui_facade setup_ide_controller_store
 %endif
-
-; Enter opens the complete enum. Arrows still offer the normal quick change.
 setup_choices:
-    cmp byte [fs:U_PAGE], 5
-    je chipset_ui_choices
-    cmp byte [fs:U_PAGE], 3
-    je ports_ui_choices
-    pushad
-    cmp byte [fs:U_PAGE], 0
-    jne .non_clock
-    mov bx, U_CLOCK24
-    mov si, u_clock_formats
-    mov cx, 2
-    jmp .enum
-.non_clock:
-    mov bx, U_TYPES
-    mov si, u_floppies
-    mov cx, 6
-    mov dl, [fs:U_FIELD]
-    cmp byte [fs:U_PAGE], 1
-    jne .boot
-    cmp dl, 2
-    jb .value
-    cmp dl, BOARD_ATA_DEVICE_COUNT+4
-    jne .fdc
-    mov bx, U_SWAP
-    mov si, u_seek_values
-    mov cx, 2
-    jmp .enum
-.fdc:
-    cmp dl, BOARD_ATA_DEVICE_COUNT+3
-    jne .ide
-    mov bx, U_PORTS+P_FLOPPY
-    mov si, u_seek_values
-    mov cx, 2
-    jmp .enum
-.ide:
-    cmp dl, BOARD_ATA_DEVICE_COUNT+2
-    jne .device_policy
-    call setup_ide_controller_parameters
-    jmp .enum
-.device_policy:
-    mov al,dl
-    sub al,2
-    call ide_ui_enable_index
-.hdd:
-    mov si, u_hdd_values
-    mov cx, 2
-    jmp .enum
-.boot:
-    call setup_boot_parameters
-.enum:
-    mov dl, 2
-.value:
-    mov al, [fs:bx]
-    cmp dl, 2
-    je .selected
-    test dl, dl
-    jnz .low
-    shr al, 4
-.low:
-    and al, 15
-.selected:
-    movzx bp, al
-.draw:
-    cmp byte [fs:U_PAGE], 5
-    jne .ordinary_draw
-    call chipset_ui_choice_draw
-    jc .wait
-.ordinary_draw:
-    call setup_modal_footer
-    pushad
-    mov di, 8 * 160 + UI_POPUP_COL * 2
-    mov ax, 0x1E20
-    mov dx, 15
-.clear:
-    mov cx, UI_POPUP_WIDTH
-    push ax
-    call setup_color
-    rep stosw
-    pop ax
-    add di, (80 - UI_POPUP_WIDTH) * 2
-    dec dx
-    jnz .clear
-    ui_text 8, UI_POPUP_TEXT, u_choices, 0x1B
-    popad
-    pushad
-    xor dx, dx
-.item:
-    mov di, dx
-    add di, 10
-    imul di, di, 160
-    add di, UI_POPUP_TEXT * 2
-    push bx
-    mov bx, dx
-    shl bx, 1
-    push si
-    mov si, [si + bx]
-    mov bh, 0x17
-    cmp dx, bp
-    jne .text
-    mov bh, 0x70
-.text:
-    push ax
-    mov ax, dx
-    call setup_boot_choice_valid
-    jnc .choice_color
-    mov bh, 0x18
-.choice_color:
-    pop ax
-    call setup_choice_highlight
-    call setup_text
-    pop si
-    pop bx
-    inc dx
-    cmp dx, cx
-    jb .item
-    ui_text 22, UI_POPUP_TEXT, u_choices_keys, 0x1B
-    popad
-.wait:
-%ifdef EMULATOR_CHIPSET_TEST
-    call chipset_test_capture_drain
+    post_ui_facade setup_choices
+%else
+%include "firmware/setup-actions.inc"
 %endif
-    call setup_clock
-    mov ah, 1
-    int 0x16
-    jnz .key
-    sti
-    hlt
-    jmp .wait
-.key:
-    xor ah, ah
-    int 0x16
-    cmp al, 27
-    je .done
-    cmp al, 13
-    je .apply
-    cmp ah, 0x3B
-    jne .arrows
-    call setup_help
-    pushad
-    call setup_draw
-    popad
-    jmp .draw
-.arrows:
-    cmp ah, 0x48
-    je .previous
-    cmp ah, 0x4B
-    je .previous
-    cmp ah, 0x50
-    je .next
-    cmp ah, 0x4D
-    jne .wait
-.next:
-    inc bp
-    cmp bp, cx
-    jb .choice_check
-    xor bp, bp
-    jmp .choice_check
-.previous:
-    test bp, bp
-    jnz .decrement
-    mov bp, cx
-.decrement:
-    dec bp
-.choice_check:
-    push ax
-    mov ax, bp
-    call setup_boot_choice_valid
-    pop ax
-    jc .skip_choice
-    cmp byte [fs:U_PAGE], 3
-    jne .draw
-    push ax
-    mov ax, bp
-    call ports_ui_choice_valid
-    pop ax
-    jnc .draw
-.skip_choice:
-    cmp ah, 0x48
-    je .previous
-    cmp ah, 0x4B
-    je .previous
-    jmp .next
-.apply:
-    mov ax, bp
-    call setup_boot_choice_valid
-    jc .wait
-    cmp dl, 2
-    je .store
-    test dl, dl
-    jnz .b
-    shl al, 4
-    and byte [fs:bx], 15
-    or [fs:bx], al
-    jmp .done
-.b:
-    and byte [fs:bx], 0xF0
-    or [fs:bx], al
-    jmp .done
-.store:
-    call setup_enum_store
-    cmp byte [fs:U_PAGE], 5
-    jne .done
-    call chipset_ui_commit
-.done:
-    popad
-    ret
 
 ; AH logical attribute, AL glyph, DI byte offset. Only AH changes; flags retained.
 ; CS lookup works for shared consumers whose DS points at the BDA.
@@ -2331,20 +1049,35 @@ setup_colors:
 THEME_COUNT equ ($ - setup_colors) / 14
 
 ; Hide main-loop function hints while a modal owner consumes the keys.
+%ifdef BOARD_PNP_SUPPORT
 setup_modal_footer:
-    pushad
-    mov di, 24 * 160
-    mov ax, 0x0B20
-    call setup_color
-    mov cx, 80
-    rep stosw
-    popad
-    ret
+    post_ui_facade setup_modal_footer
+%else
+%include "firmware/setup-modal.inc"
+%endif
 
 setup_text:
     push ax
     push si
     push di
+    push bx
+    push cx
+    push dx
+    mov ax, ds
+    mov dx, cs
+    cmp ax, dx
+    jne .next
+    cmp byte [si], 1
+    jne .next
+    inc si
+    mov dl, bh
+    mov cx, 32
+.encoded:
+    lodsb
+    test al, al
+    jz .done
+    call .token
+    jmp .encoded
 .next:
     lodsb
     test al, al
@@ -2356,10 +1089,39 @@ setup_text:
     pop ax
     jmp .next
 .done:
+    pop dx
+    pop cx
+    pop bx
     pop di
     pop si
     pop ax
     ret
+.token:
+    cmp al, 128
+    jb .glyph
+    jcxz .return
+    dec cx
+    xor ah, ah
+    sub al, 128
+    shl ax, 1
+    mov bx, ax
+    push bx
+    mov al, [cs:ui_text_pairs + bx]
+    call .token
+    pop bx
+    mov al, [cs:ui_text_pairs + bx + 1]
+    call .token
+    inc cx
+.return:
+    ret
+.glyph:
+    mov ah, dl
+    call setup_color
+    stosw
+    ret
+ui_text_pairs:
+    db UI_TEXT_PAIRS
+times -(($-ui_text_pairs)!=256) db 0 ; Assembly-time bound also permits NASM-E.
 
 setup_value:
     push ax
@@ -2405,443 +1167,23 @@ setup_number:
     popad
     ret
 
+%ifdef BOARD_PNP_SUPPORT
 setup_draw:
-    mov di, 0
-    mov ax, 0x0720
-    mov cx, 2000
-    push ax
-    call setup_color
-    rep stosw
-    pop ax
-    ; Cyan frame, compact sidebar, and blue masthead follow the concept.
-    mov di, 0
-    mov ax, 0x1F20
-    mov cx, 80 * 2
-    push ax
-    call setup_color
-    rep stosw
-    pop ax
-    mov bx, 0x0B00
-    mov cx, 80
-    mov di, 2 * 160
-    mov ax, 0x0BCD
-    push ax
-    call setup_color
-    rep stosw
-    pop ax
-    mov di, 23 * 160
-    mov cx, 80
-    push ax
-    call setup_color
-    rep stosw
-    pop ax
-    mov di, 3 * 160 + 20 * 2
-    mov cx, 20
-    mov ax, 0x0BB3
-.vertical:
-    push ax
-    call setup_color
-    mov [es:di], ax
-    pop ax
-    add di, 160
-    loop .vertical
-    mov di, 2 * 160 + 20 * 2
-    mov ax, 0x0BD1
-    call setup_color
-    mov [es:di], ax
-    mov di, 23 * 160 + 20 * 2
-    mov ax, 0x0BCF
-    call setup_color
-    mov [es:di], ax
-    ui_text 0, 3, u_platform, 0x1B
-    ui_text 0, 34, u_title, 0x1F
-    call post_processor_name
-    mov di, 1 * 160 + 3 * 2
-    mov bh, 0x1B
-    call setup_text
-    ui_text 0, 58, u_version, 0x1B
-    ui_text 0, 72, bios_version, 0x1B
-    ui_text 1, 58, u_build, 0x1B
-    mov di, 1 * 160 + 69 * 2
-    mov si, 0xFFF5
-    mov cx, 8
-.build_date:
-    lodsb
-    mov ah, 0x1B
-    push ax
-    call setup_color
-    stosw
-    pop ax
-    loop .build_date
-    ui_text 3, 2, u_menu, 0x0B
-    ui_text 5, 2, u_standard, 0x07
-    ui_text 6, 2, u_drives, 0x07
-    ui_text 7, 2, u_boot, 0x07
-    ui_text 8, 2, u_devices, 0x07
-    ui_text 9, 2, u_chip_menu, 0x07
-    ui_text 10, 2, u_exit, 0x07
-    movzx ax, byte [fs:U_PAGE]
-    cmp al, 4
-    jb .sidebar_row
-    xor al, 1
-.sidebar_row:
-    add ax, 5
-    imul di, ax, 160
-    add di, 2 * 2
-    mov bx, ax
-    mov si, u_standard
-    cmp byte [fs:U_PAGE], 0
-    je .sidebar
-    mov si, u_drives
-    cmp byte [fs:U_PAGE], 1
-    je .sidebar
-    mov si, u_boot
-    cmp byte [fs:U_PAGE], 2
-    je .sidebar
-    mov si, u_devices
-    cmp byte [fs:U_PAGE], 3
-    je .sidebar
-    mov si, u_exit
-    cmp byte [fs:U_PAGE], 4
-    je .sidebar
-    mov si, u_chip_menu
-.sidebar:
-    mov bh, 0x1F
-    cmp byte [fs:U_FOCUS], 0
-    je .highlight
-    mov bh, 0x0B
-.highlight:
-    call setup_text
-    cmp byte [fs:U_FOCUS], 0
-    jne .footer
-    pushad
-    sub di, 2
-    mov cx, 18
-    mov dx, 1
-    call setup_selection_bar
-    popad
-.footer:
-    cmp byte [fs:U_THEME], 0
-    je .footer_ready
-    mov di, 24 * 160
-    mov ax, 0x0B20
-    call setup_color
-    mov cx, 80
-    rep stosw
-.footer_ready:
-    mov si, u_footer
-    cmp byte [fs:U_EDIT], 0
-    je .footer_text
-    mov si, u_edit_footer
-    cmp byte [fs:U_EDIT], 2
-    jne .footer_text
-    cmp byte [fs:U_CLOCK24], 0
-    jne .footer_text
-    mov si, u_time_footer
-.footer_text:
-    mov di, 24 * 160 + 2 * 2
-    mov bh, 0x0B
-    call setup_text
-    cmp byte [fs:U_PAGE], 5
-    jne .ordinary_page
-    call chipset_ui_draw
-    jmp .done
-.ordinary_page:
-    cmp byte [fs:U_PAGE], 1
-    je .drives
-    cmp byte [fs:U_PAGE], 2
-    je .boot
-    cmp byte [fs:U_PAGE], 3
-    je .devices
-    cmp byte [fs:U_PAGE], 4
-    je .exit_page
-    ui_text 3, 23, u_standard_title, 0x0B
-    ui_text 5, UI_LABEL_COL, u_date, 0x07
-    ui_text 6, UI_LABEL_COL, u_time, 0x07
-    ui_text 7, UI_LABEL_COL, u_clock_format, 0x07
-    movzx bx, byte [fs:U_CLOCK24]
-    shl bx, 1
-    mov si, [u_clock_formats + bx]
-    mov di, 7 * 160 + UI_VALUE_COL * 2
-    mov bh, 7
-    call setup_text
-    ui_text 9, UI_LABEL_COL, u_total, 0x07
-    memory_extended_kib eax
-    add eax, 1024
-    mov di, 9 * 160 + UI_VALUE_COL * 2
-    call setup_number
-    ui_text 9, 59, u_kb, 0x07
-    ui_text 10, UI_LABEL_COL, u_base, 0x07
-    push es
-    xor ax, ax
-    mov es, ax
-    movzx eax, word [es:0x0413]
-    pop es
-    mov di, 10 * 160 + UI_VALUE_COL * 2
-    call setup_number
-    ui_text 10, 59, u_kb, 0x07
-    ui_text 11, UI_LABEL_COL, u_extended, 0x07
-    memory_extended_kib eax
-    mov di, 11 * 160 + UI_VALUE_COL * 2
-    call setup_number
-    ui_text 11, 59, u_kb, 0x07
-    cmp byte [fs:U_EDIT], 0
-    je .done
-    mov si, U_BUFFER
-    mov di, 19 * 160 + 24 * 2
-    mov bh, 0x1E
-    call setup_value
-    movzx bx, byte [fs:U_POSITION]
-    shl bx, 1
-    push di
-    add di, bx
-    mov ax, 0x7020
-    call setup_color
-    mov [es:di + 1], ah
-    pop di
-    jmp .done
-.drives:
-    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
-    ja .channel
-    call ide_ui_draw
-    jmp .done
-.channel:
-    ui_text 3, 23, u_drives_title, 0x0B
-    ui_text 5, UI_LABEL_COL, u_drive_a, 0x07
-    mov al, [fs:U_TYPES]
-    shr al, 4
-    call .floppy
-    mov di, 5 * 160 + UI_VALUE_COL * 2
-    xor cl, cl
-    call setup_field_color
-    call setup_text
-    ui_text 6, UI_LABEL_COL, u_drive_b, 0x07
-    mov al, [fs:U_TYPES]
-    and al, 15
-    call .floppy
-    mov di, 6 * 160 + UI_VALUE_COL * 2
-    mov cl, 1
-    call setup_field_color
-    call setup_text
-    xor bp,bp
-.ide_policy:
-    mov bx,bp
-    shl bx,1
-    mov si,[cs:u_ide_policy_labels+bx]
-    mov di,bp
-    add di,8
-    imul di,160
-    push di
-    add di,UI_LABEL_COL*2
-    mov cx,bp
-    add cl,2
-    call setup_field_color
-    and bh,0x0F
-    call setup_text
-    pop di
-    add di,UI_VALUE_COL*2
-    mov cx,bp
-    add cl,2
-    call setup_field_color
-    push bx
-    mov ax,bp
-    call ide_ui_enable_index
-    cmp byte [fs:bx],0
-    je .ide_disabled
-    mov bx,bp
-    imul bx,IDE_RECORD_SIZE
-    mov al,[fs:U_IDE+1+bx+IDE_TYPE]
-    pop bx
-    call ide_ui_type_text
-    jmp .ide_arrow
-.ide_disabled:
-    pop bx
-    mov si,u_ide_none
-    call setup_text
-.ide_arrow:
-    call setup_submenu_arrow
-    inc bp
-    cmp bp,BOARD_ATA_DEVICE_COUNT
-    jb .ide_policy
-.controller:
-    ui_text BOARD_ATA_DEVICE_COUNT+9, UI_LABEL_COL, u_ide_controller, 0x07
-    call setup_ide_controller_parameters
-    movzx bx, byte [fs:bx]
-    shl bx, 1
-    mov si, [cs:si + bx]
-    mov di, (BOARD_ATA_DEVICE_COUNT+9) * 160 + UI_VALUE_COL * 2
-    mov cl, BOARD_ATA_DEVICE_COUNT+2
-    call setup_field_color
-    call setup_text
-    ui_text BOARD_ATA_DEVICE_COUNT+10, UI_LABEL_COL, u_fdc, 0x07
-    movzx bx, byte [fs:U_PORTS+P_FLOPPY]
-    shl bx, 1
-    mov si, [u_seek_values + bx]
-    mov di, (BOARD_ATA_DEVICE_COUNT+10) * 160 + UI_VALUE_COL * 2
-    mov cl, BOARD_ATA_DEVICE_COUNT+3
-    call setup_field_color
-    call setup_text
-    ui_text BOARD_ATA_DEVICE_COUNT+11, UI_LABEL_COL, u_swap, 0x07
-    movzx bx, byte [fs:U_SWAP]
-    shl bx, 1
-    mov si, [u_seek_values + bx]
-    mov di, (BOARD_ATA_DEVICE_COUNT+11) * 160 + UI_VALUE_COL * 2
-    mov cl, BOARD_ATA_DEVICE_COUNT+4
-    call setup_field_color
-    call setup_text
-    jmp .done
-.floppy:
-    movzx bx, al
-    shl bx, 1
-    mov si, [u_floppies + bx]
-    ret
-.exit_page:
-    ui_text 3, 23, u_exit_title, 0x0B
-    mov si, u_save
-    mov di, 5 * 160 + 24 * 2
-    xor cl, cl
-    call setup_field_color
-    call setup_text
-    mov si, u_discard
-    mov di, 6 * 160 + 24 * 2
-    mov cl, 1
-    call setup_field_color
-    call setup_text
-    jmp .done
-.devices:
-%ifdef BOARD_PORTS_SETUP_DRAW
-    call BOARD_PORTS_SETUP_DRAW
+    post_ui_facade setup_draw
 %else
-%ifdef BOARD_PORTS_NOTE1
-    ui_text 5,UI_LABEL_COL,BOARD_PORTS_NOTE1,7
-    ui_text 6,UI_LABEL_COL,BOARD_PORTS_NOTE2,7
+%include "firmware/setup-draw.inc"
 %endif
-    call ports_ui_draw
-%endif
-    jmp .done
-.boot:
-    ui_text 3, 23, u_boot_title, 0x0B
-    xor bp, bp
-.boot_field:
-    mov bx, bp
-    shl bx, 1
-    mov si, [u_boot_labels + bx]
-    mov di, bp
-    movzx di, byte [cs:u_boot_rows + di]
-    imul di, 160
-    add di, UI_LABEL_COL * 2
-    mov bh, 7
-    call setup_text
-    add di, (UI_VALUE_COL - UI_LABEL_COL) * 2
-    mov bx, bp
-    shl bx, 1
-    mov bx, [u_boot_pointers + bx]
-    movzx bx, byte [fs:bx]
-    shl bx, 1
-    mov si, [u_boot_values + bx]
-    cmp bp, 4
-    jb .boot_value
-    mov si, [u_seek_values + bx]
-    cmp bp, 6
-    jne .boot_value
-    mov si, [u_halt_values + bx]
-.boot_value:
-    mov cx, bp
-    call setup_field_color
-    call setup_text
-    inc bp
-    cmp bp, BOOT_FIELD_COUNT
-    jb .boot_field
-.done:
-    call setup_field_highlight
-    ret
 
-; Color whole cells, including spaces, without changing their characters.
-; DI=top-left, CX=width, DX=height, BH=attribute. Preserve every caller register.
+%ifdef BOARD_PNP_SUPPORT
 setup_selection_bar:
-    pushad
-    mov bp, cx
-.row:
-    mov cx, bp
-.cell:
-    mov ah, bh
-    mov al, ' '
-    call setup_color
-    mov [es:di + 1], ah
-    add di, 2
-    loop .cell
-    add di, 160
-    mov ax, bp
-    shl ax, 1
-    sub di, ax
-    dec dx
-    jnz .row
-    popad
-    ret
-
+    post_ui_facade setup_selection_bar
 setup_choice_highlight:
-    cmp bh, 0x70
-    jne .done
-    pushad
-    sub di, 2
-    mov cx, UI_POPUP_WIDTH - 2
-    mov dx, 1
-    call setup_selection_bar
-    popad
-.done:
-    ret
-
+    post_ui_facade setup_choice_highlight
 setup_field_highlight:
-    pushad
-    cmp byte [fs:U_FOCUS], 1
-    jne .done
-    mov cl, [fs:U_FIELD]
-    call setup_field_available
-    jc .done
-    cmp byte [fs:U_PAGE], 5
-    jne .ordinary_highlight
-    call chipset_ui_row
-    imul di, 160
-    add di, (UI_VALUE_COL - 1) * 2
-    mov cx, UI_VALUE_WIDTH + 2
-    jmp .paint
-.ordinary_highlight:
-    movzx bx, cl
-    mov si, u_clock_rows
-    cmp byte [fs:U_PAGE], 0
-    je .value
-    mov si, u_drive_rows
-    cmp byte [fs:U_PAGE], 1
-    jne .boot
-    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
-    ja .value
-    mov si, u_ide_rows
-    jmp .value
-.boot:
-    mov si, u_boot_rows
-    cmp byte [fs:U_PAGE], 2
-    je .value
-    mov si, u_ports_rows
-    cmp byte [fs:U_PAGE], 3
-    je .value
-    mov si, u_exit_rows
-    movzx di, byte [cs:si + bx]
-    imul di, 160
-    add di, (UI_LABEL_COL - 1) * 2
-    mov cx, UI_POPUP_WIDTH + 1
-    jmp .paint
-.value:
-    movzx di, byte [cs:si + bx]
-    imul di, 160
-    add di, (UI_VALUE_COL - 1) * 2
-    mov cx, UI_VALUE_WIDTH + 2
-.paint:
-    mov dx, 1
-    mov bh, 0x1F
-    call setup_selection_bar
-.done:
-    popad
-    ret
+    post_ui_facade setup_field_highlight
+%else
+%include "firmware/setup-fields.inc"
+%endif
 
 u_clock_rows db 5,6,7
 u_drive_rows db 5,6
@@ -2853,16 +1195,31 @@ u_drive_rows db 5,6
     db BOARD_ATA_DEVICE_COUNT+9,BOARD_ATA_DEVICE_COUNT+10,BOARD_ATA_DEVICE_COUNT+11
 u_boot_rows db 5,6,7,8,9,10,11
 %ifdef BOARD_FAST_BOOT_SETTING
+    db 12,13
+%else
     db 12
+%endif
+%ifdef BOARD_PCI_VIDEO_ORDER
+    db 14
 %endif
 u_boot_pointers dw U_BOOT,U_BOOT_SECOND,U_BOOT_THIRD,U_BOOT_FOURTH,U_SEEK,U_NUMLOCK,U_HALT
 %ifdef BOARD_FAST_BOOT_SETTING
     dw U_CHIP+(BOARD_FAST_BOOT_SETTING-C_CHIP)
 %endif
+POST_DELAY_FIELD equ ($-u_boot_pointers)/2
+    dw U_POST_DELAY
+%ifdef BOARD_PCI_VIDEO_ORDER
+VIDEO_ORDER_FIELD equ ($-u_boot_pointers)/2
+    dw U_VIDEO_ORDER
+%endif
 BOOT_FIELD_COUNT equ ($-u_boot_pointers)/2
 u_boot_labels dw u_boot_order,u_boot_second,u_boot_third,u_boot_fourth,u_seek,u_numlock,u_halt
 %ifdef BOARD_FAST_BOOT_SETTING
     dw u_fast_boot
+%endif
+    dw u_post_delay
+%ifdef BOARD_PCI_VIDEO_ORDER
+    dw u_video_order
 %endif
 u_ide_rows db 5,6,7,8,9,10,11,14,15,16
 %ifdef BOARD_IDE_32BIT_POLICY
@@ -2873,605 +1230,40 @@ u_ide_rows db 5,6,7,8,9,10,11,14,15,16
 %endif
 u_exit_rows db 5,6
 
-; Append the retained VGA font's right arrow after the complete value.
-; A single internal space in Type/User labels must not end the scan.
+%ifdef BOARD_PNP_SUPPORT
 setup_submenu_arrow:
-    pushad
-    mov cx, UI_VALUE_WIDTH - 1
-.scan:
-    cmp byte [es:di], ' '
-    jne .next
-    cmp byte [es:di + 2], ' '
-    je .arrow
-.next:
-    add di, 2
-    loop .scan
-    jmp .done
-.arrow:
-    mov al, 0x1A
-    mov ah, bh
-    push di
-    add di, 2
-    call setup_color
-    mov [es:di], ax
-    pop di
-.done:
-    popad
-    ret
-
+    post_ui_facade setup_submenu_arrow
 setup_field_color:
-    mov bh, 7
-    call setup_field_available
-    jnc .enabled
-    mov bh, 8
-    ret
-.enabled:
-    cmp byte [fs:U_FOCUS], 1
-    jne .done
-    cmp [fs:U_FIELD], cl
-    jne .done
-    mov bh, 0x1F
-.done:
-    ret
-
-; CL=field. Carry means unavailable. Drawing and input share this rule.
+    post_ui_facade setup_field_color
 setup_field_available:
-    pushad
-    cmp byte [fs:U_PAGE], 5
-    jne .ordinary_available
-    call chipset_ui_available
-    jc .unavailable
-    jmp .available
-.ordinary_available:
-    cmp byte [fs:U_PAGE], 3
-    je .ports
-    cmp byte [fs:U_PAGE], 1
-    jne .available
-    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
-    jbe .device
-    cmp cl, 2
-    jb .available
-    cmp cl, BOARD_ATA_DEVICE_COUNT+1
-    ja .available
-%if BOARD_ATA_DEVICE_COUNT = 2
-    cmp byte [fs:U_IDE], 0
-    je .unavailable
-%endif
-    jmp .available
-.device:
-    cmp cl, 1                     ; None must still allow a new disk type.
-    jbe .available
-    call ide_ui_enable_pointer
-    cmp byte [fs:bx], 0
-    je .unavailable
-    cmp cl, 2
-    jb .available
-    cmp cl, 6
-    ja .available
-    call ide_ui_record
-    cmp byte [fs:bx + IDE_TYPE], 48
-    jne .unavailable
-    jmp .available
-.ports:
-    call ports_ui_available
-    jc .unavailable
-    jmp .available
-.available:
-    popad
-    clc
-    ret
-.unavailable:
-    popad
-    stc
-    ret
-
-; F1 follows the selected page or clock field, including a pending edit.
+    post_ui_facade setup_field_available
 setup_help:
-    pushad
-    call setup_modal_footer
-    cmp byte [fs:U_PAGE], 5
-    jne .ordinary_help
-    call chipset_ui_help
-    jmp .wait
-.ordinary_help:
-    mov di, 17 * 160 + 23 * 2
-    mov dx, 6
-    mov ax, 0x1E20
-.clear:
-    mov cx, 55
-    push ax
-    call setup_color
-    rep stosw
-    pop ax
-    add di, (80 - 55) * 2
-    dec dx
-    jnz .clear
-%ifdef BOARD_PORTS_SETUP_HELP
-    cmp byte [fs:U_PAGE],3
-    jne .ordinary_port_help
-    call BOARD_PORTS_SETUP_HELP
-    jmp .wait
-.ordinary_port_help:
+    post_ui_facade setup_help
+%else
+%include "firmware/setup-fields-edit.inc"
 %endif
-    movzx bx, byte [fs:U_PAGE]
-    cmp bx, 3
-    jne .old_help
-    mov bx, 25
-    cmp byte [fs:U_FOCUS], 0
-    je .topic
-    movzx bx, byte [fs:U_FIELD]
-    add bx, 26
-    jmp .topic
-.old_help:
-    cmp bx, 4
-    jne .old_help_page
-    mov bx, 3
-.old_help_page:
-    cmp bx, 1
-    jne .normal_help
-    cmp byte [fs:U_IDE_DEVICE], BOARD_ATA_DEVICE_COUNT-1
-    ja .channel_help
-%ifdef BOARD_IDE_32BIT_POLICY
-    cmp byte [fs:U_FIELD],10
-    jne .ordinary_ide_help
-    mov bx,IDE_DWORD_HELP_TOPIC
-    jmp .topic
-.ordinary_ide_help:
-%endif
-%ifdef BOARD_ATA_PIO_POLICY
-    cmp byte [fs:U_FIELD],11
-    jne .ordinary_pio_help
-    mov bx,IDE_PIO_HELP_TOPIC
-    jmp .topic
-.ordinary_pio_help:
-%endif
-    movzx bx, byte [fs:U_FIELD]
-    add bx, 14
-    jmp .topic
-.channel_help:
-    cmp byte [fs:U_FIELD], BOARD_ATA_DEVICE_COUNT+4
-    jne .channel_existing
-    mov bx, 35
-    jmp .topic
-.channel_existing:
-    cmp byte [fs:U_FOCUS], 1
-    jne .normal_help
-    mov al,[fs:U_FIELD]
-    sub al,2
-    cmp al,BOARD_ATA_DEVICE_COUNT
-    jae .channel_controls
-    mov bx,8
-    jmp .topic
-.channel_controls:
-    cmp byte [fs:U_FIELD], BOARD_ATA_DEVICE_COUNT+3
-    jne .ide_help
-    mov bx, 31             ; Existing Floppy Controller topic.
-    jmp .topic
-.ide_help:
-    cmp byte [fs:U_FIELD], BOARD_ATA_DEVICE_COUNT+2
-    jne .normal_help
-    mov bx, 24
-    jmp .topic
-.normal_help:
-    cmp byte [fs:U_FOCUS], 0
-    je .page
-    cmp bx, 1
-    je .drive_field
-    cmp bx, 2
-    je .boot_field
-    cmp bx, 3
-    je .exit_field
-    movzx bx, byte [fs:U_FIELD]
-    cmp bx, 2
-    jne .clock_time_help
-    mov bx, 37
-    jmp .topic
-.clock_time_help:
-    cmp bx, 1
-    jne .clock_date_help
-    cmp byte [fs:U_CLOCK24], 1
-    jne .clock_date_help
-    mov bx, 38
-    jmp .topic
-.clock_date_help:
-    inc bx
-    jmp .topic
-.drive_field:
-    mov bx, 6
-    cmp byte [fs:U_FIELD], 3
-    jne .field
-    mov bx, 13
-    jmp .topic
-    jmp .field
-.boot_field:
-%ifdef BOARD_FAST_BOOT_SETTING
-    cmp byte [fs:U_FIELD], 7
-    jne .ordinary_boot_help
-    mov bx, FAST_BOOT_HELP_TOPIC
-    jmp .topic
-.ordinary_boot_help:
-%endif
-    mov bx, 9
-    cmp byte [fs:U_FIELD], 4
-    jb .topic
-    mov bx, 10
-    cmp byte [fs:U_FIELD], 4
-    je .topic
-    mov bx, 34
-    cmp byte [fs:U_FIELD], 5
-    je .topic
-    mov bx, 36
-    jmp .topic
-.exit_field:
-    mov bx, 11
-.field:
-    movzx ax, byte [fs:U_FIELD]
-    add bx, ax
-    jmp .topic
-.page:
-    test bx, bx
-    jz .topic
-    add bx, 2
-.topic:
-    imul bx, bx, 6
-    mov si, [u_help_topics + bx]
-    mov bp, bx
-    cmp byte [fs:U_PAGE],1
-    jne .boot_title
-    cmp byte [fs:U_IDE_DEVICE],BOARD_ATA_DEVICE_COUNT-1
-    jbe .help_title
-    cmp byte [fs:U_FOCUS],1
-    jne .help_title
-    movzx ax,byte [fs:U_FIELD]
-    sub ax,2
-    cmp ax,BOARD_ATA_DEVICE_COUNT
-    jae .help_title
-    shl ax,1
-    push bx
-    mov bx,ax
-    mov si,[u_ide_policy_labels+bx]
-    pop bx
-    jmp .help_title
-.boot_title:
-    cmp byte [fs:U_PAGE], 2
-    jne .help_title
-    cmp byte [fs:U_FOCUS], 1
-    jne .help_title
-    movzx ax, byte [fs:U_FIELD]
-    cmp ax, 4
-    jae .help_title
-    shl ax, 1
-    push bx
-    mov bx, ax
-    mov si, [u_boot_labels + bx]
-    pop bx
-.help_title:
-    mov di, 18 * 160 + 25 * 2
-    mov bh, 0x1E
-    call setup_text
-    mov si, [ds:u_help_topics + bp + 2]
-    mov di, 19 * 160 + 25 * 2
-    call setup_text
-    mov si, [ds:u_help_topics + bp + 4]
-    mov di, 20 * 160 + 25 * 2
-    call setup_text
-.wait:
-%ifdef EMULATOR_CHIPSET_TEST
-    call chipset_test_capture_drain
-%endif
-    call setup_clock
-    mov ah, 1
-    int 0x16
-    jnz .key
-    sti
-    hlt
-    jmp .wait
-.key:
-    xor ah, ah
-    int 0x16
-    cmp al, 27
-    je .done
-    cmp ah, 0x3B
-    jne .wait
-.done:
-    popad
-    ret
 
+%ifdef BOARD_PNP_SUPPORT
 setup_pair:
-    push ax
-    mov ah, al
-    shr al, 4
-    add al, '0'
-    mov [fs:di], al
-    inc di
-    mov al, ah
-    and al, 15
-    add al, '0'
-    mov [fs:di], al
-    inc di
-    pop ax
-    ret
-
-; Read live RTC on idle iterations. Edit buffer is separate and never touched.
+    post_ui_facade setup_pair
 setup_clock:
-    pushad
-    mov di, U_DATE
-    mov ah, 4
-    int 0x1A
-    jc .bad_date
-    and byte [fs:U_CONFIRMED], 0xFD
-    mov al, dh
-    call setup_pair
-    mov byte [fs:di], '/'
-    inc di
-    mov al, dl
-    call setup_pair
-    mov byte [fs:di], '/'
-    inc di
-    mov al, ch
-    call setup_pair
-    mov al, cl
-    call setup_pair
-    mov byte [fs:di], 0
-    jmp .time
-.bad_date:
-    test byte [fs:U_CONFIRMED], 2
-    jnz .time
-    mov dword [fs:U_DATE], '01/0'
-    mov dword [fs:U_DATE + 4], '1/19'
-    mov word [fs:U_DATE + 8], '80'
-    mov byte [fs:U_DATE + 10], 0
-.time:
-    mov ah, 2
-    int 0x1A
-    jc .bad_time
-    and byte [fs:U_CONFIRMED], 0xFE
-    mov [fs:U_DST], dl
-    mov [fs:U_HOUR], ch
-    mov [fs:U_MINUTE], cl
-    mov [fs:U_SECOND], dh
-    jmp .display
-.bad_time:
-    mov al, 0x0B
-    call rtc_read
-    and al, 1
-    mov [fs:U_DST], al
-    test byte [fs:U_CONFIRMED], 1
-    jnz .display
-    mov word [fs:U_HOUR], 0
-    mov byte [fs:U_SECOND], 0
-.display:
-    call setup_format_time
-    cmp byte [fs:U_PAGE], 0
-    jne .done
-    mov si, U_DATE
-    mov di, 5 * 160 + 49 * 2
-    mov bh, 7
-    cmp byte [fs:U_FOCUS], 1
-    jne .date
-    cmp byte [fs:U_FIELD], 0
-    jne .date
-    mov bh, 0x1F
-.date:
-    call setup_value
-    mov si, U_TIME
-    mov di, 6 * 160 + 49 * 2
-    mov bh, 7
-    cmp byte [fs:U_FOCUS], 1
-    jne .time_field
-    cmp byte [fs:U_FIELD], 1
-    jne .time_field
-    mov bh, 0x1F
-.time_field:
-    call .clear_suffix
-    call setup_value
-.done:
-    popad
-    ret
-.clear_suffix:
-    push ax
-    mov ah, bh
-    mov al, ' '
-    call setup_color
-    ; Shortening24-hour text must also erase the previous AM/PM suffix.
-    mov byte [es:di + 16], ' '
-    mov byte [es:di + 17], ah
-    mov byte [es:di + 18], ' '
-    mov byte [es:di + 19], ah
-    mov byte [es:di + 20], ' '
-    mov byte [es:di + 21], ah
-    pop ax
-    ret
-
+    post_ui_facade setup_clock
 setup_format_time:
-    pushad
-    mov di, U_TIME
-    mov al, [fs:U_HOUR]
-    cmp byte [fs:U_CLOCK24], 1
-    je .hour
-    test al, al
-    jnz .afternoon
-    mov al, 0x12
-    jmp .hour
-.afternoon:
-    cmp al, 0x12
-    jbe .hour
-    sub al, 0x12
-    das
-.hour:
-    call setup_pair
-    mov byte [fs:di], ':'
-    inc di
-    mov al, [fs:U_MINUTE]
-    call setup_pair
-    mov byte [fs:di], ':'
-    inc di
-    mov al, [fs:U_SECOND]
-    call setup_pair
-    cmp byte [fs:U_CLOCK24], 1
-    je .end
-    mov byte [fs:di], ' '
-    inc di
-    mov al, 'A'
-    cmp byte [fs:U_HOUR], 0x12
-    jb .suffix
-    mov al, 'P'
-.suffix:
-    mov [fs:di], al
-    inc di
-    mov byte [fs:di], 'M'
-    inc di
-.end:
-    mov byte [fs:di], 0
-    popad
-    ret
-
+    post_ui_facade setup_format_time
 setup_edit_begin:
-    mov byte [fs:U_POSITION], 0
-    mov si, U_DATE
-    mov di, U_BUFFER
-    mov cx, 11
-    mov al, 1
-    cmp byte [fs:U_FIELD], 0
-    je .copy
-    mov si, U_TIME
-    mov cx, 12
-    mov al, 2
-.copy:
-    mov [fs:U_EDIT], al
-.byte:
-    mov al, [fs:si]
-    mov [fs:di], al
-    inc si
-    inc di
-    loop .byte
-    ret
-
+    post_ui_facade setup_edit_begin
 setup_parse_pair:
-    mov al, [fs:si]
-    sub al, '0'
-    shl al, 4
-    inc si
-    mov ah, [fs:si]
-    sub ah, '0'
-    or al, ah
-    inc si
-    ret
-
+    post_ui_facade setup_parse_pair
 setup_edit_apply:
-    mov si, U_BUFFER
-    call setup_parse_pair
-    cmp byte [fs:U_EDIT], 1
-    jne .time
-    mov dh, al
-    inc si
-    call setup_parse_pair
-    mov dl, al
-    inc si
-    call setup_parse_pair
-    mov ch, al
-    call setup_parse_pair
-    mov cl, al
-    mov ah, 5
-    int 0x1A
-    jc .done
-    mov di, U_DATE
-    mov cx, 11
-    or byte [fs:U_CONFIRMED], 2
-    jmp .copy
-.time:
-    mov ch, al
-    cmp byte [fs:U_CLOCK24], 1
-    je .minutes
-    cmp al, 1
-    jb .invalid
-    cmp al, 0x12
-    ja .invalid
-    cmp al, 0x12
-    jne .period
-    xor al, al
-.period:
-    cmp byte [fs:U_BUFFER + 9], 'P'
-    jne .converted
-    add al, 0x12
-    daa
-.converted:
-    mov ch, al
-.minutes:
-    inc si
-    call setup_parse_pair
-    mov cl, al
-    inc si
-    call setup_parse_pair
-    mov dh, al
-    mov dl, [fs:U_DST]
-    push cx
-    push dx
-    mov ah, 3
-    int 0x1A
-    pop dx
-    pop cx
-    jc .done
-    mov [fs:U_HOUR], ch
-    mov [fs:U_MINUTE], cl
-    mov [fs:U_SECOND], dh
-    or byte [fs:U_CONFIRMED], 1
-    call setup_format_time
-    clc
-    ret
-.copy:
-    ; A valid setter can succeed before the other power-lost domain is repaired.
-    ; Keep its confirmed display without relaxing the shared RTC getter policy.
-    mov si, U_BUFFER
-.byte:
-    mov al, [fs:si]
-    mov [fs:di], al
-    inc si
-    inc di
-    loop .byte
-    clc
-.done:
-    ret
-.invalid:
-    stc
-    ret
-
+    post_ui_facade setup_edit_apply
 setup_confirm:
-    call setup_modal_footer
-    mov di, 21 * 160 + 23 * 2
-    mov bh, 0x1E
-    call setup_text
-.wait:
-    call setup_clock
-    mov ah, 1
-    int 0x16
-    jnz .key
-    sti
-    hlt
-    jmp .wait
-.key:
-    xor ah, ah
-    int 0x16
-    cmp al, 13
-    je .yes
-    cmp al, 'y'
-    je .yes
-    cmp al, 'Y'
-    je .yes
-    cmp al, 27
-    je .no
-    cmp al, 'n'
-    je .no
-    cmp al, 'N'
-    jne .wait
-.no:
-    stc
-    ret
-.yes:
-    clc
-    ret
+    post_ui_facade setup_confirm
+%else
+%include "firmware/setup-clock-edit.inc"
+%endif
 
-u_title db 'bAIos Setup',0
+u_title:
+    ui_string 'bAIos Setup', u_title
 u_summary db 'bAIos',0
 u_cpu_unknown db 'CPU family/model/speed: Unknown',0
 u_fpu db 'Numeric processor',0
@@ -3502,27 +1294,42 @@ u_cmos_recover db 'Enter/D: Load defaults and continue.  Delete: Setup.',13,10,0
 u_platform db BOARD_DISPLAY_NAME,0
 u_build db 'ROM build:',0
 u_menu db 'SETUP MENU',0
-u_standard db 'Standard Setup',0
+u_standard:
+    ui_string 'Standard Setup', u_standard
 u_drives db 'Drives',0
 u_boot db 'Boot',0
-u_exit db 'Exit Setup',0
-u_standard_title db 'bAIos Setup > Standard Setup',0
-u_drives_title db 'bAIos Setup > Drives',0
-u_boot_title db 'bAIos Setup > Boot',0
-u_exit_title db 'bAIos Setup > Exit Setup',0
-u_footer db 'F1 Help   F4/F5 Theme   F9 Defaults   F10 Save',0
-u_edit_footer db 'F1 Help   F4/F5 Theme',0
-u_time_footer db 'A/P AM/PM   F1 Help   F4/F5 Theme',0
-u_version db 'Version:',0
-u_clock_format db 'Time Format',0
+u_exit:
+    ui_string 'Exit Setup', u_exit
+u_standard_title:
+    ui_string 'bAIos Setup > Standard Setup', u_standard_title
+u_drives_title:
+    ui_string 'bAIos Setup > Drives', u_drives_title
+u_boot_title:
+    ui_string 'bAIos Setup > Boot', u_boot_title
+u_exit_title:
+    ui_string 'bAIos Setup > Exit Setup', u_exit_title
+u_footer:
+    ui_string 'F1 Help   F4/F5 Theme   F9 Defaults   F10 Save', u_footer
+u_edit_footer:
+    ui_string 'F1 Help   F4/F5 Theme', u_edit_footer
+u_time_footer:
+    ui_string 'A/P AM/PM   F1 Help   F4/F5 Theme', u_time_footer
+u_version:
+    ui_string 'Version:', u_version
+u_clock_format:
+    ui_string 'Time Format', u_clock_format
 u_clock_formats dw u_clock12,u_clock24
 u_clock12 db '12 Hour',0
 u_clock24 db '24 Hour',0
 u_choices db 'SELECT VALUE',0
-u_choices_keys db 'Arrows Select   Enter Apply   Esc Cancel',0
-u_date db 'System Date',0
-u_time db 'System Time',0
-u_total db 'Total Memory',0
+u_choices_keys:
+    ui_string 'Arrows Select   Enter Apply   Esc Cancel', u_choices_keys
+u_date:
+    ui_string 'System Date', u_date
+u_time:
+    ui_string 'System Time', u_time
+u_total:
+    ui_string 'Total Memory', u_total
 u_base db 'Base Memory',0
 u_extended db 'Extended Memory',0
 u_mb db 'MB',0
@@ -3531,26 +1338,42 @@ u_slash db '/',0
 u_invalid db 'Invalid date or time.',0
 u_drive_a db 'Floppy Drive A',0
 u_drive_b db 'Floppy Drive B',0
-u_hdd_policy db 'Primary IDE Master',0
-u_slave_policy db 'Primary IDE Slave',0
+u_hdd_policy:
+    ui_string 'Primary IDE Master', u_hdd_policy
+u_slave_policy:
+    ui_string 'Primary IDE Slave', u_slave_policy
 u_geometry db 'BIOS C / H / S',0
 u_absent db 'Not detected',0
-u_boot_order db 'First Boot Device',0
-u_boot_second db 'Second Boot Device',0
-u_boot_third db 'Third Boot Device',0
-u_boot_fourth db 'Fourth Boot Device',0
-u_numlock db 'Boot Num Lock',0
-u_swap db 'Swap Floppy Drives',0
-u_halt db 'Halt On',0
+u_boot_order:
+    ui_string 'First Boot Device', u_boot_order
+u_boot_second:
+    ui_string 'Second Boot Device', u_boot_second
+u_boot_third:
+    ui_string 'Third Boot Device', u_boot_third
+u_boot_fourth:
+    ui_string 'Fourth Boot Device', u_boot_fourth
+u_numlock:
+    ui_string 'Boot Num Lock', u_numlock
+u_swap:
+    ui_string 'Swap Floppy Drives', u_swap
+u_halt:
+    ui_string 'Halt On', u_halt
 u_keyboard_absent db 'WARNING: Keyboard not detected.',13,10,0
-u_seek db 'Floppy Seek',0
-u_save db 'Save and Exit',0
-u_discard db 'Discard and Exit',0
+u_seek:
+    ui_string 'Floppy Seek', u_seek
+u_save:
+    ui_string 'Save and Exit', u_save
+u_discard:
+    ui_string 'Discard and Exit', u_discard
 u_save_error db 'CMOS verification failed. Settings not applied.',0
-u_save_trace db 'CMOS reg/expected/read:',0
-u_save_confirm db 'Save and restart? Enter/Y = Yes   Esc/N = Cancel',0
-u_discard_confirm db 'Discard settings? Enter/Y = Yes   Esc/N = Cancel',0
-u_defaults_confirm db 'Load defaults? Enter/Y = Yes   Esc/N = Cancel',0
+u_save_trace:
+    ui_string 'CMOS reg/expected/read:', u_save_trace
+u_save_confirm:
+    ui_string 'Save and restart? Enter/Y = Yes   Esc/N = Cancel', u_save_confirm
+u_discard_confirm:
+    ui_string 'Discard settings? Enter/Y = Yes   Esc/N = Cancel', u_discard_confirm
+u_defaults_confirm:
+    ui_string 'Load defaults? Enter/Y = Yes   Esc/N = Cancel', u_defaults_confirm
 u_seek_error_a db 'Floppy A seek error.',13,10,0
 u_seek_error_b db 'Floppy B seek error.',13,10,0
 u_post_continue db 'Press any key to continue or Delete for Setup.',13,10,0
@@ -3606,22 +1429,35 @@ IDE_DWORD_HELP_TOPIC equ ($-u_help_topics)/6
 IDE_PIO_HELP_TOPIC equ ($-u_help_topics)/6
     dw u_ide_pio,u_help_ide_pio1,u_help_ide_pio2
 %endif
+POST_DELAY_HELP_TOPIC equ ($-u_help_topics)/6
+    dw u_post_delay,u_help_post_delay1,u_help_post_delay2
+%ifdef BOARD_PCI_VIDEO_ORDER
+VIDEO_ORDER_HELP_TOPIC equ ($-u_help_topics)/6
+    dw u_video_order,u_help_video_order1,u_help_video_order2
+%endif
 %ifdef BOARD_FAST_BOOT_SETTING
 FAST_BOOT_HELP_TOPIC equ ($-u_help_topics)/6
     dw u_fast_boot,u_help_fast1,u_help_fast2
-u_fast_boot db 'Fast Boot',0
-u_help_fast1 db 'Skip the startup RAM test above 1 MB.',0
-u_help_fast2 db 'Off runs the full test and is the default.',0
+u_fast_boot:
+    ui_string 'Fast Boot', u_fast_boot
+u_help_fast1:
+    ui_string 'Skip the startup RAM test above 1 MB.', u_help_fast1
+u_help_fast2:
+    ui_string 'Off runs the full test and is the default.', u_help_fast2
 %endif
 %ifdef BOARD_IDE_32BIT_POLICY
 u_ide_dword db '32-bit ATA Transfers',0
-u_help_ide_dword1 db 'Uses 32-bit data transfers on supported IDE.',0
-u_help_ide_dword2 db 'Disabled uses the compatible 16-bit default.',0
+u_help_ide_dword1:
+    ui_string 'Uses 32-bit data transfers on supported IDE.', u_help_ide_dword1
+u_help_ide_dword2:
+    ui_string 'Disabled uses the compatible 16-bit default.', u_help_ide_dword2
 %endif
 %ifdef BOARD_ATA_PIO_POLICY
 u_ide_pio db 'PIO Mode Limit',0
-u_help_ide_pio1 db 'Limits IDE speed. Auto selects a supported mode.',0
-u_help_ide_pio2 db 'Faster modes need the actual 33 MHz timing clock.',0
+u_help_ide_pio1:
+    ui_string 'Limits IDE speed. Auto selects a supported mode.', u_help_ide_pio1
+u_help_ide_pio2:
+    ui_string 'Faster modes need the actual 33 MHz timing clock.', u_help_ide_pio2
 u_ide_pio_values dw u_auto,u_ide_pio0,u_ide_pio1,u_ide_pio2,u_ide_pio3,u_ide_pio4
 u_ide_pio_choices dw u_ide_pio0,u_ide_pio1,u_ide_pio2,u_ide_pio3,u_ide_pio4,u_auto
 u_ide_pio0 db '0',0
@@ -3643,32 +1479,63 @@ ide_ui_pio_value:
     or al,ah
     ret
 %endif
-u_help_standard1 db 'System date, time, and detected memory.',0
-u_help_standard2 db 'Select a clock field to edit it.',0
-u_help_date1 db 'Calendar date: 1980-2099.',0
-u_help_date2 db 'MM/DD/YYYY. Enter applies the date.',0
-u_help_time1 db '12-hour clock. Press A for AM or P for PM.',0
-u_help_time2 db 'Enter applies the time; Esc cancels the edit.',0
-u_help_time24 db '24-hour clock: 00:00:00 to 23:59:59.',0
-u_help_format1 db 'Choose a 12-hour or 24-hour clock display.',0
-u_help_format2 db 'This changes how the time appears in Setup.',0
-u_help_drives1 db 'Choose the installed drives and their settings.',0
-u_help_drives2 db 'Enter opens all choices. Arrows change values.',0
-u_help_exit1 db 'Save settings and restart, or discard edits.',0
-u_help_exit2 db 'Confirmed clock changes are retained.',0
-u_help_floppy1 db 'Select the installed drive type, or None.',0
-u_help_floppy2 db 'The type sets drive capacity, not disk capacity.',0
-u_help_hdd1 db 'Auto detects hard disks and CD drives at startup.',0
-u_help_hdd2 db 'Disabled stops the BIOS from using this drive.',0
-u_help_boot1 db 'Choose which device to try at each boot step.',0
-u_help_boot2 db 'Other tries boot support on expansion cards.',0
-u_help_seek1 db 'Check drives during POST. Default Enabled.',0
-u_help_seek2 db 'No disk is needed. Halt On sets error behavior.',0
-u_help_save1 db 'Save your settings and restart the computer.',0
-u_help_save2 db 'The BIOS checks that your settings were saved.',0
-u_help_discard1 db 'Return without saving your setting changes.',0
-u_help_discard2 db 'Confirmed clock changes are retained.',0
+u_help_standard1:
+    ui_string 'System date, time, and detected memory.', u_help_standard1
+u_help_standard2:
+    ui_string 'Select a clock field to edit it.', u_help_standard2
+u_help_date1:
+    ui_string 'Calendar date: 1980-2099.', u_help_date1
+u_help_date2:
+    ui_string 'MM/DD/YYYY. Enter applies the date.', u_help_date2
+u_help_time1:
+    ui_string '12-hour clock. Press A for AM or P for PM.', u_help_time1
+u_help_time2:
+    ui_string 'Enter applies the time; Esc cancels the edit.', u_help_time2
+u_help_time24:
+    ui_string '24-hour clock: 00:00:00 to 23:59:59.', u_help_time24
+u_help_format1:
+    ui_string 'Choose a 12-hour or 24-hour clock display.', u_help_format1
+u_help_format2:
+    ui_string 'This changes how the time appears in Setup.', u_help_format2
+u_help_drives1:
+    ui_string 'Choose the installed drives and their settings.', u_help_drives1
+u_help_drives2:
+    ui_string 'Enter opens all choices. Arrows change values.', u_help_drives2
+u_help_exit1:
+    ui_string 'Save settings and restart, or discard edits.', u_help_exit1
+u_help_exit2:
+    ui_string 'Confirmed clock changes are retained.', u_help_exit2
+u_help_floppy1:
+    ui_string 'Select the installed drive type, or None.', u_help_floppy1
+u_help_floppy2:
+    ui_string 'The type sets drive capacity, not disk capacity.', u_help_floppy2
+u_help_hdd1:
+    ui_string 'Auto detects hard disks and CD drives at startup.', u_help_hdd1
+u_help_hdd2:
+    ui_string 'Disabled stops the BIOS from using this drive.', u_help_hdd2
+u_help_boot1:
+    ui_string 'Choose which device to try at each boot step.', u_help_boot1
+u_help_boot2:
+    ui_string 'Other tries boot support on expansion cards.', u_help_boot2
+u_help_seek1:
+    ui_string 'Check drives during POST. Default Enabled.', u_help_seek1
+u_help_seek2:
+    ui_string 'No disk is needed. Halt On sets error behavior.', u_help_seek2
+u_help_save1:
+    ui_string 'Save your settings and restart the computer.', u_help_save1
+u_help_save2:
+    ui_string 'The BIOS checks that your settings were saved.', u_help_save2
+u_help_discard1:
+    ui_string 'Return without saving your setting changes.', u_help_discard1
+u_help_discard2:
+    ui_string 'Confirmed clock changes are retained.', u_help_discard2
 u_hdd_values dw u_disabled,u_auto
+%ifndef BOARD_PNP_SETUP_LATE
+%include "firmware/setup-post-options.inc"
+%endif
+%ifdef PB430_PORT
+%include "firmware/setup-post-delay-values.inc"
+%endif
 u_boot_values dw u_disabled,u_boot_floppy,u_boot_hdd,u_boot_cd,u_boot_other
 u_boot_other db 'Other',0
 u_boot_floppy db 'Floppy',0
@@ -3678,12 +1545,18 @@ u_halt_values dw u_halt_all,u_halt_none,u_halt_keyboard
 u_halt_all db 'All Errors',0
 u_halt_none db 'No Errors',0
 u_halt_keyboard db 'All Except Keyboard',0
-u_help_num1 db 'Choose whether Num Lock starts enabled.',0
-u_help_num2 db 'The keypad and keyboard lamp use this value.',0
-u_help_swap1 db 'Swap the names of floppy drives A and B.',0
-u_help_swap2 db 'Set each drive type for its original connector.',0
-u_help_halt1 db 'Choose which errors pause startup.',0
-u_help_halt2 db 'Serious hardware faults always stop startup.',0
+u_help_num1:
+    ui_string 'Choose whether Num Lock starts enabled.', u_help_num1
+u_help_num2:
+    ui_string 'The keypad and keyboard lamp use this value.', u_help_num2
+u_help_swap1:
+    ui_string 'Swap the names of floppy drives A and B.', u_help_swap1
+u_help_swap2:
+    ui_string 'Set each drive type for its original connector.', u_help_swap2
+u_help_halt1:
+    ui_string 'Choose which errors pause startup.', u_help_halt1
+u_help_halt2:
+    ui_string 'Serious hardware faults always stop startup.', u_help_halt2
 u_seek_values dw u_off,u_on
 u_off:
 u_disabled db 'Disabled',0
@@ -3701,721 +1574,44 @@ u_1440 db '1.44 MB, 3.5 in',0
 u_2880 db '2.88 MB, 3.5 in',0
 
 ; SI/BX resolve the current physical position's draft, never active state.
+%ifdef BOARD_PNP_SUPPORT
 ide_ui_record:
-    movzx bx, byte [fs:U_IDE_DEVICE]
-    imul bx, IDE_RECORD_SIZE
-    add bx, U_IDE + 1
-    mov si, bx
-    ret
+    post_ui_facade ide_ui_record
 ide_ui_enable_pointer:
-    push ax
-    mov al,[fs:U_IDE_DEVICE]
-    call ide_ui_enable_index
-    pop ax
-    ret
+    post_ui_facade ide_ui_enable_pointer
 ide_ui_enable_index:
-    movzx bx,al
-%if BOARD_ATA_DEVICE_COUNT = 4
-    cmp bx,2
-    jb .base
-    add bx,U_IDE+IDE_ENABLE_EXTRA-2
-    ret
-.base:
-%endif
-    test bx,bx
-    mov bx,U_HDD
-    jz .done
-    mov bx,U_SLAVE
-.done:
-    ret
-
-; None is UI-only value49. CMOS keeps the existing enable flag and type0..48.
+    post_ui_facade ide_ui_enable_index
 ide_ui_type_value:
-    push bx
-    call ide_ui_record
-    mov al, [fs:bx + IDE_TYPE]
-    call ide_ui_enable_pointer
-    cmp byte [fs:bx], 0
-    jne .done
-    mov al, 49
-.done:
-    pop bx
-    ret
-
-; Enum parameters share the existing popup. Numeric/type forms are bounded.
+    post_ui_facade ide_ui_type_value
 ide_ui_parameters:
-    call ide_ui_record
-    mov al, [fs:U_FIELD]
-    test al, al
-    jz .enabled
-    cmp al, 7
-    je .translation
-    cmp al, 8
-    je .block
-%ifdef BOARD_ATA_PIO_POLICY
-    cmp al,11
-    je .pio
-%endif
-%ifdef BOARD_IDE_32BIT_POLICY
-    cmp al,10
-    je .dword
-%endif
-    add bx, IDE_EDD_OFF
-    mov al,[fs:bx]
-    xor al,1
-    mov si, u_seek_values
-    mov cx, 2
-    jmp .ready
-.enabled:
-    call ide_ui_enable_pointer
-    mov al,[fs:bx]
-    mov si, u_seek_values
-    mov cx, 2
-    jmp .ready
-.translation:
-    add bx, IDE_TRANSLATION
-    movzx bx,byte [fs:bx]
-    mov al,[cs:ide_translation_to_display+bx]
-    mov si, u_ide_translation_choices
-    mov cx, 4
-    jmp .ready
-.block:
-    add bx, IDE_BLOCK
-    mov al,[fs:bx]
-    cmp al,2
-    jb .block_special
-    sub al,2
-    jmp .block_ready
-.block_special:
-    add al,7
-.block_ready:
-    mov si, u_ide_block_choices
-    mov cx, 9
-    jmp .ready
-%ifdef BOARD_IDE_32BIT_POLICY
-.dword:
-    mov cl,[fs:U_IDE_DEVICE]
-    mov al,[fs:U_CHIP+(BOARD_IDE_32BIT_POLICY-C_CHIP)]
-    shr al,cl
-    and al,1
-    mov si,u_seek_values
-    mov cx,2
-    jmp .ready
-%endif
-%ifdef BOARD_ATA_PIO_POLICY
-.pio:
-    call ide_ui_pio_value
-    test al,al
-    jnz .pio_position
-    mov al,6
-.pio_position:
-    dec al
-    mov si,u_ide_pio_choices
-    mov cx,6
-%endif
-.ready:
-    mov bx,U_CHIP_VALUE
-    mov [fs:bx],al
-    ret
-
-; AL is a display position. The saved record retains its existing encodings.
+    post_ui_facade ide_ui_parameters
 ide_ui_store:
-    pushf
-    pushad
-    mov dl,al
-    call ide_ui_record
-    cmp byte [fs:U_FIELD],0
-    je .enabled
-    cmp byte [fs:U_FIELD],7
-    je .translation
-    cmp byte [fs:U_FIELD],8
-    je .block
-%ifdef BOARD_ATA_PIO_POLICY
-    cmp byte [fs:U_FIELD],11
-    je .pio
-%endif
-%ifdef BOARD_IDE_32BIT_POLICY
-    cmp byte [fs:U_FIELD],10
-    je .dword
-%endif
-    xor al,1
-    mov [fs:bx+IDE_EDD_OFF],al
-    jmp .done
-.enabled:
-    call ide_ui_enable_pointer
-    mov [fs:bx],al
-    jmp .done
-.translation:
-    movzx di,al
-    mov al,[cs:ide_translation_from_display+di]
-    mov [fs:bx+IDE_TRANSLATION],al
-    jmp .done
-.block:
-    cmp al,7
-    jae .block_special
-    add al,2
-    jmp .block_ready
-.block_special:
-    sub al,7
-.block_ready:
-    mov [fs:bx+IDE_BLOCK],al
-    jmp .done
-%ifdef BOARD_IDE_32BIT_POLICY
-.dword:
-    mov cl,[fs:U_IDE_DEVICE]
-    mov al,1
-    shl al,cl
-    not al
-    and [fs:U_CHIP+(BOARD_IDE_32BIT_POLICY-C_CHIP)],al
-    mov al,dl
-    shl al,cl
-    or [fs:U_CHIP+(BOARD_IDE_32BIT_POLICY-C_CHIP)],al
-    jmp .done
-%endif
-%ifdef BOARD_ATA_PIO_POLICY
-.pio:
-    mov cl,[fs:U_IDE_DEVICE]
-    shl cl,1
-    mov al,3
-    shl al,cl
-    not al
-    and [fs:U_CHIP+(BOARD_ATA_PIO_POLICY-C_CHIP)],al
-    mov al,dl
-    inc al
-    cmp al,6
-    jb .pio_encoded
-    xor al,al
-.pio_encoded:
-    mov ah,al
-    and al,3
-    shl al,cl
-    or [fs:U_CHIP+(BOARD_ATA_PIO_POLICY-C_CHIP)],al
-    shr cl,1
-    mov al,1
-    shl al,cl
-    not al
-    and [fs:U_CHIP+(BOARD_ATA_PIO_POLICY_HIGH-C_CHIP)],al
-    shr ah,2
-    shl ah,cl
-    or [fs:U_CHIP+(BOARD_ATA_PIO_POLICY_HIGH-C_CHIP)],ah
-%endif
-.done:
-    popad
-    popf
-    ret
-
+    post_ui_facade ide_ui_store
 ide_ui_select:
-    cmp byte [fs:U_FIELD], 1
-    je ide_ui_types
-    cmp byte [fs:U_FIELD], 2
-    jb .enum
-    cmp byte [fs:U_FIELD], 6
-    jbe ide_ui_number
-.enum:
-    pushad
-    call ide_ui_parameters
-    movzx bp, byte [fs:bx]
-    mov dl, 2
-    jmp setup_choices.draw ; Same popup/input/commit owner and stack contract.
-
+    post_ui_facade ide_ui_select
 ide_ui_change:
-    pushad
-    mov dl, 1
-    cmp ah, 0x4B
-    jne .field
-    mov dl, -1
-.field:
-    cmp byte [fs:U_FIELD], 1
-    je .type
-    cmp byte [fs:U_FIELD], 2
-    jb .enum
-    cmp byte [fs:U_FIELD], 6
-    jbe .number
-.enum:
-    push dx
-    call ide_ui_parameters
-    pop dx
-    mov al, [fs:bx]
-    add al, dl
-    cmp al, 0xFF
-    jne .upper
-    mov al, cl
-    dec al
-.upper:
-    cmp al, cl
-    jb .store
-    xor al, al
-.store:
-    call ide_ui_store
-    jmp .done
-.type:
-    call ide_ui_record
-    call ide_ui_type_value
-.cycle:
-    add al, dl
-    cmp al, 0xFF
-    jne .type_upper
-    mov al, 49
-.type_upper:
-    cmp al, 49
-    jbe .type_valid
-    xor al, al
-.type_valid:
-    cmp al, 49
-    je .type_apply
-    call ide_type_valid
-    jc .cycle
-.type_apply:
-    call ide_ui_set_type
-    jmp .done
-.number:
-    ; Numeric fields use the same validated editor, not unchecked +/- writes.
-.done:
-    popad
-    ret
-
-; AL=selected type. Preserve its numeric identity even for equal geometries.
+    post_ui_facade ide_ui_change
 ide_ui_set_type:
-    push bx
-    call ide_ui_enable_pointer
-    cmp al, 49
-    jne .enabled
-    mov byte [fs:bx], 0
-    pop bx
-    ret
-.enabled:
-    mov byte [fs:bx], 1
-    pop bx
-    mov [fs:bx + IDE_TYPE], al
-    test al, al
-    jz .done
-    cmp al, 48
-    je .done
-    movzx si, al
-    dec si
-    shl si, 3
-    add si, ide_type_table
-    lea di, [bx + IDE_CYLINDERS]
-    mov cx, 8
-.byte:
-    mov al, [cs:si]
-    mov [fs:di], al
-    inc si
-    inc di
-    loop .byte
-.done:
-    ret
-
+    post_ui_facade ide_ui_set_type
 ide_ui_draw:
-    pushad
-    movzx bx,byte [fs:U_IDE_DEVICE]
-    shl bx,1
-    mov si,[cs:u_ide_policy_labels+bx]
-    mov di, 3 * 160 + 23 * 2
-    mov bh, 0x0B
-    call setup_text
-    ui_text 4, UI_LABEL_COL, u_ide_disk_group, 0x0B
-    ui_text 13, UI_LABEL_COL, u_ide_transfer_group, 0x0B
-    xor bp, bp
-.field:
-    mov bx, bp
-    shl bx, 1
-    mov si, [u_ide_labels + bx]
-    call .field_position
-    add di, UI_LABEL_COL * 2
-    mov bh, 7
-    mov cx, bp
-    call setup_field_available
-    jnc .label
-    mov bh, 8
-.label:
-    call setup_text
-    call .field_position
-    add di, UI_VALUE_COL * 2
-    mov cx, bp
-    call setup_field_color
-    push bx
-    call ide_ui_record
-    cmp bp, 0
-    je .enable
-    cmp bp, 1
-    je .type
-    cmp bp, 7
-    je .translation
-    cmp bp, 8
-    je .block
-    cmp bp, 9
-    je .edd
-%ifdef BOARD_ATA_PIO_POLICY
-    cmp bp,11
-    je .pio
-%endif
-%ifdef BOARD_IDE_32BIT_POLICY
-    cmp bp,10
-    je .dword
-%endif
-    mov bx, bp
-    sub bx, 2
-    shl bx, 1
-    mov bx, [u_ide_number_offsets + bx]
-    movzx eax, word [fs:si + bx]
-    cmp bp, 3
-    je .byte_number
-    cmp bp, 4
-    jne .number
-.byte_number:
-    and eax, 255
-.number:
-    pop bx
-    call setup_colored_number
-    jmp .next
-.enable:
-    call ide_ui_enable_pointer
-    movzx bx, byte [fs:bx]
-    mov si, u_seek_values
-    jmp .enum
-.type:
-    call ide_ui_type_value
-    pop bx
-    call ide_ui_type_text
-    jmp .next
-.translation:
-    movzx bx, byte [fs:si + IDE_TRANSLATION]
-    mov si, u_ide_translation_values
-    jmp .enum
-.block:
-    movzx bx, byte [fs:si + IDE_BLOCK]
-    mov si, u_ide_block_values
-    jmp .enum
-.edd:
-    movzx bx, byte [fs:si + IDE_EDD_OFF]
-    mov si, u_ide_edd_values
-    jmp .enum
-%ifdef BOARD_IDE_32BIT_POLICY
-.dword:
-    mov cl,[fs:U_IDE_DEVICE]
-    mov bl,[fs:U_CHIP+(BOARD_IDE_32BIT_POLICY-C_CHIP)]
-    shr bl,cl
-    and bx,1
-    mov si,u_seek_values
-    jmp .enum
-%endif
-%ifdef BOARD_ATA_PIO_POLICY
-.pio:
-    call ide_ui_pio_value
-    movzx bx,al
-    mov si,u_ide_pio_values
-%endif
-.enum:
-    shl bx, 1
-    mov si, [si + bx]
-    pop bx
-    call setup_text
-.next:
-    inc bp
-    cmp bp, IDE_FIELD_COUNT
-    jb .field
-    popad
-    ret
-.field_position:
-    mov di, bp
-    movzx di, byte [cs:u_ide_rows + di]
-    imul di, 160
-    ret
-
+    post_ui_facade ide_ui_draw
 setup_colored_number:
-    pushad
-    call setup_number
-    mov cx, 5
-.color:
-    mov ah, bh
-    mov al, ' '
-    call setup_color
-    mov [es:di + 1], ah
-    add di, 2
-    loop .color
-    popad
-    ret
-
+    post_ui_facade setup_colored_number
 ide_ui_type_text:
-    pushad
-    mov si, u_ide_none
-    cmp al, 49
-    je .text
-    mov si, u_auto
-    test al, al
-    jz .text
-    mov si, u_ide_user
-    cmp al, 48
-    je .text
-    mov si, u_ide_type_prefix
-    call setup_text
-    movzx eax, al
-    add di, 5 * 2
-    call setup_colored_number
-    jmp .done
-.text:
-    call setup_text
-.done:
-    popad
-    ret
-
-;12-row paged list. Arrow/Page keys can reach every valid numbered type.
+    post_ui_facade ide_ui_type_text
 ide_ui_types:
-    pushad
-    call ide_ui_type_value
-    movzx bp, al
-.draw:
-    call setup_draw
-    call setup_modal_footer
-    mov di, 5 * 160 + UI_POPUP_COL * 2
-    mov ax, 0x1E20
-    mov dx, 17
-.clear:
-    mov cx, UI_POPUP_WIDTH
-    push ax
-    call setup_color
-    rep stosw
-    pop ax
-    add di, (80 - UI_POPUP_WIDTH) * 2
-    dec dx
-    jnz .clear
-    ui_text 5, UI_POPUP_TEXT, u_ide_type_menu, 0x1B
-    ui_text 6, UI_POPUP_TEXT, u_ide_type_columns, 0x1B
-    mov ax, bp
-    xor dx, dx
-    mov cx, 12
-    div cx
-    imul dx, ax, 12
-    mov si, dx
-    xor cx, cx
-.item:
-    mov ax, si
-    add ax, cx
-    cmp ax, 49
-    ja .items_done
-    push si
-    mov bx, cx
-    imul di, bx, 160
-    add di, 7 * 160 + UI_POPUP_TEXT * 2
-    mov bh, 0x17
-    cmp ax, bp
-    jne .color
-    mov bh, 0x70
-.color:
-    call setup_choice_highlight
-    cmp al, 49
-    je .valid
-    call ide_type_valid
-    jnc .valid
-    mov si, u_ide_reserved
-    call setup_text
-    jmp .row_done
-.valid:
-    call ide_ui_type_text
-    test al, al
-    jz .row_done
-    cmp al, 48
-    jae .row_done
-    mov dx, bx ; Keep the selected-row color while resolving the type table.
-    movzx bx, al
-    dec bx
-    shl bx, 3
-    add bx, ide_type_table
-    mov si, bx
-    mov bx, dx
-    add di, UI_TYPE_WIDTH * 2
-    movzx eax, word [cs:si]
-    call setup_colored_number
-    add di, UI_GEOMETRY_WIDTH * 2
-    movzx eax, byte [cs:si + 2]
-    call setup_colored_number
-    add di, UI_GEOMETRY_WIDTH * 2
-    movzx eax, byte [cs:si + 3]
-    call setup_colored_number
-.row_done:
-    pop si
-    inc cx
-    cmp cx, 12
-    jb .item
-.items_done:
-    ui_text 20, UI_POPUP_TEXT, u_choices_keys, 0x1B
-    ui_text 21, UI_POPUP_TEXT, u_ide_page_keys, 0x1B
-.wait:
-    call setup_clock
-    mov ah, 1
-    int 0x16
-    jnz .key
-    sti
-    hlt
-    jmp .wait
-.key:
-    xor ah, ah
-    int 0x16
-    cmp al, 27
-    je .done
-    cmp al, 13
-    je .apply
-    mov dl, 1
-    cmp ah, 0x50
-    je .move
-    cmp ah, 0x4D
-    je .move
-    cmp ah, 0x48
-    je .previous
-    cmp ah, 0x4B
-    je .previous
-    cmp ah, 0x51
-    je .page_down
-    cmp ah, 0x49
-    jne .wait
-    sub bp, 12
-    jnc .bounded
-    xor bp, bp
-    jmp .bounded
-.page_down:
-    add bp, 12
-    cmp bp, 49
-    jbe .bounded
-    mov bp, 49
-.bounded:
-    mov dl, 1
-    jmp .validate
-.previous:
-    mov dl, -1
-.move:
-    movsx ax, dl
-    add bp, ax
-    cmp bp, 0xFFFF
-    jne .upper
-    mov bp, 49
-.upper:
-    cmp bp, 49
-    jbe .validate
-    xor bp, bp
-.validate:
-    mov ax, bp
-    cmp al, 49
-    je .draw
-    call ide_type_valid
-    jc .move
-    jmp .draw
-.apply:
-    call ide_ui_record
-    mov ax, bp
-    call ide_ui_set_type
-.done:
-    popad
-    ret
-
-; Decimal editor for User geometry/metadata. Esc or invalid input writes nothing.
+    post_ui_facade ide_ui_types
 ide_ui_number:
-    pushad
-    call ide_ui_record
-    cmp byte [fs:bx + IDE_TYPE], 48
-    jne .done
-    movzx bp, byte [fs:U_FIELD]
-    sub bp, 2
-    shl bp, 1
-    mov di, [cs:u_ide_number_offsets + bp]
-    add bx, di
-    mov byte [fs:U_POSITION], 0
-    mov byte [fs:U_BUFFER], 0
-    push bx
-    call setup_draw
-    call setup_modal_footer
-    ui_text 22, UI_LABEL_COL, u_ide_number_prompt, 0x1B
-    pop bx
-.draw:
-    mov di, 22 * 160 + UI_VALUE_COL * 2
-    mov ax, 0x1E20
-    mov cx, 6
-    push ax
-    call setup_color
-    rep stosw
-    pop ax
-    mov di, 22 * 160 + UI_VALUE_COL * 2
-    mov si, U_BUFFER
-    push bx
-    mov bh, 0x1F
-    call setup_value
-    pop bx
-.wait:
-    call setup_clock
-    mov ah, 1
-    int 0x16
-    jnz .key
-    sti
-    hlt
-    jmp .wait
-.key:
-    xor ah, ah
-    int 0x16
-    cmp al, 27
-    je .done
-    cmp al, 13
-    je .apply
-    cmp al, 8
-    je .back
-    cmp al, '0'
-    jb .wait
-    cmp al, '9'
-    ja .wait
-    movzx si, byte [fs:U_POSITION]
-    cmp si, 5
-    jae .wait
-    mov [fs:U_BUFFER + si], al
-    inc si
-    mov ax, si
-    mov [fs:U_POSITION], al
-    mov byte [fs:U_BUFFER + si], 0
-    jmp .draw
-.back:
-    cmp byte [fs:U_POSITION], 0
-    je .wait
-    dec byte [fs:U_POSITION]
-    movzx si, byte [fs:U_POSITION]
-    mov byte [fs:U_BUFFER + si], 0
-    jmp .draw
-.apply:
-    xor eax, eax
-    xor si, si
-    cmp byte [fs:U_POSITION], 0
-    je .done
-.digit:
-    movzx edx, byte [fs:U_BUFFER + si]
-    sub edx, '0'
-    imul eax, 10
-    add eax, edx
-    inc si
-    movzx dx, byte [fs:U_POSITION]
-    cmp si, dx
-    jb .digit
-    movzx edx, word [cs:u_ide_number_max + bp]
-    cmp eax, edx
-    ja .bad
-    cmp bp, 6
-    jae .store
-    test eax, eax
-    jz .bad
-.store:
-    cmp bp, 2
-    je .byte_store
-    cmp bp, 4
-    je .byte_store
-    mov [fs:bx], ax
-    jmp .done
-.byte_store:
-    mov [fs:bx], al
-    jmp .done
-.bad:
-    push bx
-    ui_text 21, UI_LABEL_COL, u_ide_invalid, 0x0C
-    pop bx
-    jmp .wait
-.done:
-    popad
-    ret
+    post_ui_facade ide_ui_number
+%ifdef BOARD_PNP_SUPPORT
+pnp_ui_number:
+    post_ui_facade pnp_ui_number
+%endif
+setup_number_editor:
+    post_ui_facade setup_number_editor
+%else
+%include "firmware/setup-ide-ui.inc"
+%endif
 
 u_ide_labels dw u_ide_enabled,u_ide_type,u_ide_cyl,u_ide_heads,u_ide_sectors
     dw u_ide_precomp,u_ide_landing,u_ide_translation,u_ide_block,u_ide_edd
@@ -4427,7 +1623,10 @@ u_ide_labels dw u_ide_enabled,u_ide_type,u_ide_cyl,u_ide_heads,u_ide_sectors
 %endif
 IDE_FIELD_COUNT equ ($-u_ide_labels)/2
 u_ide_number_offsets dw IDE_CYLINDERS,IDE_HEADS,IDE_SECTORS,IDE_PRECOMP,IDE_LANDING
-u_ide_number_max dw 65535,16,63,65535,65535
+u_ide_number_max dw 65535,16,63,65535,65535,65535
+%ifdef BOARD_PNP_SUPPORT
+    dw 65535
+%endif
 u_ide_translation_values dw u_auto,u_ide_normal,u_ide_large,u_ide_lba
 u_ide_translation_choices dw u_auto,u_ide_large,u_ide_lba,u_ide_normal
 ide_translation_to_display db 0,3,1,2
@@ -4443,30 +1642,43 @@ u_ide_both_channels db 'Both Channels',0
 u_ide_primary_only db 'Primary Only',0
 %endif
 %if BOARD_ATA_DEVICE_COUNT = 4
-u_ide_controller db 'Onboard IDE Controller',0
+u_ide_controller:
+    ui_string 'Onboard IDE Controller', u_ide_controller
 %else
-u_ide_controller db 'Primary IDE Controller',0
+u_ide_controller:
+    ui_string 'Primary IDE Controller', u_ide_controller
 %endif
 u_ide_disk_group db 'DISK CONFIGURATION',0
 u_ide_transfer_group db 'TRANSFER OPTIONS',0
-u_ide_enabled db 'Device',0
-u_ide_type db 'Disk Type',0
+u_ide_enabled:
+    ui_string 'Device', u_ide_enabled
+u_ide_type:
+    ui_string 'Disk Type', u_ide_type
 u_ide_none db 'None',0
-u_ide_translation db 'Translation',0
-u_ide_block db 'Block Mode',0
-u_ide_cyl db 'Cylinders',0
+u_ide_translation:
+    ui_string 'Translation', u_ide_translation
+u_ide_block:
+    ui_string 'Block Mode', u_ide_block
+u_ide_cyl:
+    ui_string 'Cylinders', u_ide_cyl
 u_ide_heads db 'Heads',0
-u_ide_sectors db 'Sectors per Track',0
-u_ide_precomp db 'Write Precompensation',0
-u_ide_landing db 'Landing Zone',0
-u_ide_edd db 'INT13 Extensions',0
+u_ide_sectors:
+    ui_string 'Sectors per Track', u_ide_sectors
+u_ide_precomp:
+    ui_string 'Write Precompensation', u_ide_precomp
+u_ide_landing:
+    ui_string 'Landing Zone', u_ide_landing
+u_ide_edd:
+    ui_string 'INT13 Extensions', u_ide_edd
 u_ide_user db 'User (48)',0
 u_ide_type_prefix db 'Type ',0
 u_ide_type_menu db 'PHOENIX DISK TYPE',0
-u_ide_type_columns db 'Type            Cyls    Heads   Sectors',0
+u_ide_type_columns:
+    ui_string 'Type            Cyls    Heads   Sectors', u_ide_type_columns
 u_ide_reserved db 'Reserved',0
 u_ide_page_keys db 'PgUp/PgDn Page',0
-u_ide_number_prompt db 'Enter value',0
+u_ide_number_prompt:
+    ui_string 'Enter value', u_ide_number_prompt
 u_ide_invalid db 'Invalid value.',0
 u_ide_normal db 'Normal',0
 u_ide_large db 'Large',0
@@ -4478,165 +1690,84 @@ u_ide_block16 db '16 sectors',0
 u_ide_block32 db '32 sectors',0
 u_ide_block64 db '64 sectors',0
 u_ide_block128 db '128 sectors',0
-u_help_ide_enabled1 db 'Disabled stops the BIOS from using this drive.',0
-u_help_ide_enabled2 db 'Other drives keep their own settings.',0
-u_help_ide_type1 db 'Auto detects. None leaves it to an expansion card.',0
-u_help_ide_type2 db 'Choose User to enter the drive details yourself.',0
-u_help_ide_translation1 db 'Choose how the BIOS addresses this hard disk.',0
-u_help_ide_translation2 db 'Keep the mode used when the disk was formatted.',0
-u_help_ide_block1 db 'Transfer several disk sectors together.',0
-u_help_ide_block2 db 'Auto selects a size supported by the drive.',0
-u_help_ide_cyl1 db 'For User type, enter the cylinder count: 1-65535.',0
-u_help_ide_cyl2 db 'Use the value printed on the drive or its manual.',0
-u_help_ide_heads1 db 'For User type, enter the head count: 1-16.',0
-u_help_ide_heads2 db 'Use the value printed on the drive or its manual.',0
-u_help_ide_sectors1 db 'For User type, enter sectors per track: 1-63.',0
-u_help_ide_sectors2 db 'Use the value printed on the drive or its manual.',0
-u_help_ide_precomp1 db 'An older drive setting. 65535 means None.',0
-u_help_ide_precomp2 db 'IDE drives manage this themselves.',0
-u_help_ide_landing1 db 'An older head parking setting: 0-65535.',0
-u_help_ide_landing2 db 'IDE drives park their heads themselves.',0
-u_help_ide_edd1 db 'Enable extended BIOS support for larger disks.',0
-u_help_ide_edd2 db 'Disable only for software that needs older access.',0
+u_help_ide_enabled1:
+    ui_string 'Disabled stops the BIOS from using this drive.', u_help_ide_enabled1
+u_help_ide_enabled2:
+    ui_string 'Other drives keep their own settings.', u_help_ide_enabled2
+u_help_ide_type1:
+    ui_string 'Auto detects. None leaves it to an expansion card.', u_help_ide_type1
+u_help_ide_type2:
+    ui_string 'Choose User to enter the drive details yourself.', u_help_ide_type2
+u_help_ide_translation1:
+    ui_string 'Choose how the BIOS addresses this hard disk.', u_help_ide_translation1
+u_help_ide_translation2:
+    ui_string 'Keep the mode used when the disk was formatted.', u_help_ide_translation2
+u_help_ide_block1:
+    ui_string 'Transfer several disk sectors together.', u_help_ide_block1
+u_help_ide_block2:
+    ui_string 'Auto selects a size supported by the drive.', u_help_ide_block2
+u_help_ide_cyl1:
+    ui_string 'For User type, enter the cylinder count: 1-65535.', u_help_ide_cyl1
+u_help_ide_cyl2:
+    ui_string 'Use the value printed on the drive or its manual.', u_help_ide_cyl2
+u_help_ide_heads1:
+    ui_string 'For User type, enter the head count: 1-16.', u_help_ide_heads1
+u_help_ide_heads2:
+    ui_string 'Use the value printed on the drive or its manual.', u_help_ide_heads2
+u_help_ide_sectors1:
+    ui_string 'For User type, enter sectors per track: 1-63.', u_help_ide_sectors1
+u_help_ide_sectors2:
+    ui_string 'Use the value printed on the drive or its manual.', u_help_ide_sectors2
+u_help_ide_precomp1:
+    ui_string 'An older drive setting. 65535 means None.', u_help_ide_precomp1
+u_help_ide_precomp2:
+    ui_string 'IDE drives manage this themselves.', u_help_ide_precomp2
+u_help_ide_landing1:
+    ui_string 'An older head parking setting: 0-65535.', u_help_ide_landing1
+u_help_ide_landing2:
+    ui_string 'IDE drives park their heads themselves.', u_help_ide_landing2
+u_help_ide_edd1:
+    ui_string 'Enable extended BIOS support for larger disks.', u_help_ide_edd1
+u_help_ide_edd2:
+    ui_string 'Disable only for software that needs older access.', u_help_ide_edd2
 %ifdef BOARD_IDE_SECONDARY_DISABLE_POLICY
-u_help_ide_controller1 db 'Both Channels enables both motherboard IDE ports.',0
-u_help_ide_controller2 db 'Primary Only disables the secondary IDE port.',0
+u_help_ide_controller1:
+    ui_string 'Both Channels enables both motherboard IDE ports.', u_help_ide_controller1
+u_help_ide_controller2:
+    ui_string 'Primary Only disables the secondary IDE port.', u_help_ide_controller2
 %else
-u_help_ide_controller1 db 'Enable the motherboard hard disk controller.',0
-u_help_ide_controller2 db 'Disabled turns off its hard disk and CD drives.',0
+u_help_ide_controller1:
+    ui_string 'Enable the motherboard hard disk controller.', u_help_ide_controller1
+u_help_ide_controller2:
+    ui_string 'Disabled turns off its hard disk and CD drives.', u_help_ide_controller2
 %endif
 
+%ifdef BOARD_PNP_SUPPORT
 ports_ui_parameters:
-    movzx bx, byte [fs:U_FIELD]
-%ifdef BOARD_PORTS_SETUP_PARAMETERS
-    jmp BOARD_PORTS_SETUP_PARAMETERS
-%else
-    mov cx, bx
-    movzx cx, byte [cs:ports_limits+bx]
-    inc cx
-    shl bx, 1
-    mov si, [cs:u_ports_values+bx]
-    shr bx, 1
-    add bx, U_PORTS
-    ret
-%endif
-
-; AL=candidate. The same sibling rule governs arrows and popup navigation.
+    post_ui_facade ports_ui_parameters
 ports_ui_choice_valid:
-%ifdef BOARD_PORTS_SETUP_CHOICE_VALID
-    jmp BOARD_PORTS_SETUP_CHOICE_VALID
-%else
-    push bx
-    movzx bx, byte [fs:U_FIELD]
-    call ports_ui_candidate
-    jc .bad
-    cmp bx, 1
-    ja .good
-    test al, al
-    jz .good
-    xor bx, 1
-    cmp al, [fs:U_PORTS+bx]
-    je .bad
-.good:
-    pop bx
-    clc
-    ret
-.bad:
-    pop bx
-    stc
-    ret
-%endif
-
+    post_ui_facade ports_ui_choice_valid
 ports_ui_choices:
-    pushad
-    call ports_ui_parameters
-    movzx bp, byte [fs:bx]
-    mov dl, 2
-    jmp setup_choices.draw
-
+    post_ui_facade ports_ui_choices
 ports_ui_change:
-    pushad
-    mov dl, 1
-    cmp ah, 0x4B
-    jne .parameters
-    mov dl, -1
-.parameters:
-    call ports_ui_parameters
-    mov al, [fs:bx]
-.cycle:
-    add al, dl
-    cmp al, 0xFF
-    jne .upper
-    mov al, cl
-    dec al
-.upper:
-    cmp al, cl
-    jb .valid
-    xor al, al
-.valid:
-    call ports_ui_choice_valid
-    jc .cycle
-%ifdef BOARD_PORTS_SETUP_COMMIT
-    call setup_enum_store
-%else
-    mov [fs:bx], al
-%endif
-    popad
-    ret
-
+    post_ui_facade ports_ui_change
 ports_ui_draw:
-    pushad
-    ui_text 3, 23, u_devices_title, 0x0B
-    xor bp, bp
-.field:
-    mov cx,bp
-    call ports_ui_visible
-    jc .next
-    mov bx, bp
-    shl bx, 1
-    mov si, [cs:u_ports_labels+bx]
-    movzx di, byte [cs:u_ports_rows+bp]
-    imul di, 160
-    add di, UI_LABEL_COL*2
-    mov cx, bp
-    call setup_field_color
-    and bh, 15
-    call setup_text
-%ifdef BOARD_PORTS_SETUP_PARAMETERS
-    mov bx,bp
-    call BOARD_PORTS_SETUP_PARAMETERS
-    movzx bx,byte [fs:bx]
+    post_ui_facade ports_ui_draw
 %else
-    mov bx, bp
-    shl bx, 1
-    mov si, [cs:u_ports_values+bx]
-    movzx bx, byte [fs:U_PORTS+bp]
+%include "firmware/setup-ports-ui.inc"
 %endif
-    shl bx, 1
-    mov si, [cs:si+bx]
-    add di, (UI_VALUE_COL-UI_LABEL_COL)*2
-    mov cx, bp
-    call setup_field_color
-    call setup_text
-.next:
-    inc bp
-%ifdef BOARD_PORTS_SETUP_COUNT
-    cmp bp, BOARD_PORTS_SETUP_COUNT
-%else
-    cmp bp, 8
-%endif
-    jb .field
-    popad
-    ret
 
-u_devices db 'Devices',0
-u_devices_title db 'bAIos Setup > Devices',0
+u_devices:
+    ui_string 'Devices', u_devices
+u_devices_title:
+    ui_string 'bAIos Setup > Devices', u_devices_title
 u_uart_a db 'Serial Port A',0
 u_uart_b db 'Serial Port B',0
 u_uart_pair db 'COM3 / COM4 Addresses',0
 u_parallel db 'Parallel Port',0
 u_parallel_mode db 'Parallel Port Mode',0
-u_fdc db 'Floppy Controller',0
+u_fdc:
+    ui_string 'Floppy Controller', u_fdc
 u_mouse db 'PS/2 Mouse',0
 u_isa db 'ISA Serial Discovery',0
 u_ports_rows db BOARD_PORTS_ROWS
@@ -4663,23 +1794,37 @@ u_lpt1 db '378h / LPT1',0
 u_lpt2 db '278h / LPT2',0
 u_printer db 'Printer',0
 u_bidirectional db 'PS/2 Bidirectional',0
-u_help_devices1 db 'Configure onboard ports and devices.',0
-u_help_devices2 db 'Save applies settings after restart.',0
-u_help_uart1 db 'Choose a COM port number for this serial port.',0
-u_help_uart2 db 'Disabled turns off the onboard serial port.',0
-u_help_pair1 db 'Choose the address pair for COM3 and COM4.',0
-u_help_pair2 db 'Match the addresses required by your software.',0
-u_help_parallel1 db 'Choose the printer port address or Disabled.',0
-u_help_parallel2 db 'Printer ports on expansion cards are also found.',0
+u_help_devices1:
+    ui_string 'Configure onboard ports and devices.', u_help_devices1
+u_help_devices2:
+    ui_string 'Save applies settings after restart.', u_help_devices2
+u_help_uart1:
+    ui_string 'Choose a COM port number for this serial port.', u_help_uart1
+u_help_uart2:
+    ui_string 'Disabled turns off the onboard serial port.', u_help_uart2
+u_help_pair1:
+    ui_string 'Choose the address pair for COM3 and COM4.', u_help_pair1
+u_help_pair2:
+    ui_string 'Match the addresses required by your software.', u_help_pair2
+u_help_parallel1:
+    ui_string 'Choose the printer port address or Disabled.', u_help_parallel1
+u_help_parallel2:
+    ui_string 'Printer ports on expansion cards are also found.', u_help_parallel2
 u_help_mode1 db BOARD_PORTS_MODE_HELP,0
-u_help_mode2 db 'Available when the parallel port is enabled.',0
-u_help_fdc1 db 'Enable or disable both motherboard floppy drives.',0
-u_help_fdc2 db 'Saved drive types remain available when enabled.',0
-u_help_mouse1 db 'Enable or disable the PS/2 mouse port.',0
-u_help_mouse2 db 'Keyboard operation remains enabled.',0
-u_help_isa1 db 'Find serial ports on ISA expansion cards.',0
-u_help_isa2 db 'Set each card with its jumpers or setup program.',0
-
+u_help_mode2:
+    ui_string 'Available when the parallel port is enabled.', u_help_mode2
+u_help_fdc1:
+    ui_string 'Enable or disable both motherboard floppy drives.', u_help_fdc1
+u_help_fdc2:
+    ui_string 'Saved drive types remain available when enabled.', u_help_fdc2
+u_help_mouse1:
+    ui_string 'Enable or disable the PS/2 mouse port.', u_help_mouse1
+u_help_mouse2:
+    ui_string 'Keyboard operation remains enabled.', u_help_mouse2
+u_help_isa1:
+    ui_string 'Find serial ports on ISA expansion cards.', u_help_isa1
+u_help_isa2:
+    ui_string 'Set each card with its jumpers or setup program.', u_help_isa2
 ports_summary:
     pushad
     push ds
@@ -4731,4 +1876,36 @@ u_ide_policy3 db 'Secondary IDE Master',0
 u_ide_policy4 db 'Secondary IDE Slave',0
 %else
     dw u_hdd_policy,u_slave_policy
+%endif
+
+%ifdef BOARD_PNP_SUPPORT
+%macro pnp_ui_navigation 0
+; The shared Setup draft owns every reservation. No probing or allocation here.
+pnp_ui_count:
+    post_ui_facade pnp_ui_count
+pnp_ui_select:
+    post_ui_facade pnp_ui_select
+pnp_ui_choices:
+    post_ui_facade pnp_ui_choices
+pnp_counts db 6,11,8,4,12
+%endmacro
+%ifndef BOARD_PNP_NAVIGATION_LATE
+pnp_ui_navigation
+%endif
+pnp_sidebar_up db 0,0,1,2,6,3,5
+pnp_sidebar_down db 1,2,3,5,4,6,4
+pnp_sidebar_rows db 5,6,7,8,11,9,10
+%ifndef BOARD_PNP_SETUP_LATE
+%ifdef PRESARIO_SHARED_OWNER
+%strcat PNP_SHARED_SOURCE PRESARIO_SOURCE_DIRECTORY,"../../shared/src/firmware/setup-pnp.inc"
+%include PNP_SHARED_SOURCE
+%else
+%include "firmware/setup-pnp.inc"
+%endif
+%endif
+%endif
+%ifndef BOARD_PNP_SUPPORT
+setup_sidebar_up db 0,0,1,2,5,3
+setup_sidebar_down db 1,2,3,5,4,4
+setup_sidebar_rows db 5,6,7,8,10,9
 %endif

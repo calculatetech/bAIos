@@ -189,9 +189,8 @@ def scsi(mixed=False, timeout=180, observe=False, shadow=False):
         asm=vm/'observe.asm';binary=vm/'observe.rom'
         asm.write_text(source)
         nasm=shutil.which('nasm') or str(Path.home()/'AppData/Local/bin/NASM/nasm.exe')
-        subprocess.run([nasm,'-f','bin','-DVGA_BIOS_141','-I',str(ROOT/'src')+'/', '-o',str(binary),str(asm)],check=True)
-        data=bytearray(binary.read_bytes());data[-1]=-sum(data[:-1])&255
-        wrapper.write_bytes(original[:65536]+data)
+        matrix.run_hidden([nasm,'-f','bin','-DVGA_BIOS_141','-I',str(ROOT/'src')+'/', '-o',str(binary),str(asm)],check=True)
+        wrapper.write_bytes(matrix.fixture_rom(binary, original))
     try:
         result=matrix.run_hidden([exe,'-P',str(vm),'-R',str(roms),'-L',str(vm/'86box.log'),'-N'],timeout=timeout)
     finally:

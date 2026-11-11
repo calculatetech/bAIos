@@ -58,6 +58,8 @@ kbc_delay_2ms:
     push cx
     push dx
     mov dx, 0x0950
+; Internal prepared frame: saved AX,BX,CX,DX; DX is raw mode3 counts.
+kbc_delay_count:
     pushf
     cli
     xor al, al

@@ -5,6 +5,8 @@ from pathlib import Path
 from unicorn import x86_const as x
 
 t = importlib.import_module('test-timing-setup')
+from shared.tools.checkpoint_proof import nv6_payload
+from scenarios import saved_chip
 PORT = Path(__file__).resolve().parents[1]
 image = PORT / 'build/baios-pb430.bin'
 rows = []
@@ -62,14 +64,15 @@ assert not m.cpu.mem_read(m.base+0x175,1)[0] & 4
 assert m.registers[4] & 0x90 == 0 and not m.registers[0x18] & 1
 n = m.cmos
 assert (n[0x10]+sum(n[0x38:0x40]))&255 == 0
-assert sum(n[0x40:0x5D])&255 == 0
-assert sum(n[0x5D:0x69])&255 == 0
-assert (sum(n[0x69:0x80])+sum(n[0x33:0x36]))&255 == 0
+assert n[0x33:0x35]==b'N\6'
+assert (ord('N')+6+n[0x35]+sum(nv6_payload(n)))&255==0
+assert saved_chip(image,n)==bytes(m.cpu.mem_read(m.base+0x60,24))
 m.irq_scans([0x1D,0x38,0xE0,0x53])
 m.complete_reset()
 assert m.cpu.mem_read(m.base+0x174,1) == b'\1'
 assert not m.cpu.mem_read(m.base+0x175,1)[0] & 4
-rows.append({'all_four_cmos_records_valid_after_save_and_two_posts': True})
+assert saved_chip(image,n)==bytes(m.cpu.mem_read(m.base+0x60,24))
+rows.append({'base_and_nv6_records_valid_after_save_and_two_posts': True})
 
 for enabled in (0,1):
     m = t.model(image)

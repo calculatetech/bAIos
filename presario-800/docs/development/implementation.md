@@ -21,8 +21,16 @@ The physically validated bus07 reference is `reference/baios-presario800-vga141-
 
 ## Current scope
 
+### Plug and Play POST storage
+
+The builder owns only physical 0C000h..0FFFFh after checking that the selected reference contains FF throughout that range. Selected VGA 00000h..07FFFh and OEM 08000h..0BFFFh stay byte-identical, including the 5857-byte FF suffix. The payload header, even length, extent and whole-bank SUM8 are checked. Its checksum byte stays inside the newly owned bank. The public PnP interface stays in F000. The system image stays 64 KiB and the physical image stays 128 KiB.
+
+After AT prerequisites and before video, the real INT15/AH87 owner copies the complete 16 KiB bank from high alias FFFEC000h into reserved POST memory. Capacity accounting charges the whole copied bank plus the separate paragraph-rounded decoded module when the bank is packed. The source qualification uses 86Box commit 242614ca8e082c457f226ca01d37e2329e82dbcc, specifically `src/machine/m_at_socket1.c`, `src/mem/rom.c` and `src/chipset/vl82c480.c`. Their D824 mapping mirrors the selected 128 KiB image into the upper half of the 256 KiB mapping at FFFC0000h. Low ROMSET shadow selection does not change this high alias. This is source/model qualification, not physical electrical confirmation.
+
+### Existing implementation
+
 The BIOS initializes the VLSI chipset, retained Cirrus VGA ROM, primary ATA disks, keyboard, PS/2 mouse, floppy controller, and legacy serial/parallel ports.
-RAM detection handles bank 0 as onboard 4 MiB or 8 MiB with the slot-1 module. Banks 1–3 accept 4, 8, 16, or 32 MiB modules.
+RAM detection handles bank 0 as onboard 4 MiB or 8 MiB with the slot-1 module. Banks 1ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“3 accept 4, 8, 16, or 32 MiB modules.
 Physical slots 1, 2, 3, and 4 connect to banks 0, 2, 1, and 3. Slot 1 is the outermost slot.
 Physical tests reached 64 MiB with all-FPM modules (`FD/DE`), including normal HIMEM/EMM386 boot and reliable warm resets.
 Mixed FPM/EDO modules also passed at 64 MiB. A physical test above the selection limit confirmed that the additional bank is skipped.
@@ -90,13 +98,13 @@ IRQ14 acknowledges both PICs and supplies the OEM completion notification for ch
 
 IDE setup provides controller enable and independent disk type, translation, block mode, and INT13 extensions for each position.
 Defaults are controller Enabled, both positions Enabled, Auto type/translation/block mode, and extensions Enabled.
-Numbered types use the Phoenix 1989 table: valid types 1–47; types 15,33,34,45 are reserved. User is type 48.
-User geometry includes cylinders 1–65535, heads 1–16, sectors 1–63, write precompensation, and landing zone.
+Numbered types use the Phoenix 1989 table: valid types 1ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“47; types 15,33,34,45 are reserved. User is type 48.
+User geometry includes cylinders 1ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“65535, heads 1ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“16, sectors 1ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“63, write precompensation, and landing zone.
 Precompensation 65535 means None. Precompensation and landing zone are parameter-table values, not modern drive-firmware controls.
 Translation choices are Auto, Normal, Large, and LBA. Explicit geometry takes precedence over boot-sector geometry.
 Block choices are Auto, Disabled, or 2/4/8/16/32/64/128 sectors. Auto uses up to 16 sectors when the drive supports multiple-sector commands.
 Unsupported or rejected negotiation falls back to single-sector commands before data transfer. The next multiple request re-establishes negotiation after reset.
-Version0.2.0 uses shared PIO0–4 negotiation and reset restoration with a ceiling of4. Auto selects the fastest permitted device mode. Data width remains16bits. The generic host path retains existing strobes and requires working IORDY. Physical PIO3/4 timing remains unqualified. DMA,32-bit transfers and programmable PCI timing remain unavailable. See [the shared ATA contract](../../../shared/README.md).
+Version0.2.0 uses shared PIO0ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“4 negotiation and reset restoration with a ceiling of4. Auto selects the fastest permitted device mode. Data width remains16bits. The generic host path retains existing strobes and requires working IORDY. Physical PIO3/4 timing remains unqualified. DMA,32-bit transfers and programmable PCI timing remain unavailable. See [the shared ATA contract](../../../shared/README.md).
 The new IDE options require a physical checkpoint. The user deferred this test before the next device milestone.
 Auto retains the previously tested disk mapping. Emulator results do not prove physical CMOS persistence or device timing.
 
@@ -105,6 +113,8 @@ Floppy services support 360 KB, 720 KB, 1.2 MB, 1.44 MB, and 2.88 MB media. They
 Devices setup selects the onboard serial address, parallel address and direction mode, and PS/2 mouse.
 Serial choices are Disabled, 3F8h / IRQ4, 2F8h / IRQ3, 3E8h / IRQ4, and 2E8h / IRQ3. There is no second address-pair control.
 Defaults are serial 3F8h / IRQ4 and parallel 378h in Printer mode.
+
+The PnP inventory excludes the filtered second onboard UART. Parallel descriptions use the fixed platform IRQ7 for every selected base. The FDC37C661 data sheet defines one PINTR output without an address-dependent IRQ mux. Changing the port address does not imply IRQ5. This is the configured platform mapping, not a separate physical interrupt test.
 Drives setup contains Floppy Controller. The floppy controller and PS/2 mouse default to Enabled.
 The board has one serial connector. The unconnected UART B stays Disabled, and ISA serial discovery stays Enabled. Neither has a setup control.
 Old valid device records load with those fixed policies and the standard 3E8h/2E8h pair. The next Save stores them without changing the CMOS schema.
@@ -115,8 +125,8 @@ It leaves UART interrupts and modem outputs off. The summary shows detected COM/
 Serial discovery checks the selected onboard port, then 3F8h, 2F8h, 3E8h, and 2E8h.
 An ISA modem at COM2 can appear after onboard COM1. An absent modem does not create a second BIOS port.
 It initializes every unique detected UART, but publishes only the first four. Parallel discovery publishes up to three detected ports.
-The BIOS provides INT14h functions 00h–05h and INT17h functions 00h–02h with bounded PIT-based waits.
-It does not activate inactive ISA Plug-and-Play cards, allocate card resources, provide a modem protocol, or supply DOS drivers.
+The BIOS provides INT14h functions 00hÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“05h and INT17h functions 00hÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“02h with bounded PIT-based waits.
+The UART discovery owner does not activate inactive cards or allocate resources. Shared Plug and Play performs those operations before discovery. The BIOS does not provide a modem protocol or DOS drivers.
 
 Disabled floppy policy clears drive publication and rejects floppy BIOS requests without reopening the controller. Boot skips A: and keeps HDD policy unchanged.
 Disabled mouse policy inhibits the auxiliary interface, masks IRQ12, removes callbacks, and rejects INT15h/C2h requests. Keyboard input remains available.
@@ -129,13 +139,13 @@ Valid CMOS drive types select the installed drives. Empty or invalid drive confi
 These defaults are settings, not automatic drive detection. Media-rate detection remains separate.
 
 First, Second, Third, and Fourth Boot Device select Disabled, Floppy, Hard Disk, CD-ROM, or Other.
-The defaults are Floppy, Hard Disk, Disabled, and Disabled. Disabled skips a slot and can repeat. Selecting an allocated target moves it to the new position and shifts the intervening slots. Saved non-disabled targets remain unique.
+The defaults are CD-ROM, Floppy, Hard Disk, and Disabled. Disabled skips a slot and can repeat. Selecting an allocated target moves it to the new position and shifts the intervening slots. Saved non-disabled targets remain unique.
 
-Hard Disk uses drive 80h through the installed INT13 handler, including a disk published by an initialized legacy ROM. Other invokes the INT19 chain captured from initialized option ROMs at its selected priority. A returning or absent ROM continues to the next target.
+Hard Disk uses drive 80h through the installed INT13 handler, including a disk published by an initialized legacy ROM. Other connects eligible PnP providers at its selected priority, then invokes the retained legacy INT19 chain. A returning or absent provider continues to the next source.
 Failed reads and unsigned sectors advance to the next selected target. INT18 abandons the failed sector's stack and continues the same order.
 After all targets fail, the BIOS displays `No boot device available`, then `Press any key to retry` on the next line.
 Each failed fresh retry appends the same two lines, so its result is visible.
-Retry resets the installed disk handlers and restarts the installed INT19 chain. It does not repeat POST or ROM initialization.
+Fresh retry resets the installed disk handlers and starts a new attempt through the selected providers and retained legacy chain. It does not repeat POST or ROM initialization.
 
 CD-ROM tries the enabled primary IDE positions in order. It uses the x86 Initial/Default El Torito boot entry. Invalid or unreadable discs continue to the next target.
 No-emulation images use drive E0h and read-only 2048-byte extended reads. Floppy images provide read-only 1.2, 1.44, or 2.88 MB emulation through INT13.
@@ -154,7 +164,7 @@ The installed 86Box D824 model uses FDC37C651 without CR3. It cannot validate en
 Both cold and warm POST blank video early, then rebuild the protected system shadow before VGA checksums. The retained VGA initializer restores output.
 
 Keyboard input uses a US layout, translated scan set 1, the standard BDA ring, and the minimum DOS-facing `INT 16h` services. Caps, Num, and Scroll Lock update their state and LEDs. Num Lock XOR Shift selects keypad digits or navigation. Ctrl+Alt+Delete uses the OEM software warm entry, not an 8042 CPU reset.
-F1–F12 use the standard plain, Shift, Ctrl, and Alt BIOS key codes. Alt takes priority over Ctrl, then Shift. This includes Shift+F8 for DOS step-by-step startup. Enhanced readers retain E0 navigation and keypad identity.
+F1ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“F12 use the standard plain, Shift, Ctrl, and Alt BIOS key codes. Alt takes priority over Ctrl, then Shift. This includes Shift+F8 for DOS step-by-step startup. Enhanced readers retain E0 navigation and keypad identity.
 INT16/AH01h and AH11h return with IF set. Empty status sets ZF and clears CF. Ready status clears ZF and sets CF. This matches OEM E878h/E8A1h and prevents POWER.EXE polling from leaving interrupts disabled. Other caller flags and registers remain intact.
 INT15/C0 reports the enhanced keyboard and EBDA capabilities. INT15/C1 returns the current EBDA segment, including after relocation. This lets Windows 386 Enhanced mode reserve the BIOS state page.
 PS/2 reset, initialization, and streaming retain IRQ readiness independently. C205 preserves packet-length BX. The original Windows mouse driver completes registration and enables streaming.
@@ -174,8 +184,8 @@ The built-in PS/2 port uses the OEM VL82C114 mode, `INT 15h/C2h` services, and I
 
 The retained VGA public interrupt entry remains intact. A legacy ROM-identification token avoids a Speedsys 4.78 BIOS-scan bug that corrupts DS and the stack.
 Chris's benchmark works when run directly. Its batch-launch buffer can cross a 64 KiB boundary in the retained VBE handler.
-RTC services now supply INT 1Ah/AH=00h–07h, POST clock initialization, midnight rollover, and recurring daily alarms through IRQ8/INT 4Ah.
-Public time/date fields use BCD. Native binary/BCD and 12/24-hour formats remain unchanged. Supported dates span 1980–2099, including the 1999 rollover.
+RTC services now supply INT 1Ah/AH=00hÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“07h, POST clock initialization, midnight rollover, and recurring daily alarms through IRQ8/INT 4Ah.
+Public time/date fields use BCD. Native binary/BCD and 12/24-hour formats remain unchanged. Supported dates span 1980ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“2099, including the 1999 rollover.
 Invalid clocks return errors until valid time and date setters repair the power-loss state. The century uses CMOS 32h.
 The narrow VBE buffer guard remains deferred.
 No VBE buffer patch is included.
@@ -188,7 +198,7 @@ Time Format selects 12 Hour or 24 Hour. The default is 12 Hour. Dates use MM/DD/
 In a 12-hour time form, A/P selects AM/PM. The hardware RTC format stays unchanged.
 The footer lists function keys. Chipset field pages also show the page keys.
 The ROM supplies SMBIOS2.2 BIOS/system identification, its conventional date and AT model byte, and the existing INT15/C0 descriptor.
-ROM identification and Setup share the version and release date. No PnP interface or device inventory is added.
+ROM identification and Setup share the version and release date. The shared PnP BIOS interface reports onboard nodes and the ISA configuration established during POST.
 Drives configures floppy types, the IDE controller, and both primary positions. Enter on a primary position opens its detailed settings.
 Setup uses fixed label and value columns. Disk geometry follows Disk Type; transfer settings appear below it.
 Settings within a group use consecutive rows. Blank rows separate groups.
@@ -209,13 +219,14 @@ Boot codes are Disabled=0, Floppy=1, Hard Disk=2, CD-ROM=3, and Other=4. Undefin
 Valid schema1-4 records retain their original boot meanings and use Disabled for the fourth target. Schema4 retains its saved theme and display preference. Earlier schemas use the current theme, with schema3 retaining its display preference.
 Only a confirmed save publishes schema5. Theme identities use the current order directly.
 Schema2 still rejects its reserved bit7. Discard leaves the saved display preference unchanged; F9 selects 12 Hour in the draft.
-Additive, versioned records use 40h–5Ch for IDE and 5Dh–68h for devices.
-The chipset record uses signature `C2h` at CMOS 69h, checksum 6Ah, and 24 settings bytes at 6Bh–7Fh and 33h–35h.
+The following extension layouts remain readable legacy formats. Complete verified Save migrates them to the [shared NV6 format](../../../docs/development/firmware.md). Current Saves retain all 24 chipset bytes, IDE geometry and peripheral choices in the compact payload. CMOS 37h still owns cold strap capture and warm strap reuse. The stackless failure producer still publishes recovery D2h directly at 69h, outside the NV6 checksum. PnP state occupies 0300h..031Fh within the initial one-KiB EBDA prefix and does not overlap APM state.
+Legacy additive, versioned records use 40hÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“5Ch for IDE and 5DhÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“68h for devices.
+The legacy chipset record uses signature `C2h` at CMOS 69h, checksum 6Ah, and 24 settings bytes at 6BhÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“7Fh and 33hÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“35h.
 Byte 10 stores Memory Timing in bits 7:6 and DRAM Speed in bits 5:4.
 Timing codes are Normal=0, Compatibility=1, Manual=2, and Fast=3. Speed codes are Unknown=0, 60 ns=1, and 70 ns=2.
 Byte 23 stores the profile clock in bit 1 (25 MHz=0, 33 MHz=1) and CPU Fast/Slow in bit 0.
 Valid `C1h` records load as Manual/70 ns/33 MHz without changing hardware values or saved CMOS bytes.
-Invalid selectors and inconsistent preset timing tuples use ordinary defaults. A verified save publishes `C2h`.
+Invalid selectors and inconsistent preset timing tuples use ordinary defaults. New verified saves publish NV6 rather than `C2h`.
 An absent additive record uses its defaults without changing other valid records. A malformed signed record produces a visible POST warning.
 With a trusted base record and Halt On=No Errors, recoverable clock and extension warnings continue without CMOS writes.
 Other recovery notices retain Enter to save defaults and restart, or Delete to enter Setup. An invalid base record always retains this recovery choice.
@@ -223,7 +234,7 @@ Progressive POST uses the summary's blue header and cyan labels. Each group appe
 The screen shows the processor, active L1, RAM Test count, banks and interleave, floppy drives, and both primary IDE device names.
 The RAM count stays left aligned. Passed follows KB by two spaces. Escape skips the remaining bulk test and shows Skipped.
 Mandatory firmware RAM checks remain active. Delete shows Entering setup... and opens Setup at the next safe checkpoint.
-During the bulk RAM test, that checkpoint occurs every 1 KB. The shared test checks three constant patterns and address witnesses in each block. It restores the block before IRQ service, Pause, Escape, Delete, failure, or retry. Its temporary backup uses physical `0800h..0BFFh` within the reserved POST scratch at `0800h..0FFFh`. ATA identification uses this region later. The EBDA stays 1 KiB and INT12 still reports 639 KiB. Setup discard restores completed groups and resumes POST.
+During the bulk RAM test, that checkpoint occurs every 1 KB. The shared test checks three constant patterns and address witnesses in each block. It restores the block before IRQ service, Pause, Escape, Delete, failure, or retry. Its temporary backup uses physical `0800h..0BFFh` within the reserved POST scratch at `0800h..0FFFh`. ATA identification uses this region later. At this stage the EBDA remains at its initial 1 KiB and INT12 reports 639 KiB. Final PnP publication reserves and advertises the complete runtime extent. Setup discard restores completed groups and resumes POST.
 L2 stays off until the final Setup gate. Its state appears after the late probe, followed by VGA BIOS and System BIOS states.
 Shadow/cache labels describe the complete ROM extent and the active register policy. Partial coverage is explicit.
 Cached means eligible through an active cache, not a measured cache hit. Conflicting primary-region policies can show Cache status unknown.
@@ -261,15 +272,10 @@ After CMOS power loss, confirm both date and time to clear the warning.
 
 
 
-After the final Setup gate and cache setup, POST scans C8000h–DFFFFh on 2 KiB boundaries for legacy expansion ROMs.
-It validates the signature, nonzero 512-byte length, complete extent, and checksum before calling offset 3 once per POST.
-It skips covered extents and does not initialize the retained VGA ROM again. The selected ROM shadow policy remains active.
-A malformed recognizable ROM produces a warning controlled by Halt On.
+The shared ROM owner scans available addresses through EFFFFh on 2 KiB boundaries. It validates complete outer extents and linked expansion headers before execution. Proven selected, retained and deployed ROM extents are excluded without deduplicating unrelated cards that share an ID. The selected shadow policy remains active.
 
-A returning ROM can retain interrupt hooks and disk publication.
-BIOS segments, flags, and stack are restored after its return. A non-returning card initializer retains control without a BIOS watchdog.
-The BIOS captures card-owned INT19 behavior and dispatches it through Other. A card that chains into BIOS INT18 continues with the selected BIOS order. An initializer that boots without returning retains control.
-PnP, BEV/BCV selection, named ROM targets, PCI, PMM, and E0000h scanning are not supported.
+Returning initializers can retain interrupt hooks and disk publication. BIOS segments, flags and stack are restored after return. A non-returning initializer retains control without a BIOS watchdog. Other selects deferred connection and bootstrap providers. Failed sectors, returning loaders and provider INT18/INT19 handoffs advance through the selected sources. Named ROM targets, PCI and PMM remain unsupported on this port.
+
 Disk Type None disables native detection and services for that IDE position. Its saved geometry remains available when re-enabled.
 Keep Primary IDE Controller Enabled when an option ROM needs the onboard interface. None does not disable the shared controller.
 
@@ -316,6 +322,15 @@ Runtime keyboard turbo switching, other keyboard layouts, and 1/2 MiB SIMMs rema
 CAUTION: Use a known recovery method for the first hardware test. 86Box cannot validate physical DRAM timing or SIMM slot wiring.
 
 The [FPM preset guide](../fpm-dram-presets-25-33mhz.md) records the original design inputs. The current VL82C481 profiles, locked values, and Fast eligibility described above supersede its earlier proposals.
+
+## Private POST and Setup composition
+
+The shared [module guide](../../../docs/development/rom-modules.md) owns packing, call frames and release. The existing AH87 transfer still reads the complete physical 0C000h..0FFFFh bank through FFFEC000h. Packed storage adds a separate decoded allocation. It does not change ROMSET, A20, NMI or interrupt ownership.
+
+The 0.8.0 normal composition has 8,829 free F000 bytes, compared with 514 in the 0.7.0 baseline. Its decoded module occupies 22,742 bytes. The complete ZX0 representation occupies 14,164 bytes, including the 16-byte storage header. Source staging costs 16,384 bytes and decoded storage costs 22,752 bytes. The combined temporary module charge is 39,136 bytes. The emitted decoder occupies 181 resident bytes. These costs are included in the normal `rom-footprint.json`, bound to that build's final image.
+
+The assembler writes its raw tail only to `tests/post-module/raw-assembly.bin`. The shared serializer checks the full raw extent, constructs the final bank and compares the decoded final bank with every assembler byte. The normal system file remains 64 KiB and both physical variants remain 128 KiB. Selected VGA 00000h..07FFFh and OEM 08000h..0BFFFh remain exact.
+
 
 ## Directory layout
 
@@ -644,3 +659,11 @@ The conversion uses Poppler text extraction first. It uses Tesseract OCR for sca
 Native APM and RTC DOS checks read the source disk image from the `BAIOS_DOS_VHD` environment variable. Set it to your own DOS VHD; tests modify only disposable copies. The CD boot test accepts `--iso` and otherwise looks for `presario-800/reference/media/windows98se.iso`. These inputs are not distributed.
 
 Native network validation uses the private Etherboot 5.4.4 ISA input at reference/software/etherboot-5.4.4/ne.zrom and the retained b10408 runtime. It checks downloaded boot and explicit provider quit after a real TFTP error. The private emulator copy and input requirements are described in [the port update guide](../../../docs/port-updates.md).
+
+The final PnP publisher preserves the original EBDA prefix and adds compact relative runtime records. Real and protected services resolve the current BDA pointer after supported relocation. The private finalizer returns before publication reuses its temporary arena.
+
+### Partial-shadow model qualification
+
+In 86Box source commit `6c935be21a0ebdb218cd668bb2263c7f1625e1a0`, `src/machine/m_at_socket1.c` mirrors the D824 image across one C0000h..FFFFFh ROMCS mapping. `src/chipset/vl82c480.c` exposes unrelated mode-00 E-segments from that mapping when register 11h is nonzero. Partial E800h shadow therefore exposes retained VGA bytes at other E-segments in this model. This is a model limitation, not evidence of a physical board alias.
+
+The VL82C481 manual describes separate 16 KiB access modes but does not provide the lower ROMMOV location decode table needed to establish those aliases. Keep the E0000h..EFFFFh scan and the proven selected, deployed and retained extents. Do not add content-ID deduplication, a blanket E-segment exclusion or a chipset-register workaround from this model result.

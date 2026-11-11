@@ -14,15 +14,20 @@ class ClockUI(POSTHardware):
         self.clock_help = None
         self.editing_clock = False
         self.clock_ports = set()
-        listing=Listing(PORT/'build/hardware-tests/geometry/baios-m919.lst')
+        listing=Listing(PORT/'build/tests/geometry/baios-m919.lst')
         self.profile_index_return=0xF0000+listing.symbol('.done','chipset_profile_index')
         self.profile_indices=set()
-        self.help_wait=0xF0000+listing.symbol('.wait','setup_help')
+        self.help_wait=None
+        self.listing=listing
         self.help_registered=False
 
     def observe(self, u, address, size):
         if self.continuing and not self.help_registered:
-            self.key_points.add(self.help_wait);self.help_registered=True
+            base=int.from_bytes(self.read(0x40E,2),'little')<<4
+            if any(self.read(base+0x33A,2)):
+                from shared.tools.post_fixture import installed_address
+                self.help_wait=installed_address(self.listing,self.read,'.wait','setup_help')
+                self.key_points.add(self.help_wait);self.help_registered=True
         if self.continuing and address==self.profile_index_return:
             base=(u.reg_read(x.UC_X86_REG_FS)<<4)+u.reg_read(x.UC_X86_REG_SI)
             clock=self.read(base+7,1)[0];speed=(self.read(base+8,1)[0]>>4)&3
@@ -261,7 +266,7 @@ def check(case):
     result={'cases':CASES[case]()}
     sources=('m919/tools/timing_boundaries.py','m919/tools/timing_proof.py','m919/tools/cache_proof.py',
              'm919/tools/geometry_proof.py','m919/src/hardware/chipset-core.inc','m919/src/hardware/timing.inc',
-             'm919/src/hardware/cache-validation.inc','m919/src/hardware/cache.inc',
+             'm919/src/hardware/cache.inc','m919/src/hardware/cache-io.inc',
              'm919/src/hardware/chipset-ui.inc','m919/src/hardware/chipset-data.inc','shared/src/firmware/bios.asm')
     result['source_sha256']={p:hashlib.sha256((REPOSITORY/p).read_bytes()).hexdigest() for p in sources}
     target=PORT/'build/research/hardware'/f'timing-boundaries-{case}.json'

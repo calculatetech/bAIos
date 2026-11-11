@@ -18,6 +18,28 @@ board_pci_fixed_resources:
 .allocated:
     clc
     ret
+board_select_video:
+    push bx
+    call pnp_module_install
+    jc .done
+    mov bx,pnp_board_select_video
+    call pnp_post_invoke
+.done:
+    pop bx
+    ret
+board_vga_disable:
+    push ax
+    push bx
+    mov ax,bx
+    mov bx,pnp_video_disable_entry
+    call pnp_post_invoke
+    pop bx
+    pop ax
+    ret
+pnp_selected_video_callback:
+    call board_pci_device
+    retf
+
 board_pci_device:
     cmp bx,CFG_PLATFORM_HOST_PCI_DEVICE << 3
     jne .peripheral
@@ -44,9 +66,9 @@ board_pci_device:
     shr esi,16
     cmp si,0x0300
     jne .ide
-    cmp word [fs:M_VGA_BDF],0xFFFF
-    jne .done
-    mov [fs:M_VGA_BDF],bx
+    cmp [fs:M_VGA_BDF],bx
+    jne board_vga_disable
+.selected_vga:
     mov eax,ebx
     shl eax,8
     or eax,0x80000030
@@ -225,7 +247,11 @@ initialize_video:
     jne .provider
     xor ax,ax
 .provider:
-    call option_rom_enter
+    mov dx,0xC000
+    mov cl,2
+    post_code 0x53
+    call pnp_rom_enter
+    post_code 0x54
     xor ax,ax
     mov ds,ax
     mov es,ax
@@ -291,8 +317,8 @@ board_vga_rom_release:
     call pci_vga_rom_release
     pop bx
     ret
-board_vga_shadow:
-    ; Preserve code when the VGA provider changes its own PCI ROM decoding.
+; Fill both firmware banks before enabling their shared RAM read selection.
+board_firmware_shadow:
     pushf
     cli
     cld
@@ -304,7 +330,26 @@ board_vga_shadow:
     mov bh,al
     mov bl,0x55
     call host_write
-    ; Global shadow read enable also selects F, so fill it before enabling C.
+    mov ax,0xE000
+    mov ds,ax
+    mov es,ax
+    xor si,si
+    xor di,di
+    mov cx,0x8000
+    rep movsw
+    ; Persisted ESCD changes the ROM bank sum; protect its visible shadow from UMBs.
+    mov si,0x800
+    xor ax,ax
+    mov ecx,0xF800
+.checksum:
+    cmp si,0x81C
+    je .next_byte
+    add ah,[si]
+.next_byte:
+    inc si
+    a32 loop .checksum
+    neg ah
+    mov [es:0x81C],ah
     mov ax,CFG_ROM_CODE_SEGMENT
     mov ds,ax
     mov es,ax
@@ -312,6 +357,35 @@ board_vga_shadow:
     xor di,di
     mov cx,0x8000
     rep movsw
+    cache_read 0x54
+    or al,1
+    mov bh,al
+    mov bl,0x54
+    call host_write
+    cache_read 0x55
+    or al,0xC0
+    mov bh,al
+    mov bl,0x55
+    call host_write
+    pop es
+    pop ds
+    popad
+    popf
+    ret
+
+board_vga_shadow:
+    ; Preserve code when the VGA provider changes its own PCI ROM decoding.
+    pushf
+    cli
+    cld
+    pushad
+    push ds
+    push es
+    cache_read 0x55
+    and al,0x9E             ; Keep E/F firmware reads on their prepared RAM copies.
+    mov bh,al
+    mov bl,0x55
+    call host_write
     mov ax,0xC000
     mov ds,ax
     mov es,ax
@@ -323,7 +397,7 @@ board_vga_shadow:
     rep movsw
     cache_read 0x54
     mov bh,al
-    or bh,2
+    or bh,3                 ; E firmware stays shadowed while C VGA is added.
     cmp word [fs:HW_VGA_END],0xC800
     jbe .regions
     or bh,4
@@ -344,65 +418,19 @@ board_vga_shadow:
     popf
     ret
 %include "pc/option-rom.inc"
-%include "pc/pci-rom.inc"
+; Only POST deployment/scan code moves; public PCI services and all physical
+; shadow/register owners remain resident with their existing contracts.
+pci_option_roms:
+    push bx
+    mov bx,pnp_pci_option_roms
+    call pnp_post_invoke
+    pop bx
+    ret
+pci_rom_skip:
+    push bx
+    mov bx,pnp_pci_rom_skip
+    call pnp_post_invoke
+    pop bx
+    ret
 ; Optional PCI ROM copying uses the described HB54/55 regional shadow controls.
-board_pci_rom_writable:
-    pushf
-    cli
-    pushad
-    cache_read 0x55
-    and al,0xBF
-    mov bh,al
-    mov bl,0x55
-    wbinvd
-    call host_write
-    popad
-    popf
-    ret
-board_pci_rom_shadow:
-    pushf
-    cli
-    pushad
-    cache_read 0x54
-    mov edx,ebp
-    shl dl,4
-    or al,dl
-    mov bh,al
-    mov bl,0x54
-    call host_write
-    ; Preserve F shadow: copy the executing BIOS before global read enable.
-    push ds
-    push es
-    mov ax,CFG_ROM_CODE_SEGMENT
-    mov ds,ax
-    mov es,ax
-    xor si,si
-    xor di,di
-    mov cx,0x8000
-    cld
-    rep movsw
-    cache_read 0x55
-    or al,0x80
-    mov bh,al
-    mov bl,0x55
-    wbinvd
-    call host_write
-    pop es
-    pop ds
-    popad
-    popf
-    ret
-board_pci_rom_protect:
-    pushf
-    cli
-    pushad
-    cache_read 0x55
-    or al,0x40
-    mov bh,al
-    mov bl,0x55
-    wbinvd
-    call host_write
-    popad
-    popf
-    ret
 %include "hardware/pci-tuning.inc"

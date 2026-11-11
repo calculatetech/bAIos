@@ -82,6 +82,8 @@ OEM 94E9 distinguishes an external C000 provider from the embedded video input. 
 
 Data-sheet reserved masks govern BE, DB, DC, DD, DE, FB and FE. UARTs are disabled before moving bases and sources. DE IRQ3 bits 7:6 and IRQ4 bits 5:4 use primary source 2 and secondary source 3. Same-IRQ onboard choices are rejected. The four standard bases are 3F8,2F8,3E8,2E8. Shared probing scans the complete collection and removes duplicates without truncating later candidates. Parallel BE bit 5 selects compatible/bidirectional operation. EPP/ECP is unsupported.
 
+The ACC3221 data sheet, page 19, defines DE bits1:0 source 2 as primary parallel on PIRQ5. The SP block diagram exposes PIRQ5 without PIRQ7. The existing routing owner selects that source for every enabled parallel address, so its PnP node reports IRQ5 independently of the base address. The retained emulator's fixed IRQ7 does not implement this mux and is not evidence for the physical route. A separate bench test of the parallel interrupt is not recorded.
+
 FB owns FDC enable and FE owns the primary IDE enable. The original Presario two-slot `ata_detect_primary` owner is retained, including channel reset, master/slave publication and IRQ14/cascade handoff. FDC VERSION 90 enables the existing enhanced commands; legacy 80 keeps conventional operation and rejects 2.88 MiB requests that need enhanced mode. A/B swap translates unit and both DOR motor bits.
 
 Shared firmware continues to own the RTC, keyboard controller/IRQ1/INT16, PS/2 auxiliary commands/IRQ12, PIC/PIT, DMA transfers, floppy/ATA/ATAPI/EDD services, CD catalogs/emulation cleanup, option-ROM scanning, boot cursor, retry, Setup and display. No UMC, VLSI, PCI or M919 profile-state owner is included.

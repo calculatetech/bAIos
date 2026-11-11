@@ -547,6 +547,9 @@ def settings_roundtrip_cases(image):
         _,fixture=mapped(d.modules,expected=16,memory=d,rom_image=image)
         u,_,_,state,cmos,_=fixture
         base=u.reg_read(x.UC_X86_REG_FS)<<4
+        invoke(fixture,'setup_defaults')
+        invoke(fixture,'settings_save')
+        assert not u.reg_read(x.UC_X86_REG_EFLAGS)&1 and cmos[0x33:0x35]==b'N\x06'
         # F9 replaces the draft through the same owner as both real menus.
         d.write(base+state['U_CHIP']+3,1,0x40)
         invoke(fixture,'setup_defaults')
@@ -559,7 +562,7 @@ def settings_roundtrip_cases(image):
             assert d.read(base+state['U_CHIP']+2,2)==b'\x00\x00'
         invoke(fixture,'chipset_settings_save')
         assert not u.reg_read(x.UC_X86_REG_EFLAGS)&1
-        assert cmos[0x69]==0x57
+        assert cmos[0x69]==0 and cmos[0x33:0x35]==b'N\x06'
         for i in range(24):d.write(base+state['C_CHIP']+i,1,0xA5)
         invoke(fixture,'chipset_settings_load')
         assert d.read(base+state['C_CHIP']+2,2)==bytes((0,0x40 if wb else 0))
@@ -572,8 +575,13 @@ def settings_roundtrip_cases(image):
         assert d.registers[0x50]&0xC0==(0xC0 if wb else 0x80)
         rows.append(dict(f9=True,selected='WB' if wb else 'WT',cmos_reload=True,l2='enabled',size=256))
         print('F9/save/reload/activation',rows[-1],'PASS',flush=True)
-    # Continue the live WB fixture through the actual persistent recovery reader.
+    # D2 is consumed on the next POST, with caches reset before hardware apply.
     cmos[0x69]=0xD2
+    d=Memory(kib=256)
+    d.initial_cmos=bytes(cmos)
+    _,fixture=mapped(d.modules,expected=16,memory=d,rom_image=image)
+    u,_,_,state,cmos,_=fixture
+    base=u.reg_read(x.UC_X86_REG_FS)<<4
     invoke(fixture,'settings_load')
     invoke(fixture,'chipset_apply')
     invoke(fixture,'chipset_late_cache')
@@ -630,6 +638,7 @@ def vga_aperture_cases(image,apertures=(0x8000,0x10000,0,0xC000,0x20000,None)):
         if aperture is None:d.devices={}
         _,fixture=mapped(d.modules,expected=16,memory=d,rom_image=image)
         d.composed=True
+        invoke(fixture,'pnp_early',count=3000000)
         u=fixture[0]
         base=u.reg_read(x.UC_X86_REG_FS)<<4
         for offset,value in ((0x1000,0xFFFF if aperture is None else 0x60),(0x103A,0xC800)):
@@ -655,15 +664,6 @@ def vga_aperture_cases(image,apertures=(0x8000,0x10000,0,0xC000,0x20000,None)):
             assert value==int.from_bytes(source[offset:offset+size],'little')
             copied.append((address,size))
         copy_hook=u.hook_add(UC_HOOK_MEM_WRITE,shadow_write,None,0xC0000,0xCFFFF)
-        # Work around only Unicorn's external-provider RETF emulation.
-        resume=[]
-        def provider_return(cpu,address,size,user):
-            if address==0xC0010 or address==0xC8007 and extent==0x8000:
-                sp=cpu.reg_read(x.UC_X86_REG_SP)
-                ip,cs=struct.unpack('<HH',d.read((cpu.reg_read(x.UC_X86_REG_SS)<<4)+sp,4))
-                resume.append((ip,cs,sp+4))
-                cpu.emu_stop()
-        handle=u.hook_add(UC_HOOK_CODE,provider_return)
         code=u.reg_read(x.UC_X86_REG_CS)<<4
         def execute(name):
             u.reg_write(x.UC_X86_REG_CS,code>>4)
@@ -671,12 +671,7 @@ def vga_aperture_cases(image,apertures=(0x8000,0x10000,0,0xC000,0x20000,None)):
             u.reg_write(x.UC_X86_REG_SP,0x6F00)
             for i,b in enumerate(struct.pack('<H',0xFF00)):d.write(0x6F00+i,1,b)
             u.reg_write(x.UC_X86_REG_EFLAGS,0x247)
-            u.emu_start(code+fixture[2].symbol(name),code+0xFF00,count=1000000)
-            while resume:
-                ip,cs,sp=resume.pop(0)
-                u.reg_write(x.UC_X86_REG_CS,cs)
-                u.reg_write(x.UC_X86_REG_SP,sp)
-                u.emu_start((cs<<4)+ip,code+0xFF00,count=500000)
+            fixture[5].execute(code+fixture[2].symbol(name),code+0xFF00,1000000)
             assert u.reg_read(x.UC_X86_REG_IP)==0xFF00,name
         execute('initialize_video')
         u.hook_del(copy_hook)
@@ -693,7 +688,6 @@ def vga_aperture_cases(image,apertures=(0x8000,0x10000,0,0xC000,0x20000,None)):
         assert d.vga_entries==1
         assert d.seq_index==0x15 and d.seq=={1:9,0x15:0xA5},'Reset display blank was not released'
         execute('option_rom_discovery')
-        u.hook_del(handle)
         assert d.vga_entries==1,'VGA initialized again through a mirrored ROM'
         assert d.ports.get(0xED)==(0xA5 if extent==0x8000 else None)
         rows.append(dict(pci_aperture=aperture,effective_extent=extent,legacy_header=0x8000,
@@ -847,6 +841,9 @@ def tuning_cases(image,shared=True):
     _,fixture=mapped(d.modules,expected=16,memory=d,rom_image=image)
     u,_,listing,state,cmos,_=fixture
     d.composed=True
+    from geometry_proof import prepare_component_post
+    prepare_component_post(fixture)
+    u.reg_write(x.UC_X86_REG_DS,0xF000)
     base=u.reg_read(x.UC_X86_REG_FS)<<4
     # Independent register/choice oracles from the retained AMI/Award bindings.
     controls=[(host,0x53,0x40,7,0,[0,0x40]),(host,0x51,8,7,1,[None,8,0]),
@@ -892,7 +889,17 @@ def tuning_cases(image,shared=True):
         u.reg_write(x.UC_X86_REG_SI,state['C_CHIP']);invoke(fixture,'chipset_valid')
         assert u.reg_read(x.UC_X86_REG_EFLAGS)&1,(offset,value)
     def word(address):return int.from_bytes(u.mem_read(0xF0000+address,2),'little')
-    def string(address):return bytes(u.mem_read(0xF0000+address,64)).split(b'\0')[0].decode('ascii')
+    def string(address):
+        saved=u.context_save();screen=bytes(u.mem_read(0xB8000,4000))
+        try:
+            u.mem_write(0xB8000,b'\0\x07'*2000)
+            for register,value in ((x.UC_X86_REG_DS,0xF000),(x.UC_X86_REG_ES,0xB800),
+                                   (x.UC_X86_REG_SI,address),(x.UC_X86_REG_DI,0),(x.UC_X86_REG_BX,0x0700)):
+                u.reg_write(register,value)
+            invoke(fixture,'setup_text')
+            return bytes(u.mem_read(0xB8000,4000))[::2].split(b'\0')[0].decode('cp437')
+        finally:
+            u.mem_write(0xB8000,screen);u.context_restore(saved)
     import re
     def natural(value):return [(0,int(p)) if p.isdigit() else (1,p.lower()) for p in re.split(r'(\d+)',value)]
     groups=listing.symbol('chipset_groups');counts=listing.symbol('chipset_group_counts')
@@ -924,6 +931,9 @@ def tuning_cases(image,shared=True):
             field_count+=1
     assert field_count==45
     # Old57 prefix and new controls both survive real save/readback/reload.
+    invoke(fixture,'setup_defaults')
+    invoke(fixture,'settings_save')
+    assert not u.reg_read(x.UC_X86_REG_EFLAGS)&1
     for record in (bytes.fromhex('F0010060900300000003')+bytes(14),
                    bytes.fromhex('0001004000000012AA070A520103')+bytes(10),
                    bytes.fromhex('0001004000000012AA070A52010301FCA6B30F01')+bytes(4)):
@@ -932,7 +942,7 @@ def tuning_cases(image,shared=True):
         for i in range(24):d.write(base+state['C_CHIP']+i,1,0)
         invoke(fixture,'chipset_settings_load')
         assert d.read(base+state['C_CHIP'],24)==record
-        assert cmos[0x69]==0x57
+        assert cmos[0x69]==0 and cmos[0x33:0x35]==b'N\x06'
     # The shared disk page sorts display positions without rewriting old codes.
     ide_fields=[(0,[0,1],['Disabled','Enabled']),
                 (7,[0,1,2,3],['Auto','Normal','Large','LBA']),

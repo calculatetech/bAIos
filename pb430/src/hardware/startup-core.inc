@@ -210,6 +210,7 @@ startup:
     jmp cache_stock_warm_entry
 .warm_cache_return:
     cli ; The modular startup rebuilds its vectors before enabling IRQs.
+    call pnp_warm_budget
     mov esp,ebp
     mov ax,[0x40E]
     cmp ax,STATE_SEG
@@ -357,9 +358,13 @@ startup:
     pb_stage 0x43
     call init_at_prerequisites
     pb_stage 0x50
+    call pnp_early
     call initialize_video
     jc video_failed
     pb_stage 0x60
+    call post_ui_begin
+    mov al,1
+    call post_status
     call init_keyboard
     pb_stage 0x48
     call arm_keyboard_runtime

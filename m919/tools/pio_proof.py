@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from m919.tools.ide_completeness_proof import Machine, x
+from shared.tools.checkpoint_proof import nv6_payload, nv6_fixture, selected_bits
 
 
 class PIO(Machine):
@@ -15,7 +16,7 @@ class PIO(Machine):
                  revision=0x0E, cycles=(240,)*4, legacy=None, failures=None,
                  controller=1, usable=1, bdf=0x91, device_id=0x673A1060, chs=False,
                  iordy=(True,)*4, advanced=(3,)*4, cycles_iordy=(120,)*4, valid=(True,)*4, device_count=4, generic=False, legacy_valid=False,
-                 observe_pending=False):
+                 observe_pending=False, post=False):
         self.config = {0x80009100: device_id, 0x80009008: revision, 0x80009104: 1}
         self.config.update({0x80009140+n: int.from_bytes(bytes((0x55+n,))*4, 'little') for n in (0, 4, 8, 12)})
         self.legacy_valid=legacy_valid
@@ -29,7 +30,7 @@ class PIO(Machine):
         self.pending_baselines,self.pending_observations={},[]
         self.cycles, self.legacy, self.failures = cycles, legacy, failures or {}
         self.pending = [0]*4
-        super().__init__(image, kinds, controller=controller, usable=usable, chs=chs, device_count=device_count)
+        super().__init__(image, kinds, controller=controller, usable=usable, chs=chs, device_count=device_count, post=post)
         self.cpu.mem_write(self.base+0x1034, struct.pack('<H', bdf))
         if isinstance(requests,int):low,high=requests,0
         else:
@@ -164,7 +165,7 @@ def assert_post_modes(m):
 def qualification_cases(image):
     rows = []
     for options in ({}, {'requests': (1,)*4}, {'clock': 1}, {'revision': 12}, {'usable': 0}, {'controller': 0}, {'bdf': 0xFFFF}, {'device_id': 0x673B1060}):
-        m = PIO(image, **options)
+        m = PIO(image, **options, post=True)
         original = bytes(m.byte(n) for n in range(0x43, 0x50))
         m.call('ata_detect_primary')
         allowed = not any(name in options for name in ('usable','controller','bdf','device_id'))
@@ -250,7 +251,7 @@ def timing_cases(image):
 def completion_cases(image):
     rows = []
     for outcome in ('abort', 'busy', 'pending'):
-        m = PIO(image, failures={0: outcome})
+        m = PIO(image, failures={0: outcome}, post=True)
         m.call('ata_detect_primary', count=20000000)
         assert m.get('S_PRESENT') == 1 and m.get('S_CAPACITY', 4) == 16*65536
         assert m.get('S_POLICY_INDEX') == 0 and m.get('S_PIO_REQUEST') == 0
@@ -376,19 +377,19 @@ def policy_cases(image):
             at=self.base+self.state['U_CHIP_SCREEN']
             assert self.state['U_CHIP']+self.state['CHIP_SIZE']==self.state['U_CHIP_SCREEN']
             def entry(cpu,address,size,data):
-                assert cpu.reg_read(x.UC_X86_REG_SI)==self.state['U_CHIP']
+                if cpu.reg_read(x.UC_X86_REG_SI)!=self.state['U_CHIP']:return
                 # Valid submenu plus adjacent popup state must survive either save result.
                 self.put('U_CHIP_SCREEN',5);self.put('U_CHIP_VALUE',0xA6)
                 self.save_boundary=bytes(cpu.mem_read(at,2))
             def adjacent_write(cpu,access,address,size,value,data):
                 if self.save_boundary is not None:
                     raise AssertionError(('packed save wrote adjacent Setup state',hex(address),size,value))
-            self.cpu.hook_add(UC_HOOK_CODE,entry,None,0xF0000+self.listing.symbol('chipset_packed_save'),0xF0000+self.listing.symbol('chipset_packed_save'))
+            self.cpu.hook_add(UC_HOOK_CODE,entry,None,0xF0000+self.listing.symbol('settings_nv6_pack_component'),0xF0000+self.listing.symbol('settings_nv6_pack_component'))
             self.cpu.hook_add(UC_HOOK_MEM_WRITE,adjacent_write,None,at,at+1)
         def interrupt(self, cpu, number, data):
             if number==0x16 and cpu.reg_read(x.UC_X86_REG_AH)==0 and self.save_boundary is not None:
                 assert bytes(cpu.mem_read(self.base+self.state['U_CHIP_SCREEN'],2))==self.save_boundary
-                assert self.failed_write==0x71 and self.cmos[0x38]==0 and self.cmos[0x71]==0
+                assert self.failed_write==0x35 and self.cmos[0x38]==0 and self.cmos[0x33]==0
                 self.failed_save_resumed=True;self.save_boundary=None
             if (number == 0x16 and cpu.reg_read(x.UC_X86_REG_AH) == 0 and self.keys and
                     self.get('U_PAGE') == 1 and self.get('U_FIELD') == 11 and self.keys[0] == 0x4800):
@@ -399,7 +400,7 @@ def policy_cases(image):
             return super().interrupt(cpu, number, data)
     rows = []
     for action in ('cancel', 'save', 'failed-save'):
-        m = Screen(image, requests=0, clock=0)
+        m = Screen(image, requests=0, clock=0, post=True)
         m.cpu.mem_write(m.base+0x60, bytes.fromhex('A0010070900000A255070F6E010F01FCA9870F0100000000'))
         m.cpu.mem_write(m.base+0x60+21,b'\x01') # Opaque old selector remains saved, without affecting PIO.
         original = bytes(m.cpu.mem_read(m.base+0x60, 24))
@@ -415,7 +416,7 @@ def policy_cases(image):
         keys += [27]
         keys += [27, ord('y')] if action == 'cancel' else [0x4400, ord('y')]
         if action=='failed-save':
-            m.failed_write=0x71
+            m.failed_write=0x35
             keys += [27,27,27,ord('y')]
         m.keys = keys
         m.call('setup_main', count=20000000)
@@ -427,18 +428,17 @@ def policy_cases(image):
         if action == 'cancel':
             assert not m.writes and not m.reset
         elif action=='failed-save':
-            assert not m.reset and m.failed_save_resumed and (0x71,ord('W')) in m.writes
+            assert not m.reset and m.failed_save_resumed and any(address==0x35 for address,_ in m.writes)
             assert (0x38,ord('B')) not in m.writes
         else:
-            assert m.reset and m.cmos[0x33:0x36] == bytes.fromhex('3402ca')
+            assert m.reset and m.cmos[0x33:0x35] == b'N\x06' and m.cmos[0x69]==0
             assert m.save_boundary==b'\x05\xa6'
             assert bytes(m.cpu.mem_read(m.base+m.state['U_CHIP_SCREEN'],2))==m.save_boundary
             masks = bytes.fromhex('F0010170900301FFFF070F7F010F01FCFFFF0F01FF01031F')
             bits = [(v >> b) & 1 for v, mask in zip(draft, masks) for b in range(8) if mask >> b & 1]
-            packed = bytearray(b'W\0'+sum(v << n for n, v in enumerate(bits)).to_bytes(13, 'little'))
-            packed[1] = -sum(packed) & 255
-            assert m.cmos[0x71:0x80] == packed
-            restored = PIO(image)
+            packed=selected_bits(draft,masks)
+            assert nv6_payload(m.cmos)[41:53] == packed
+            restored = PIO(image, post=True)
             restored.cmos[:] = m.cmos
             restored.call('settings_load')
             assert bytes(restored.cpu.mem_read(m.base+0x60, 24)) == draft
@@ -457,18 +457,18 @@ def policy_cases(image):
             old=draft[:23]+b'\0'
             def pack(chip):
                 bits=[(v>>b)&1 for v,mask in zip(chip,masks) for b in range(8) if mask>>b&1]
-                raw=bytearray(b'W\0'+sum(v<<n for n,v in enumerate(bits)).to_bytes(13,'little'))
-                raw[1]=-sum(raw)&255
-                return raw
+                return sum(v<<n for n,v in enumerate(bits)).to_bytes(12,'little')
             old_record=pack(old)
-            assert old_record[2:13]==packed[2:13],'Old88-bit prefix moved'
+            assert old_record[:11]==packed[:11],'Old88-bit prefix moved'
             for invalid in (None,6,7):
                 for pos in ((0,) if invalid is None else range(4)):
                     chip=bytearray(old)
                     if invalid is not None:
                         chip[20]=(chip[20]&~(3<<(2*pos)))|((invalid&3)<<(2*pos))
                         chip[23]|=1<<pos
-                    fresh=PIO(image);fresh.cmos[:]=m.cmos;fresh.cmos[0x71:0x80]=pack(chip)
+                    fresh=PIO(image, post=True)
+                    payload=bytearray(nv6_payload(m.cmos));payload[41:53]=pack(chip)
+                    fresh.cmos[:]=nv6_fixture(m.cmos,payload)
                     fresh.writes.clear();fresh.call('settings_load')
                     assert not fresh.writes
                     actual=bytes(fresh.cpu.mem_read(fresh.base+0x60,24))
@@ -484,10 +484,10 @@ def policy_cases(image):
                          failed_save_resumes_Setup=m.failed_save_resumed))
     # Changing a former mode4 request to0/1 must clear its appended high bit.
     for steps,request in ((2,1),(3,2)):
-        m=Screen(image,requests=(5,)*4)
+        m=Screen(image,requests=(5,)*4, post=True)
         m.keys=[0x5000,9,0x5000,0x5000,13]+[0x5000]*11+[0x4D00]*steps+[0x4400,ord('y')]
         m.call('setup_main',count=12000000);assert m.reset and not m.keys
-        fresh=PIO(image);fresh.cmos[:]=m.cmos;fresh.call('settings_load')
+        fresh=PIO(image, post=True);fresh.cmos[:]=m.cmos;fresh.call('settings_load')
         assert fresh.cpu.mem_read(fresh.base+0x60+23,1)==b'\x0e'
         assert fresh.cpu.mem_read(fresh.base+0x60+20,1)==bytes((0x54|request,))
         fresh.call('ata_detect_primary');assert modes(fresh)==[request-1,4,4,4]
@@ -498,15 +498,14 @@ def policy_cases(image):
 def legacy_policy_case(image):
     m = PIO(image,requests=(5,)*4)
     before = bytes(m.cmos)
+    m.writes.clear()
     m.call('chipset_record_save', SI=m.state['C_CHIP'])
-    assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-    assert m.cmos[0x33:0x36] == bytes(3) and m.cmos[0x69] == 0x57
-    assert bytes(m.cpu.mem_read(m.base+0x60+20, 4)) == bytes(4)
-    assert m.cmos[0x40:0x69] == before[0x40:0x69]
+    assert m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
+    assert bytes(m.cmos)==before and not m.writes
     m.writes.clear()
     m.call('settings_load')
     assert not m.writes and bytes(m.cpu.mem_read(m.base+0x60+20, 4)) == bytes(4)
-    return dict(legacy_standalone_keeps_format=True, new_fields_zero=True, unrelated_owners_retained=True)
+    return dict(legacy_standalone_rejected_without_writes=True, new_fields_zero=True, unrelated_owners_retained=True)
 
 
 def run(image):
@@ -525,7 +524,7 @@ def limit_cases(image):
             directory=port/'build/tests/pipeline-pio'/f'cap{maximum}'/'image'
             variant=Path(build(port,str(directory),(f'BOARD_ATA_PIO_MAX={maximum}',))['path'])
         for request in (0,1,3,4,5):
-            m=PIO(variant,requests=(request,)*4)
+            m=PIO(variant,requests=(request,)*4, post=True)
             m.call('ata_detect_primary')
             want=min(maximum,4 if request==0 else request-1)
             assert modes(m)==m.device_modes==[want]*4,(maximum,request,modes(m))
@@ -533,7 +532,7 @@ def limit_cases(image):
             assert modes(m)==m.device_modes==[want]*4
             assert_post_modes(m)
             rows.append(dict(port_max=maximum,request=request,effective=want,reset_restored=True,effective_POST=True))
-    m=PIO(image,requests=(5,)*4,cycles_iordy=(180,120,180,120))
+    m=PIO(image,requests=(5,)*4,cycles_iordy=(180,120,180,120), post=True)
     m.call('ata_detect_primary');m.required_modes=dict(enumerate((3,4,3,4)))
     assert negotiated(m,[3,4,3,4])
     assert not m.public(0x80,0)
@@ -707,7 +706,7 @@ def shared_port_cases(image,port='m919',gaps_only=False):
         scenarios=[] if gaps_only else [((None,)*count,(120,)*4),(('ata',)+(None,)*(count-1),(120,)*4),(('ata',)*count,(120,)*4)]
         if port!='m919':scenarios.extend([((None,'ata'),(120,180,120,120)),(('ata','ata'),(180,120,120,120))])
         for kinds,cycles in scenarios:
-            m=PIO(path,kinds+(None,)*(4-count),device_count=count,generic=port!='m919',cycles_iordy=cycles)
+            m=PIO(path,kinds+(None,)*(4-count),device_count=count,generic=port!='m919',cycles_iordy=cycles, post=True)
             config=dict(m.config)
             m.call('ata_detect_primary')
             published=[p for p in range(count) if kinds[p]=='ata']

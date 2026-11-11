@@ -17,8 +17,6 @@ def run(image):
     rows = []
     for packed in (False, True, None):
         saved[4][:] = post_module().nvram()[:128]
-        if packed:
-            saved[4][0x33:0x36] = bytes.fromhex('3402CA')
         invoke(saved, 'setup_defaults')
         owner.write(base+state['U_BOOT'], 1, 2)
         owner.write(base+state['U_BOOT_SECOND'], 1, 1)
@@ -29,7 +27,16 @@ def run(image):
         draft[10], draft[12], draft[23] = 12, 1, 0x10 if packed else 0
         for i, value in enumerate(draft):
             owner.write(base+state['U_CHIP']+i, 1, value)
-        invoke(saved, 'settings_save' if packed else 'chipset_settings_save')
+        if packed:
+            invoke(saved,'settings_save')
+        else:
+            saved[4][0x69]=0x57
+            saved[4][0x6A]=(-0x57-sum(draft))&255
+            saved[4][0x6B:0x80],saved[4][0x33:0x36]=draft[:21],draft[21:]
+            invoke(saved,'chipset_settings_load')
+            assert owner.read(base+state['C_CHIP'],24)==draft
+            saved[0].reg_write(x.UC_X86_REG_SI,state['C_CHIP'])
+            invoke(saved,'chipset_valid')
         if packed is None:
             saved[4][0x38]=0
             saved[4][0x69]=0
@@ -59,8 +66,8 @@ def run(image):
                 assert cpu.reg_read(x.UC_X86_REG_IP) == begin-0xF0000
                 before = dict(bus.devices[0x90])
                 end = 0xF0000+listing.symbol('pci_initialize')
-                step.execute(begin, end, 1000)
-                assert cpu.reg_read(x.UC_X86_REG_IP) == end-0xF0000
+                step.execute(begin, end, 1000000)
+                assert cpu.reg_read(x.UC_X86_REG_IP) == end-0xF0000,(hex(cpu.reg_read(x.UC_X86_REG_CS)),hex(cpu.reg_read(x.UC_X86_REG_IP)),hex(end))
                 assert bus.devices[0x90][0x41] == before[0x41] | 1
                 assert bus.devices[0x90][0x45] == before[0x45] | 8
                 assert bus.devices[0x90][0x83] & 0x40 == 0

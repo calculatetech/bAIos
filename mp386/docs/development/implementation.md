@@ -40,7 +40,14 @@ Auto-detected CHS disks receive device-parameter initialization before the first
 
 The boot handoff clears the motherboard A20 override and leaves the keyboard-controller gate available to DOS. HIMEM.SYS can then enable and disable A20. Run hardware benchmarks without EMM386 if they use operations that its virtual machine does not support. The reported Landmark DMA-mode error under EMM386 remains an unconfirmed compatibility issue.
 
+## Shared UI composition
+
+This port uses the same [shared Setup bodies](../../../docs/development/rom-modules.md) inline. It has no private POST transport, ZX0 loader or PnP adoption. The source extraction and common-body consolidation preserve the complete 0.7.1 combined image and both programmer lanes. Its normal report contains 8,936 free system bytes and zero module RAM charge. The normal builder writes the exact final identity to `rom-footprint.json`.
+
+
 ## POST and configuration
+
+Complete verified Save migrates legacy extensions to the [shared NV6 format](../../../docs/development/firmware.md). Logical 40h..7Fh still maps only to NVRAM 0200h..023Fh. Logical 33h..35h and 11h/13h/2Dh use the ordinary RTC. Recovery 69h maps to 0229h and remains outside the payload checksum. OEM records 0240h..02FFh remain unchanged. The new format preserves all 24 chipset bytes and the complete two-position IDE geometry.
 
 Power-cycle the board after programming. If POST reports invalid configuration, press Enter to save defaults or Delete to open Setup. Saving defaults causes one restart. F10 saves Setup changes and restarts. No external OEM Setup disk is needed.
 
@@ -53,6 +60,8 @@ The Intel cache transition remains in the hardware adapter. Its temporary mappin
 CMOS checksum warnings do not qualify cache. The physical switch, SRAM test and current qualified memory range determine cache activation. Configuration warnings remain separate.
 
 Onboard peripheral routing remains controlled by the board switches. Devices displays the supplied SW1/SW3 switch guide. Turn power off before changing a switch. The page does not claim a live SW1 readback because that input mapping is incomplete.
+
+PnP descriptions freeze the actual port 5Fh input after POST. The parallel selector mapping 0/1/2/3 to 3BCh/378h/278h/disabled is source-inferred. The supplied switch chart names LPT1/2/3, the original OEM printer table at 8FB5 lists 3BCh/378h/278h in that order, and 0EA7..0ED4 translates the raw selector to EC values 00h/08h/04h/0Ch. Neither the chart nor the executed printer probe directly proves the selector-to-address wiring. Keep this qualification with the port evidence. The interface does not add software routing or probe attached devices. Changed fixed-resource requests fail without storage writes. An unchanged static request can migrate the complete saved record.
 
 Fast Boot is on the Boot page. Disabled is the default and runs the full RAM sweep. Enabled limits that sweep to memory below 1 MiB. It does not reduce detected capacity. F9 restores all Setup defaults. Save applies changes after restart.
 

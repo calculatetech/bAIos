@@ -11,20 +11,35 @@ from unicorn import (Uc, UC_ARCH_X86, UC_MODE_16, UC_HOOK_CODE, UC_HOOK_INSN,
 from unicorn import x86_const as x
 
 
+def fixture_directory(image, category):
+    image=Path(image).resolve()
+    build=next(parent for parent in image.parents if parent.name=='build')
+    identity=hashlib.sha256(image.relative_to(build).as_posix().encode()).hexdigest()[:12]
+    folder=build/'tests'/category/identity
+    folder.mkdir(parents=True,exist_ok=True)
+    return folder
+
+
 class Listing:
     def __init__(self, path):
         self.lines = Path(path).read_text().splitlines()
+        self._label_rows = [(i,line) for i,line in enumerate(self.lines) if line.rstrip().endswith(':')]
+        self._symbols = {}
 
     def row(self, name, start=0):
-        return next(i for i in range(start, len(self.lines))
-                    if re.search(r'(?<![\w.])' + re.escape(name) + r':\s*$', self.lines[i]))
+        pattern = re.compile(r'(?<![\w.])' + re.escape(name) + r':\s*$')
+        rows = self._label_rows if start >= 0 else ((i,self.lines[i]) for i in range(start,len(self.lines)))
+        return next(i for i,line in rows if i >= start and pattern.search(line))
 
     def offset(self, row):
         return next(int(m[1], 16) for line in self.lines[row + 1:]
                     if (m := re.match(r'\s*\d+\s+([0-9A-F]{8})\s+(?:[0-9A-F]|\[|<bin )', line)))
 
     def symbol(self, name, owner=None):
-        return self.offset(self.row(name, self.row(owner) if owner else 0))
+        key = name, owner
+        if key not in self._symbols:
+            self._symbols[key] = self.offset(self.row(name, self.row(owner) if owner else 0))
+        return self._symbols[key]
 
 
 def constants(path):
@@ -39,8 +54,10 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
         input_case=None,fault_pattern=0x55AA55AA,cmos_seed=None,through_restart=False):
     """Bounded RAM owner proof. Reset/terminal halt are observed, not replaced."""
     raw = Path(rom).read_bytes()
-    post_row = state.get('BOARD_POST_RAM_ROW', 5)
     listing = Listing(Path(rom).with_suffix('.lst'))
+    post_row=next((int(m[1]) for line in listing.lines
+                   if (m:=re.search(r'%define\s+BOARD_POST_RAM_ROW\s+(\d+)\b',line))),
+                  state.get('BOARD_POST_RAM_ROW',5))
     code = layout['code_segment'] << 4
     start = listing.symbol('chipset_visible_ram_test')
     finish = listing.row('chipset_post_recovery_notice')
@@ -51,13 +68,19 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
     scalar_compares = [int(m[1],16) for line in listing.lines[first:finish]
                        if 'cmp [edi], ecx' in line and
                        (m := re.match(r'\s*\d+\s+([0-9A-F]{8})\s+[0-9A-F]',line))]
+    pattern_stores={int(m[1],16) for line in listing.lines[first:finish]
+                    if re.search(r'\brep stosd\b|\bmov \[edi\], ecx\b',line)
+                    and (m:=re.match(r'\s*\d+\s+([0-9A-F]{8})\s+[0-9A-F]',line))}
+    assert pattern_stores,'No assembled RAM pattern-store owner'
     base = ebda << 4
     end = kib * 1024
     ranges = ((0x10000, base), (0x100000, end))
     expected_dwords = sum((b-a)//4 for a,b in ranges)
     u = Uc(UC_ARCH_X86, UC_MODE_16)
     u.mem_map(0, (end + 0x100FFF) & ~0xFFF)
-    initial = random.Random(0xB105).randbytes(end)
+    initial = bytearray(random.Random(0xB105).randbytes(end))
+    initial[0x10000:0x10004]=bytes(4) # Restoration of zero is not a test pattern.
+    initial=bytes(initial)
     if alias_bit is not None:
         physical = bytearray(initial)
         step = 1 << alias_bit
@@ -70,6 +93,9 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
     u.mem_write(0, bytes(0x10000))
     u.mem_write(base, initial[base:base+8192])
     u.mem_write(0x40E, struct.pack('<H', ebda))
+    prefix=next(int(m[1],0) for line in listing.lines if (m:=re.search(r'%define\s+CFG_PLATFORM_STATE_KIB\s+(0x[0-9A-Fa-f]+|[0-9]+)',line)))
+    u.mem_write(base,bytes((prefix,)))
+    u.mem_write(0x413,struct.pack('<H',base>>10))
     u.mem_write(base + state['S_EXTENDED_KIB'], struct.pack('<H', min(kib-1024,0xFC00)))
     u.mem_write(base + state['S_EXTENDED_KIB32'], struct.pack('<I', kib-1024))
     u.mem_write(base + state['S_INSTALLED_KIB32'], struct.pack('<I', kib-1024))
@@ -112,7 +138,11 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
     reads = dict.fromkeys(writes, 0)
     def usable(address):
         return any(a <= address < b for a,b in ranges)
+    from shared.tools.post_fixture import ComponentROM
+    component_rom=ComponentROM(u,rom)
     def incoming(cpu, port, size, context):
+        value=component_rom.input(port)
+        if value is not None:return value
         if port == 0x64:
             return int(bool(queue))
         if port == 0x60:
@@ -121,6 +151,7 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
             return 0  # Independent PIC: no pending/in-service IRQ1.
         return cmos[index] if port == 0x71 else ports.get(port, 0)
     def outgoing(cpu, port, size, value, context):
+        if component_rom.output(port,value):return
         nonlocal index
         if port == 0x70:
             index = value & 127
@@ -130,10 +161,11 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
             ports[port] = value
             if through_restart and port == 0x64 and value == 0xFE:
                 cpu.emu_stop()
+    preparing_post=[False]
     def interrupt(cpu, number, context):
         if number == 0x10:
             return  # External display provider only.
-        assert input_case and number in (9,0x15), ('Unexpected interrupt',number)
+        assert (input_case and number in (9,0x15)) or (preparing_post[0] and number==0x15), ('Unexpected interrupt',number)
         irq_entries.append(number)
         sp = cpu.reg_read(x.UC_X86_REG_SP)
         for value in (cpu.reg_read(x.UC_X86_REG_EFLAGS),cpu.reg_read(x.UC_X86_REG_CS),
@@ -183,7 +215,8 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
             # A tied address line maps the pair to the same physical storage.
             cpu.mem_write(address ^ (1 << alias_bit), struct.pack('<I', value & 0xFFFFFFFF))
         pattern = value if compares else value ^ address
-        if pattern in writes and (compares or pattern != 0):
+        if (cpu.reg_read(x.UC_X86_REG_IP) in pattern_stores
+                and pattern in writes and (compares or pattern != 0)):
             writes[pattern] += 1
             masks[address//4] |= {0x55AA55AA:1, 0xAA55AA55:2, 0:4}[pattern]
     def memory_read(cpu, access, address, size, value, context):
@@ -197,6 +230,23 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
     u.hook_add(UC_HOOK_INSN, incoming, None, 1, 0, x.UC_X86_INS_IN)
     u.hook_add(UC_HOOK_INSN, outgoing, None, 1, 0, x.UC_X86_INS_OUT)
     u.hook_add(UC_HOOK_INTR, interrupt)
+    # A component RAM proof starts inside POST. Give moved presentation its
+    # real transport before the measured owner; full startup installs itself.
+    try:installer=listing.symbol('pnp_module_install')
+    except StopIteration:installer=None
+    if installer is not None:
+        u.mem_write(base+0x320,bytes(28))
+        u.reg_write(x.UC_X86_REG_FS,ebda)
+        preparing_post[0]=True
+        u.emu_start(code+installer,code+0xFFF0,count=2000000)
+        preparing_post[0]=False
+        assert any(u.mem_read(base+0x33A,2)),'RAM component POST module did not install'
+        # The independently supplied installed code is part of the input that
+        # each real burst must restore, rather than the overwritten old noise.
+        initial=bytes(u.mem_read(0,end));reserved=bytes(u.mem_read(base,8192))
+        for reg,value in registers.items():u.reg_write(reg,value)
+        u.reg_write(x.UC_X86_REG_GDTR,gdtr)
+        u.mem_write(0x6FFE,struct.pack('<H',0xFFF0))
     address = code + listing.symbol('.keyboard', 'chipset_visible_ram_test')
     u.hook_add(UC_HOOK_CODE, service, None, address, address)
     for name in ('controlled_defaults_restart', 'hard_halt'):
@@ -212,8 +262,9 @@ def run(rom, layout, state, kib=2049, ebda=0x9DD0, fault=None, alias_bit=None,
     if coverage:
         u.hook_add(UC_HOOK_MEM_READ, memory_read)
     t = time.perf_counter()
-    u.emu_start(code+start, code+0xFFF0,
-                count=max(200000000,expected_dwords*(32 if scalar_compares else 12)))
+    from shared.tools.post_fixture import execute_real
+    execute_real(u,code+start,code+0xFFF0,
+                 max(200000000,expected_dwords*(32 if scalar_compares else 12)))
     seconds = time.perf_counter()-t
     failed = fault is not None or alias_bit is not None
     assert terminal == (['hard_halt' if defaults else 'controlled_defaults_restart'] if failed else []), terminal

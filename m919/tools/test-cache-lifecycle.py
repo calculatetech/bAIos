@@ -43,7 +43,7 @@ class Hardware(POSTHardware):
 
     def prepare(self, u):
         super().prepare(u)
-        listing = Listing(PORT/'build/hardware-tests/geometry/baios-m919.lst')
+        listing = Listing(getattr(self,'rom_image',PORT/'build/tests/geometry/baios-m919.bin').with_suffix('.lst'))
         self.phase_points = {}
         for label, phase in (('.patterns', 'data'), ('.witnesses', 'witness'),
                              ('.copyback', None), ('.address_failed', 'failure'),
@@ -258,8 +258,12 @@ def run(stage="all"):
         assert rejected['terminal'] == 'boot_retry' and not g[1].reset_requests and g[1].rejected_reads
         g[1].reject_save = g[1].reject_armed = False
         resumed, f = reboot(g)
-        assert not resumed['l1'] and resumed['enabled'], resumed
-        record(('S5',), dict(rejected_reads=g[1].rejected_reads, later_keyboard_reset=resumed['terminal'], l1=False))
+        assert resumed['terminal']=='reset' and 'settings_save' in resumed['post_visits'],resumed
+        assert resumed['flags']==0 and 'cache_recovery' not in resumed['post_visits'],resumed
+        recovered, f = boot(memory=f[1])
+        assert recovered['terminal']=='boot_retry' and recovered['l1'] and recovered['enabled'],recovered
+        record(('S5',), dict(rejected_reads=g[1].rejected_reads, later_keyboard_reset=True,
+                             incomplete_commit_defaults_reset=True, final_boot=recovered['terminal'], l1=True))
 
     for options in cases("discovery", (dict(kind='absent'), dict(kind='stored'), dict(alias=5), dict(fault=0x2B6A))):
         row, f = boot(**options)

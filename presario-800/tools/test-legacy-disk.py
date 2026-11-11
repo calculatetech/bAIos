@@ -427,7 +427,7 @@ def check_pair_buffers():
     print('Primary pair buffers: both EBDA halves protected; adjacent CHS/EDD/parameter buffers accepted after relocation PASS')
 
 
-def floppy_buffer_model(segment=0x9FC0):
+def floppy_buffer_model(segment=0x9FC0,media=None):
     setup = importlib.import_module('test-setup')
 
     class FloppyBuffer(setup.Setup):
@@ -454,6 +454,8 @@ def floppy_buffer_model(segment=0x9FC0):
                 self.dma_address = (self.dma_address & 65535) | value << 16
             elif port in (0x0A, 0x0B):
                 pass  # Opaque ISA DMA mode/mask.
+            elif port==0x3F5 and not self.fdc_command and value==0x10:
+                self.fdc_log.append((value,));self.fdc_fifo.append(0x90)
             elif port == 0x3F5 and (self.fdc_command or value in (0x4A, 0x46, 0x45, 0x4D)):
                 command = self.fdc_command[0] if self.fdc_command else value
                 if command not in (0x4A, 0x46, 0x45, 0x4D):
@@ -463,7 +465,10 @@ def floppy_buffer_model(segment=0x9FC0):
                     data, self.fdc_command = self.fdc_command, []
                     self.fdc_log.append(tuple(data))
                     if command == 0x46:
-                        self.cpu.mem_write(self.dma_address, b'\x5A\xA5' * ((self.dma_count + 1) // 2))
+                        payload=(b'\x5A\xA5' * ((self.dma_count + 1) // 2) if media is None else
+                                 bytes(media[(data[4]-1)*512:(data[4]-1)*512+self.dma_count+1]))
+                        assert len(payload)==self.dma_count+1
+                        self.cpu.mem_write(self.dma_address,payload)
                     if command != 0x4A:
                         self.transferred = bytes(self.cpu.mem_read(self.dma_address, self.dma_count + 1))
                     self.fdc_fifo.extend((data[1] & 7, 0, 0, 0, 0, 1, 2))

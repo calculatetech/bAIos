@@ -279,136 +279,18 @@ shadow_optional_window:
     post_code_early 0xDC
     jmp hard_halt
 
-initialize_video:
-    post_code 0x3C
-    pushf
-    cli
-    pushad
-    push ds
-    push es
-    mov ax,0xC000
-    mov ds,ax
-    cmp word [0],0xAA55
-    je .present
-    mov byte [fs:HW_VGA_REQUIRED],1
-    mov al,2
-    call acc_read
-    and al,0xD7
-    mov ah,al
-    mov al,2
-    call acc_write
-    mov ax,0xE000
-    mov ds,ax
-    mov ax,0x2000
-    mov es,ax
-    xor si,si
-    xor di,di
-    mov cx,0x4000
-    rep movsw
-    post_code 0x3D
-    mov al,2
-    call acc_read
-    or al,9
-    mov ah,al
-    mov al,2
-    call acc_write
-    mov ax,0xE000
-    mov es,ax
-    xor ax,ax
-    xor di,di
-    mov cx,0x4000
-    rep stosw
-    mov ax,0x2000
-    mov ds,ax
-    mov ax,0xC000
-    mov es,ax
-    xor si,si
-    xor di,di
-    mov cx,0x4000
-    rep movsw
-    post_code 0x3E
-.present:
-    mov ax,0xC000
-    mov ds,ax
-    cmp word [0],0xAA55
-    jne .failed
-    movzx bp,byte [2]
-    test bp,bp
-    jz .failed
-    cmp bp,0x80            ; The declared provider must fit the C000 segment.
-    ja .failed
-    cmp byte [fs:HW_VGA_REQUIRED],1
-    jne .external
-    cmp bp,0x40            ; The retained onboard provider is exactly32KiB.
-    jne .failed
-.external:
-    xor bx,bx
-    xor si,si
-.sum_unit:
-    mov cx,512
-.sum:
-    lodsb
-    add bl,al
-    loop .sum
-    dec bp
-    jnz .sum_unit
-    test bl,bl
-    jnz .failed
-    post_code 0x3F ; The complete declared provider header and checksum passed.
-    mov al,2
-    call acc_read
-    or al,0x20
-    mov ah,al
-    mov al,2
-    call acc_write
-    ; Existing ROM-return owner: restore our stack even if the VGA poisons it.
-    mov [fs:HW_VIDEO_SS],ss
-    mov [fs:HW_VIDEO_SP],sp
-    xor ax,ax
-    mov es,ax
-    xor di,di
-    call 0xC000:3
-    cli
-    xor ax,ax
-    mov fs,ax
-    mov fs,[fs:0x40E]
-    mov ss,[fs:HW_VIDEO_SS]
-    mov sp,[fs:HW_VIDEO_SP]
-    cld
-    xor ax,ax
-    mov ds,ax
-    mov es,ax
-    ; Far aliases retain the existing C0000..CFFFF physical handler window.
-    movzx eax,word [0x42]
-    shl eax,4
-    movzx edx,word [0x40]
-    add eax,edx
-    cmp eax,0xC0000
-    jb .failed
-    cmp eax,0xD0000
-    jae .failed
-    mov eax,[0x40]
-%ifdef PB430_VGA60
-    cmp byte [fs:HW_VGA_REQUIRED],1
-    jne .fallback_ready
-    ; VGA 1.41 chains unknown calls to INT42; keep its guarded ROM bridge.
-    mov eax,0xF000F065
-.fallback_ready:
-%endif
-    mov [0x108],eax
-    mov ax,3
-    int 0x10
-    pop es
-    pop ds
-    popad
-    popf
-    clc
+; Select and map bytes only. ISA boot resources are solved after this owner;
+; executing the selected provider remains initialize_video's responsibility.
+board_video_prepare:
+    push bx
+    mov bx,pnp_board_video_prepare
+    call pnp_post_invoke
+    pop bx
     ret
-.failed:
-    pb_stage 0xE5
-    pop es
-    pop ds
-    popad
-    popf
-    stc
+
+initialize_video:
+    push bx
+    mov bx,pnp_initialize_video
+    call pnp_post_invoke
+    pop bx
     ret

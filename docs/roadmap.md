@@ -21,8 +21,6 @@ No task is active.
 
 ## Planned later
 
-- **BAIOS-012: Add Plug and Play support.** Identify supported expansion devices, assign resources without conflicts, and provide the standard BIOS interface to operating systems. Share the common logic and keep controller-specific operations in board adapters. Include ISA Plug and Play and its interaction with PCI resource allocation.
-
 - **BAIOS-013: Add ACPI support.** Provide Advanced Configuration and Power Interface tables and operating-system services through shared code and board adapters. Describe the actual hardware and implement each advertised power operation. Coordinate with existing APM support and preserve legacy operating-system startup.
 
 - **BAIOS-014: Add custom saved Setup profiles.** Save and restore named groups of Setup settings. Define available storage, validation and compatibility when firmware or hardware changes. Keep saved profiles separate from factory defaults and the current active settings.
@@ -40,6 +38,12 @@ No residual risk is accepted.
 No task is declined.
 
 ## Completed
+
+- **BAIOS-016: Complete BIOS ESCD compatibility.** Added shared BIOS services for persistent Plug and Play settings on ports with writable storage support. Intel ICU, WINICU, CTCM and CTCU passed hardware tests. Windows 95 testing continues.
+
+- **BAIOS-015: Reduce and organize the shared ROM footprint.** Measure occupied ROM and temporary RAM, remove duplicated common code, separate temporary POST and Setup work from resident services, and use measured packing where it provides a net saving. Preserve supported behavior and all port layouts. Update shared build accounting, porting instructions and implementation guidance so new ports follow the same ownership and space rules. ACPI remains BAIOS-013.
+
+- **BAIOS-012: Add Plug and Play support.** Identify supported expansion devices, assign resources without conflicts, and provide the standard BIOS interface to operating systems. Share the common logic and keep controller-specific operations in board adapters. Include ISA Plug and Play, PCI resource coordination, saved manual reservations, BIOS/OS configuration policy and Clear ESCD. Adopt PnP on 486-class chipsets, including hybrid 386/486 chipsets, and newer systems. MP386 remains outside PnP support and keeps its ordinary settings and hardware behavior. Prioritize this work ahead of the remaining CPU tuning and retain the 64 KB system-ROM layouts.
 
 - **BAIOS-003: Share cache initialization and transition tests across controllers.** Added common phase bindings, short startup checks and transition validation while preserving complete controller setup and reset sequences in board adapters. See the [cache lifecycle design](plans/BAIOS-003-cache-lifecycle.md), [shared contracts](development/firmware.md) and [port update instructions](port-updates.md).
 

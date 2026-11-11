@@ -16,21 +16,27 @@ ports_defaults:
     ret
 
 ports_valid:
+    push esi
+    movzx esi,si
+    call ports_valid32
+    pop esi
+    ret
+ports_valid32:
     pushad
-    xor bx, bx
+    xor ebx,ebx
 .enum:
-    mov al, [fs:si+bx]
+    mov al, [fs:esi+ebx]
     cmp al, [cs:ports_limits+bx]
     ja .bad
     inc bx
     cmp bx, 8
     jb .enum
-    call ports_record_valid
+    call ports_record_valid32
     jc .bad
-    mov al, [fs:si]
+    mov al, [fs:esi]
     test al, al
     jz .good
-    cmp al, [fs:si+1]
+    cmp al, [fs:esi+1]
     je .bad
 .good:
     popad
@@ -45,6 +51,15 @@ ports_settings_load:
     pushad
     mov di, C_PORTS
     call ports_defaults
+    call settings_nv6_present
+    jne .legacy
+    call settings_nv6_ports_load
+    jc .bad
+    mov si,C_PORTS
+    call ports_valid
+    jc .bad
+    jmp .done
+.legacy:
 %if BOARD_ATA_DEVICE_COUNT = 4
     call settings_format
     cmp al,1
@@ -118,60 +133,8 @@ ports_settings_save:
     mov si, U_PORTS
     call ports_valid
     jc .bad
-%if BOARD_ATA_DEVICE_COUNT = 4
-    call ports_packed_save
+    call settings_nv6_ports_save
     popad
-    ret
-%endif
-    mov ax, 0x005D
-    call rtc_write
-    mov bl, 'P'+'1'+1
-    mov dl, 0x60
-    mov cx, 8
-.write:
-    mov ah, [fs:si]
-    add bl, ah
-    mov al, dl
-    call rtc_write
-    inc si
-    inc dl
-    loop .write
-    neg bl
-    mov ah, bl
-    mov al, 0x68
-    call rtc_write
-    mov ax, 0x015F
-    call rtc_write
-    mov ax, ('1' << 8)|0x5E
-    call rtc_write
-    mov ax, ('P' << 8)|0x5D
-    call rtc_write
-    mov ax, ('P' << 8)|0x5D
-    call settings_verify_byte
-    jne .bad
-    mov ax, ('1' << 8)|0x5E
-    call settings_verify_byte
-    jne .bad
-    mov ax, 0x015F
-    call settings_verify_byte
-    jne .bad
-    mov al, 0x68
-    mov ah, bl
-    call settings_verify_byte
-    jne .bad
-    mov si, U_PORTS
-    mov dl, 0x60
-    mov cx, 8
-.verify:
-    mov ah, [fs:si]
-    mov al, dl
-    call settings_verify_byte
-    jne .bad
-    inc dl
-    inc si
-    loop .verify
-    popad
-    clc
     ret
 .bad:
     popad
@@ -207,29 +170,8 @@ ports_packed_load:
     stc
     ret
 
-ports_packed_save:
-    pushad
-    sub sp,5
-    mov bp,sp
-    mov word [ss:bp],0x0250
-    mov byte [ss:bp+2],0
-    mov word [ss:bp+3],0
-    lea di,[bp+3]
-    mov si,U_PORTS
-    mov bx,ports_packed_masks
-    mov cx,8
-    call settings_pack
-    mov di,bp
-    mov cx,5
-    mov bx,2
-    call settings_record_checksum
-    mov ax,0x006C
-    call settings_record_write
-    lea sp,[bp+5]
-    popad
-    ret
-ports_packed_masks db 7,7,1,3,3,1,1,1
 %endif
+ports_packed_masks db 7,7,1,3,3,1,1,1
 
 ; AL=logical onboard selection0..4; AX=base (zero for Disabled).
 ports_uart_base:
@@ -251,217 +193,15 @@ ports_uart_base:
     ret
 
 init_peripherals:
-    pushf
-    cli
-    pushad
-    push ds
-    push es
-    push fs
-    call ports_apply
-    call load_bios_state
-    xor ax, ax
-    mov ds, ax
-    mov es, ax
-    set_vector 0x14, int14
-    set_vector 0x17, int17
-    mov di, 0x400
-    mov cx, 7
-    rep stosw                 ; Stops before the EBDA pointer040E.
-    and word [0x410], 0x31FF ; Replace only COM/LPT equipment counts.
-    mov dword [0x47C], 0x01010101
-    mov word [0x478], 0x1414
-    mov byte [0x47A], 20
-    ; Six complete candidates live on the stack, never in reserved EBDA state.
-    sub sp, 18
-    mov bp, sp
-    mov al, [fs:C_PORTS]
-    call ports_uart_base
-    mov [ss:bp], ax
-    mov al, [fs:C_PORTS+1]
-    call ports_uart_base
-    mov [ss:bp+2], ax
-    mov dword [ss:bp+4], 0x02F803F8
-    mov dword [ss:bp+8], 0x02E803E8
-    mov cx, 2
-    cmp byte [fs:C_PORTS+7], 0
-    je .serial_start
-    mov cx, 6
-.serial_start:
-    xor si, si
-    xor di, di
-.serial:
-    mov dx, [ss:bp+si]
-    call .unique
-    jc .serial_next
-    call ports_uart_probe
-    jc .serial_next
-    call ports_uart_initialize
-    cmp di, 8
-    jae .serial_next         ; Every detected UART is initialized before this cap.
-    mov [0x400+di], dx
-    add di, 2
-.serial_next:
-    add si, 2
-    loop .serial
-    shl di, 8               ; Four entries => equipment count4 at bits9..11.
-    or [0x410], di
-    movzx bx, byte [fs:C_PORTS+3]
-    shl bx, 1
-    mov ax, [cs:ports_parallel+bx]
-    mov [ss:bp], ax
-    mov dword [ss:bp+2], 0x037803BC
-    mov word [ss:bp+6], 0x278
-    mov cx, 4
-    xor si, si
-    xor di, di
-.printer:
-    mov dx, [ss:bp+si]
-    call .unique
-    jc .printer_next
-    call ports_printer_probe
-    jc .printer_next
-    mov [0x408+di], dx
-    add di, 2
-.printer_next:
-    add si, 2
-    loop .printer
-    shr di, 1
-    shl di, 14
-    or [0x410], di
-    add sp, 18
-    pop fs
-    pop es
-    pop ds
-    popad
-    popf
-    ret
-.unique:
-    push di
-    test dx, dx
-    jz .duplicate
-    xor di, di
-.previous:
-    cmp di, si
-    jae .new
-    cmp dx, [ss:bp+di]
-    je .duplicate
-    add di, 2
-    jmp .previous
-.new:
-    pop di
-    clc
-    ret
-.duplicate:
-    pop di
-    stc
-    ret
-
-; Scratch and IER distinguish a decoded16450 from a floating bus; restore both.
-ports_uart_probe:
-    push ax
+%ifdef BOARD_PNP_SUPPORT
     push bx
-    push dx
-    add dx, 3
-    in al, dx
-    mov bh, al
-    and al, 0x7F
-    out dx, al
-    sub dx, 2
-    in al, dx
-    mov bl, al
-    xor al, al
-    out dx, al
-    in al, dx
-    test al, al
-    jnz .bad
-    add dx, 6
-    in al, dx
-    mov ah, al
-    mov al, 0x55
-    out dx, al
-    in al, dx
-    cmp al, 0x55
-    jne .scratch_bad
-    mov al, 0xAA
-    out dx, al
-    in al, dx
-    cmp al, 0xAA
-    jne .scratch_bad
-    clc
-    jmp .scratch_restore
-.scratch_bad:
-    stc
-.scratch_restore:
-    mov al, ah
-    out dx, al
-    sub dx, 6
-    jmp .restore
-.bad:
-    stc
-.restore:
-    pushf
-    mov al, bl
-    out dx, al
-    add dx, 2
-    mov al, bh
-    out dx, al
-    popf
-    pop dx
+    mov bx,pnp_init_peripherals
+    call pnp_post_invoke
     pop bx
-    pop ax
     ret
-
-ports_uart_initialize:
-    push ax
-    push dx
-    mov ax, 12
-    mov bl, 3
-    call serial_initialize
-    add dx, 4
-    xor al, al              ; Quiet: neither modem lines nor UART IRQ asserted.
-    out dx, al
-    pop dx
-    pop ax
-    ret
-
-ports_printer_probe:
-    push ax
-    push bx
-    push dx
-    add dx, 2
-    in al, dx
-    mov bh, al
-    and al, 0xDF           ; Test output latch, temporarily leave input direction.
-    out dx, al
-    sub dx, 2
-    in al, dx              ; Input-direction reads pins, not the saved latch.
-    mov bl, al
-    mov al, 0x55
-    out dx, al
-    in al, dx
-    cmp al, 0x55
-    jne .bad
-    mov al, 0xAA
-    out dx, al
-    in al, dx
-    cmp al, 0xAA
-    jne .bad
-    clc
-    jmp .restore
-.bad:
-    stc
-.restore:
-    pushf
-    mov al, bl
-    out dx, al
-    add dx, 2
-    mov al, bh
-    out dx, al
-    popf
-    pop dx
-    pop bx
-    pop ax
-    ret
+%else
+%include "firmware/peripheral-post.inc"
+%endif
 
 ; AX=divisor, BL=LCR. DX always returns to base; clears IER and DLAB.
 serial_initialize:

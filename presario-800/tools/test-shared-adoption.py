@@ -308,7 +308,7 @@ def guards(nasm):
     with tempfile.TemporaryDirectory(dir=PORT/'build') as temporary:
         target = Path(temporary)/'bad.rom'
         for definition in ('RAM_TEST_BLOCK_SIZE=3','RAM_TEST_BLOCK_SIZE=0x1000','RAM_TEST_SERVICE_MASK=0x1FF','RAM_TEST_BUFFER_ABSOLUTE=0x801','RAM_TEST_BUFFER_ABSOLUTE=0x400','RAM_TEST_BUFFER_ABSOLUTE=0xF00'):
-            result = subprocess.run([nasm,'-f','bin','-DVGA_BIOS_141','-D'+definition,'-I',(PORT/'src').as_posix()+'/', '-o',str(target),(PORT/'src/bios.asm').as_posix()],cwd=ROOT,capture_output=True,text=True)
+            result = importlib.import_module('floppy-matrix').run_hidden([nasm,'-f','bin','-DVGA_BIOS_141','-D'+definition,'-I',(PORT/'src').as_posix()+'/', '-o',str(target),(PORT/'src/bios.asm').as_posix()],cwd=ROOT,capture_output=True,text=True)
             assert result.returncode and 'RAM ' in result.stderr, (definition,result.stderr)
     return 6
 
@@ -357,13 +357,16 @@ def fdc_and_video():
 
 def diagnostics(nasm, rom):
     results = []
-    with tempfile.TemporaryDirectory(prefix='diagnostic-builds-', dir=PORT/'build') as name:
+    (PORT/'build/tests').mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='diagnostic-builds-', dir=PORT/'build/tests') as name:
         output = Path(name)/'system.rom'
         for define in (None, 'FLOPPY_DIAGNOSTIC', 'KEYBOARD_DIAGNOSTIC', 'MOUSE_DIAGNOSTIC'):
             flags = ['-D'+define] if define else []
-            subprocess.run([nasm,'-f','bin','-DVGA_BIOS_141',*flags,'-I',(PORT/'src').as_posix()+'/',
+            importlib.import_module('floppy-matrix').run_hidden([nasm,'-f','bin','-DVGA_BIOS_141',*flags,'-I',(PORT/'src').as_posix()+'/',
                             '-o',str(output),(PORT/'src/bios.asm').as_posix()],cwd=ROOT,check=True)
-            data = output.read_bytes()
+            matrix = importlib.import_module('floppy-matrix')
+            physical = matrix.fixture_rom(output, rom.with_name('baios-presario800-vga60.bin').read_bytes())
+            data = physical[0x10000:]
             assert len(data) == 65536 and data[0xFFF0:0xFFF5] == bytes.fromhex('ea000000f0')
             assert data[0xF065:0xF06A] == rom.read_bytes()[0xF065:0xF06A]
             if define is None:
@@ -381,7 +384,8 @@ def main():
     build.mkdir(parents=True,exist_ok=True)
     rom = build/'baios-presario800-system.rom'
     if not rom.exists():
-        subprocess.run([nasm,'-f','bin','-DVGA_BIOS_141','-I',(PORT/'src').as_posix()+'/', '-o',str(rom),'-l',str(rom.with_suffix('.lst')),(PORT/'src/bios.asm').as_posix()],cwd=ROOT,check=True)
+        subprocess.run(['powershell', '-NoProfile', '-File', str(PORT/'tools/build.ps1'),
+                        '-OutputDirectory', str(build.resolve())], check=True)
     result = {}
     if args.case=='all':
         result = {'hardware':preservation(rom),'dependencies':dependencies(nasm),'compile_rejections':guards(nasm),'adapters':fdc_and_video()}

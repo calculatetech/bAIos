@@ -69,6 +69,31 @@ function Expect-Failure([scriptblock]$action, [string]$name) {
     if (-not $failed) { throw "Verifier self-test accepted $name." }
 }
 
+function Assert-PostModule([string]$path, [switch]$BankOnly) {
+    $check = @'
+import sys,json
+from pathlib import Path
+root,out,path=map(Path,sys.argv[1:4])
+sys.path.insert(0,str(root.parent))
+from shared.tools.post_module import inspect_bank
+image=path.read_bytes()
+bank=image if sys.argv[4]=='bank' else image[0xC000:0x10000]
+assert len(bank)==0x4000,'Private POST bank size'
+raw,info=inspect_bank(bank)
+assembled=(out/'tests/post-module/raw-assembly.bin').read_bytes()
+assert len(assembled)==65536+len(raw) and raw==assembled[65536:],'Private POST differs from declared raw tail'
+resident=bytearray(assembled[:65536])
+# Same final additive-checksum correction as the existing build owner.
+resident[-1]=(-sum(resident[:-1]))&255
+assert resident==(out/'baios-presario800-system.rom').read_bytes(),'Resident prefix differs from actual system'
+print(json.dumps(info))
+'@
+    $kind = if ($BankOnly) { 'bank' } else { 'image' }
+    $result = & python -B -c $check $root $out $path $kind
+    if ($LASTEXITCODE) { throw 'Private POST module verification failed.' }
+    return ($result | ConvertFrom-Json)
+}
+
 function Assert-PostLegend([string]$readme) {
     $expected = @('10', '20', '11', '30', '21', '22', '23', '24', '25', '26', '27', '28', '29', '2A', '2B', '2C', '2D', '2E', '18', '19', '1A', '1B', '1C', '1D', '1E', '12', '13', '14', '15', '16', '40', '48', '50', '60', '70', '80', '90', '91', '94', 'A1', 'A2', 'A4', 'A5', 'A6', 'A7', 'A8', 'AF', 'B0', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'BA', 'C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'CA', 'D0', 'D1', 'D2', 'D3', 'D4', 'E0', 'E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'EA', 'EB', 'EE', 'EF', 'FF')
     $actual = @([regex]::Matches($readme, '(?m)^\| `([0-9A-F]{2})h` \|') | ForEach-Object {
@@ -96,14 +121,16 @@ function Assert-NoTemporaryDiagnostics([string]$biosSource) {
     }
 }
 
-function Assert-NoFinalDrqGate([string]$biosSource) {
+function Assert-AtaCompletion([string]$biosSource) {
     $completion = [regex]::Match($biosSource, '(?s)ata_wait_complete:(.*?)ata_wait_drq:').Groups[1].Value
-    if ($biosSource -match '(?m)^ata_wait_data_in_complete:' -or $completion -match 'test al, 0x08') {
-        throw "ATA completion must not wait for DRQ to clear."
+    if ($completion -notmatch '(?s)call ata_delay.*?call ata_read_status\s+test al, 0x80\s+jnz \.next\s+test al, 0x21\s+jnz \.controller\s+test al, 0x08\s+jnz \.next\s+clc') {
+        throw "ATA completion must distinguish busy, controller errors and a remaining data phase."
     }
 }
 
 function Assert-Keyboard([string]$boardSource, [string]$biosSource, [string]$guestSource) {
+    # Comments and conditional wrappers are not instructions. Presario enables AUX.
+    $biosSource = [regex]::Replace($biosSource, '(?m);[^\n]*|^\s*%[^\n]*', '')
     if ($boardSource -notmatch '(?m)^%define KBC_DATA\s+0x0060\s*$' -or
         $boardSource -notmatch '(?m)^%define KBC_STATUS\s+0x0064\s*$' -or
         $boardSource -notmatch '(?m)^%define KBC_COMMAND\s+0x0064\s*$') {
@@ -125,7 +152,7 @@ function Assert-Keyboard([string]$boardSource, [string]$biosSource, [string]$gue
     }
 
     $init = [regex]::Match($biosSource, '(?s)init_keyboard:(.*?)keyboard_halt:').Groups[1].Value
-    if ($init -notmatch '(?s)^\s+;[^\n]*\n\s+cli\s' -or
+    if ($init -notmatch '(?s)^\s+cli\s' -or
         $init -match 'mov al, 0x7[CD]' -or
         $guestSource -notmatch '(?s)test dl, 0x20\s+mov al, 0x27\s+jnz fail') {
         throw "Keyboard polling must own responses and use AT, not XT, protocol."
@@ -153,7 +180,7 @@ function Assert-Keyboard([string]$boardSource, [string]$biosSource, [string]$gue
     if ($irq -match 'cmp bl, 0xAA') { throw "Runtime AAh must remain left-Shift break, not a BAT filter." }
     if ($biosSource -notmatch '(?s)call init_keyboard\s+post_code 0x48\s+call arm_keyboard_runtime\s+jc keyboard_runtime_failed\s+mov byte \[0x0400 \+ KB_POST_STATE\], 1\s+sti' -or
         ([regex]::Matches($biosSource, '(?m)^\s*call arm_keyboard_runtime\s*$')).Count -ne 1 -or
-        $biosSource -notmatch '(?s)call init_mouse\s+(?:%ifdef EMULATOR_PORTS_TEST\s+call ports_test_observe\s+%endif\s+)?in al, 0x21\s+and al, 0xF9\s+out 0x21, al\s+cli\s+call init_fpu\s+(?:;[^\n]*\n\s*)*post_code 0xCA.*?call post_keyboard_wait.*?call setup_post_gate\s+call chipset_late_cache\s+call post_success_tone\s+mov byte \[fs:P_PHASE\], 5\s+call post_ui_cache\s+call post_ui_roms\s+call option_rom_discovery\s+(?:%ifdef EMULATOR_CHIPSET_POST_UI\s+call post_ui_capture\s+%endif\s+)?call post_debug_summary\s+call presario_post_complete\s+(?:%ifdef EMULATOR_SETUP_TEST\s+call setup_test_end\s+%endif\s+)?(?:%ifdef EMULATOR_BOOT_POLICY_TEST\s+call boot_policy_ready\s+%endif\s+)?mov byte \[0x0400 \+ KB_POST_STATE\], 0\s+sti\s+int 0x19' -or
+        $biosSource -notmatch '(?s)call init_mouse.*?in al, 0x21\s+and al, 0xF9\s+out 0x21, al\s+cli\s+call init_fpu\s+post_code 0xCA.*?call post_keyboard_wait.*?call setup_post_gate\s+cache_phase finish\s+call post_success_tone\s+mov byte \[fs:P_PHASE\], 5\s+call post_ui_cache\s+call post_ui_roms\s+call option_rom_discovery.*?call pnp_publish_finish\s+call presario_post_complete.*?mov byte \[0x0400 \+ KB_POST_STATE\], 0\s+sti\s+int 0x19' -or
         $biosSource -notmatch '(?s)init_pic_pit:\s+mov al, 0x11\s+out 0x20, al\s+out 0x84, al\s+out 0xA0, al\s+out 0x84, al.*?mov al, 0xFC\s+out 0x21, al\s+out 0x84, al\s+mov al, 0xFF\s+out 0xA1, al\s+out 0x84, al' -or
         $biosSource -notmatch '(?s)arm_keyboard_runtime:.*?mov al, 0x20\s+call kbc_command.*?call kbc_read_data.*?or al, 0x41\s+and al, 0xCF.*?mov al, 0x60\s+call kbc_command.*?call kbc_write_data.*?mov al, 0xAE\s+call kbc_command' -or
         $biosSource -notmatch '(?s)keyboard_runtime_failed:\s+mov al, 0xEF\s+jmp keyboard_halt' -or
@@ -250,17 +277,17 @@ function Assert-PostTrace([string]$boardSource, [string]$biosSource) {
         '(?s)\.normal_reset:.*?cmp word \[0x0472\], 0x1234.*?mov al, RAMSET_REG.*?mov al, RAMSET_VALUE.*?mov al, RAMCFG0_REG',
         '(?s)call init_memory.*?mov dx, \[es:S_EXTENDED_KIB\].*?call memory_interleave_options.*?mov al, RAMSET_REG\s+out CHIPSET_INDEX, al\s+mov al, cl\s+out CHIPSET_DATA, al\s+out CHIPSET_CONFIG_OFF, al.*?\.memory_map_ready:.*?rep stosw.*?mov \[es:S_EXTENDED_KIB\], dx.*?call shadow_system_bios',
         '(?s)pop es\s+pop ds\s+post_code 0x40\s+; Start with harmless handlers',
-        '(?s)call init_pic_pit\s+call init_rtc\s+call init_superio\s+call init_at_prerequisites\s+post_code 0x50\s+; This retained component owns the Cirrus video initialization and INT 10h\.\s+call VGA_SEGMENT:VGA_ENTRY',
-        '(?s)call VGA_SEGMENT:VGA_ENTRY.*?cmp word \[es:0x0042\], VGA_SEGMENT\s+jne video_failed\s+post_code 0x60\s+mov ax, 0x0003\s+int 0x10\s+%ifdef VGA_BIOS_141\s+(?:;[^\n]*\n\s*)*pushad\s+push ds\s+push es\s+mov ax, 0x1203\s+mov bx, 0x10A4\s+xor cx, cx\s+xor dx, dx\s+int 0x10\s+pop es\s+pop ds\s+popad\s+%endif\s+; Video is available for failure diagnostics, not a keyboard prerequisite\.\s+call init_keyboard\s+post_code 0x48.*?call arm_keyboard_runtime.*?sti\s+;[^\n]*\n\s+call load_bios_state\s+mov byte \[fs:P_PHASE\], 0\s+mov byte \[fs:P_ROM_COUNT\], 0[^\n]*\n\s+call post_ui_begin',
+        '(?s)call publish_memory_cmos\s+call init_pic_pit\s+call init_rtc\s+call init_superio\s+call init_at_prerequisites\s+post_code 0x50\s+call pnp_early\s+; This retained component owns the Cirrus video initialization and INT 10h\.\s+mov ax,0xFFFF\s+mov dx,VGA_SEGMENT\s+mov cl,2\s+call pnp_rom_enter',
+        '(?s)call pnp_rom_enter.*?cmp word \[es:0x0042\], VGA_SEGMENT\s+jne video_failed\s+post_code 0x60\s+mov ax, 0x0003\s+int 0x10\s+%ifdef VGA_BIOS_141\s+(?:;[^\n]*\n\s*)*pushad\s+push ds\s+push es\s+mov ax, 0x1203\s+mov bx, 0x10A4\s+xor cx, cx\s+xor dx, dx\s+int 0x10\s+pop es\s+pop ds\s+popad\s+%endif\s+; Video is available for failure diagnostics, not a keyboard prerequisite\.\s+call post_ui_begin\s+call init_keyboard\s+post_code 0x48.*?call arm_keyboard_runtime.*?sti\s+;[^\n]*\n\s+call load_bios_state\s+mov byte \[fs:P_PHASE\], 0\s+mov byte \[fs:P_ROM_COUNT\], 0[^\n]*\n\s+call post_ui_begin',
         '(?s)\.initialization_verified:\s+%endif\s+%endif\s+call init_floppy\s+mov byte \[fs:P_PHASE\], 3\s+call post_ui_floppy\s+call post_early_setup\s+call post_floppy_seek\s+call post_early_setup\s+%ifdef FLOPPY_DIAGNOSTIC\s+call floppy_diagnostics\s+%endif.*?call post_keyboard_wait.*?post_code 0x70\s+call ata_detect_primary',
         '(?s)call ata_detect_primary\s+call post_keyboard_wait\s+mov byte \[fs:P_PHASE\], 4\s+call post_ui_disks\s+call post_early_setup\s+cmp byte \[0x0475\], 0\s+je \.common_post\s+post_code 0x80',
-        '(?s)\.common_post:.*?call init_mouse.*?call init_fpu.*?call setup_post_gate\s+call chipset_late_cache\s+call post_success_tone\s+mov byte \[fs:P_PHASE\], 5\s+call post_ui_cache\s+call post_ui_roms\s+call option_rom_discovery\s+(?:%ifdef EMULATOR_CHIPSET_POST_UI\s+call post_ui_capture\s+%endif\s+)?call post_debug_summary\s+call presario_post_complete.*?int 0x19'
+        '(?s)\.common_post:.*?call init_mouse.*?call init_fpu.*?call setup_post_gate\s+cache_phase finish\s+call post_success_tone\s+mov byte \[fs:P_PHASE\], 5\s+call post_ui_cache\s+call post_ui_roms\s+call option_rom_discovery\s+(?:%ifdef EMULATOR_CHIPSET_POST_UI\s+call post_ui_capture\s+%endif\s+)?call pnp_publish_finish\s+call presario_post_complete.*?int 0x19'
     )
     if ($biosSource -notmatch '(?s)presario_post_complete:\s+post_code 0xFF\s+jmp rtc_sync_ticks') {
         throw "POST completion must emit FFh once before the RTC handoff."
     }
     foreach ($anchor in $anchors) {
-        if ($biosSource -notmatch $anchor) { throw "A POST code moved away from its startup stage." }
+        if ($biosSource -notmatch $anchor) { throw "A POST code moved away from its startup stage: $anchor" }
     }
 
     $beforeRamPass = [regex]::Match($startupPath, '(?s)^(.*?)loop \.ram_check_a').Groups[1].Value
@@ -325,6 +352,12 @@ if ($release) {
     $genericWrapper = [IO.File]::ReadAllBytes((Join-Path $genericRoms 'machines/d824/fts-biosupdated824noflashbiosepromv320-320334-160.bin'))
     if ($aliasHash -ne (Get-Sha256Hex $genericWrapper)) { throw 'The generic 86Box wrapper differs from the main alias.' }
 }
+$moduleInfo = Assert-PostModule (Join-Path $out $physicalName)
+$ownedPostBank = [byte[]]::new(0x4000)
+[Array]::Copy($physical, 0xC000, $ownedPostBank, 0, 0x4000)
+# The common inspector bound these actual bytes to the declared compiler tail.
+# The selected retained prefix0..BFFF keeps its original exact comparison.
+[Array]::Copy($ownedPostBank, 0, $reference, 0xC000, 0x4000)
 for ($i = 0; $i -lt 65536; $i++) {
     if ($physical[$i] -ne $reference[$i]) { throw "Retained region differs at 0x$($i.ToString('X5'))." }
     if ($wrapper[$i] -ne $reference[$i]) { throw "86Box VGA region differs at 0x$($i.ToString('X5'))." }
@@ -369,7 +402,7 @@ foreach ($include in [regex]::Matches($bios, '(?m)^presario_shared "([^"]+)"')) 
     $bios = $bios.Replace($include.Value, (Get-Content -Raw (Join-Path $root "../shared/src/$($include.Groups[1].Value)")))
 }
 $bios += "`n" + (Get-Content -Raw (Join-Path $root "src/hardware/adapters.inc"))
-$bios = $bios.Replace("`r`n", "`n")
+$bios = $bios.Replace("`r`n", "`n").Replace('BOARD_CACHE_RESET', 'warm_reset')
 foreach ($constant in @('KBC_OUTPUT_PORT_VALUE', 'KBC_INITIAL_COMMAND_BYTE')) {
     $value = [regex]::Match($source, "(?m)^%define $constant\s+(0x[0-9A-Fa-f]+)\b").Groups[1].Value
     if (-not $value) { throw "Board constant $constant was not found." }
@@ -383,7 +416,7 @@ $readme = Get-Content -Raw (Join-Path $root "docs/development/implementation.md"
 $keyboardGuest = Get-Content -Raw (Join-Path $root "tests/keyboard-test.asm")
 Assert-PostTrace $source $bios
 Assert-PostLegend $readme
-Assert-NoFinalDrqGate $bios
+Assert-AtaCompletion $bios
 Assert-Keyboard $source $bios $keyboardGuest
 $geometryPath = [regex]::Match($bios, '(?s)get_chs_geometry:(.*?)ata_reset:').Groups[1].Value
 if ($geometryPath -notmatch '(?s)mov ax, 0x3F20.*?0x001F8000.*?mov al, 64.*?0x003F0000.*?mov al, 128.*?0x007E0000.*?mov al, 255.*?mov ds, ax.*?cmp byte \[0x7C00\], 0xEB') {
@@ -395,10 +428,10 @@ if ($geometryPath -notmatch '(?s)0x7C00.*?0x7C0B\], 512.*?0x7C18\], 63.*?0x7C1A\
 if ($bios -notmatch '(?s)prepare_chs:.*?call get_chs_geometry.*?mov bx, ax.*?cmp al, bh.*?cmp dh, bl.*?movzx edx, bl.*?imul eax, edx.*?movzx edx, bh.*?imul eax, edx') {
     throw "Legacy CHS conversion does not use the selected geometry."
 }
-if ($bios -notmatch '(?s)ata_identify:.*?rep insw.*?call ata_wait_complete' -or $bios -notmatch '(?s)ata_transfer:.*?call ata_select_ready\s+jc \.error\s+call ide_program_address\s+mov dx, ATA_COUNT.*?mov cx, 256.*?pushf\s+cli\s+rep insw\s+cmp byte \[fs:S_COMMAND\], CMD_READ_LONG\s+jne \.read_data_done\s+mov cx, 4[^\n]*\n\s*rep insb\s+\.read_data_done:\s+popf.*?call ata_wait_complete.*?pushf\s+cli\s+rep outsw\s+cmp byte \[fs:S_COMMAND\], CMD_WRITE_LONG\s+jne \.write_data_done\s+mov cx, 4[^\n]*\n\s*rep outsb\s+\.write_data_done:\s+popf.*?call ata_wait_complete' -or $bios -notmatch '(?s)ata_wait_ready:.*?test al, 0x80.*?test al, 0x40.*?ata_wait_complete:.*?test al, 0x80.*?test al, 0x21') {
+if ($bios -notmatch '(?s)ata_identify:.*?rep insw.*?call ata_wait_complete' -or $bios -notmatch '(?s)ata_transfer:.*?call ata_select_ready\s+jc \.error\s+call ide_program_address\s+ata_port ATA_COUNT.*?mov cx, 256.*?pushf\s+cli\s+call ide_pio_read\s+cmp byte \[fs:S_COMMAND\], CMD_READ_LONG\s+jne \.read_data_done\s+mov cx, 4[^\n]*\n\s*rep insb\s+\.read_data_done:\s+popf.*?call ata_wait_complete.*?pushf\s+cli\s+call ide_pio_write\s+cmp byte \[fs:S_COMMAND\], CMD_WRITE_LONG\s+jne \.write_data_done\s+mov cx, 4[^\n]*\n\s*rep outsb\s+\.write_data_done:\s+popf.*?call ata_wait_complete' -or $bios -notmatch '(?s)ata_wait_ready:.*?test al, 0x80.*?test al, 0x40.*?ata_wait_complete:.*?test al, 0x80.*?test al, 0x21') {
     throw "ATA command phasing changed."
 }
-if ($bios -notmatch '(?s)\.geometry:.*?call get_chs_geometry.*?imul ecx, edx.*?mov cl, ah.*?mov dh, al.*?\.type:' -or $bios -notmatch '(?s)fill_edd_parameters:.*?call get_chs_geometry.*?imul ecx, edx.*?mov \[ds:si \+ 8\], ecx.*?mov \[ds:si \+ 12\], ecx.*?ata_identify:') {
+if ($bios -notmatch '(?s)\.geometry:.*?call get_chs_geometry.*?imul ecx, edx.*?mov cl, ah.*?mov dh, al.*?\.type:' -or $bios -notmatch '(?s)fill_edd_parameters:.*?call get_chs_geometry.*?imul ecx, edx.*?mov \[ds:si \+ 8\], ecx.*?mov \[ds:si \+ 12\], ecx') {
     throw "Reported disk geometry does not use the selected geometry."
 }
 if ($bios -notmatch '(?m)^%define STATE_END\s+STATE_BASE \+ 29\s*$' -or $bios -match 'S_CHS_HEADS|S_CHS_SPT') {
@@ -409,7 +442,7 @@ if ($source -notmatch '(?m)^%define STATE_SEG\s+0x9FC0\s*$' -or
     $bios -notmatch '(?s)mov word \[0x040E\], STATE_SEG\s+mov word \[0x0413\], 639' -or
     $bios -notmatch '(?s)int12:.*?mov ax, \[0x13\].*?iret' -or
     $bios -notmatch '(?s)load_bios_state:.*?mov fs, \[fs:0x040E\]' -or
-    $bios -notmatch '(?s)check_disk_buffer:.*?mov bx, fs.*?cmp edx, ebx.*?add ebx, 1024.*?cmp eax, ebx' -or
+    $bios -notmatch '(?s)check_disk_buffer:.*?call load_bios_state.*?movzx ecx,byte \[fs:0\].*?shl ecx,10.*?mov bx, fs.*?cmp edx, ebx.*?add ebx,ecx.*?cmp eax, ebx' -or
     $bios -notmatch '(?s)validate_request:.*?call check_disk_buffer\s+jc \.bad' -or
     $bios -notmatch '(?s)fill_edd_parameters:.*?call check_disk_buffer\s+jc \.bad') {
     throw "EBDA reservation or conventional-memory transfer boundary changed."
@@ -432,9 +465,9 @@ if ($bios -notmatch '(?s)ata_detect_primary:.*?call ata_reset_bus.*?ata_identify
 }
 $resetPath = [regex]::Match($bios, '(?s)ata_reset:(.*?)ata_transfer:').Groups[1].Value
 $delayPath = [regex]::Match($bios, '(?s)ata_delay:(.*?)int19:').Groups[1].Value
-if ($resetPath -notmatch '(?s)^\s+push dx\s+call ata_reset_bus\s+call ata_select_ready\s+jc \.done' -or
-    $resetPath -notmatch '(?s)pop fs\s+call ata_select_ready\s+\.done:\s+pop dx\s+ret' -or
-    $resetPath -notmatch '(?s)ata_reset_bus:\s+push cx\s+push dx\s+mov dx, ATA_CONTROL\s+mov al, 4\s+out dx, al\s+mov cx, 16\s+\.hold_srst:\s+call ata_delay\s+loop \.hold_srst\s+xor al, al\s+out dx, al\s+mov cx, 5000\s+\.settle:\s+call ata_delay\s+loop \.settle\s+pop dx\s+pop cx\s+ret') {
+if ($resetPath -notmatch '(?s)^\s+push bx\s+push cx\s+push dx\s+push di\s+push fs.*?ata_port ATA_CONTROL.*?call ata_reset_bus\s+call load_bios_state.*?mov cx,BOARD_ATA_DEVICE_COUNT.*?call ide_pio_restore.*?call ide_initialize_geometry.*?call ide_negotiate_multiple' -or
+    $resetPath -notmatch '(?s)pop fs\s+call ata_select_ready\s+\.done:\s+pop di\s+pop dx\s+pop cx\s+pop bx\s+ret' -or
+    $resetPath -notmatch '(?s)ata_reset_bus:.*?push cx\s+push dx\s+ata_port ATA_CONTROL\s+mov al, 4\s+out dx, al\s+mov cx, 16\s+\.hold_srst:\s+call ata_delay\s+loop \.hold_srst\s+xor al, al\s+out dx, al\s+mov cx, 5000\s+\.settle:\s+call ata_delay\s+loop \.settle\s+pop dx\s+pop cx\s+ret') {
     throw "ATA reset timing or ordering changed."
 }
 if ($delayPath -notmatch '(?s)mov dx, ATA_CONTROL\s+mov cx, 4\s+\.again:\s+in al, dx\s+loop \.again') {
@@ -454,6 +487,20 @@ if ($drqPolling -notmatch '(?s)test al, 0x80\s+jnz \.next\s+test al, 0x21.*?dec 
 }
 
 if ($SelfTest) {
+    $moduleTests = Join-Path $out 'tests/verifier'
+    [IO.Directory]::CreateDirectory($moduleTests) | Out-Null
+    foreach ($kind in @('header', 'padding')) {
+        $badBank = [byte[]]$ownedPostBank.Clone()
+        $offset = if ($kind -eq 'header') { 0 } else { [int]$moduleInfo.stored_bytes }
+        if ($offset -ge 0x3FFF) { throw 'Self-test needs an actual padding byte.' }
+        $badBank[$offset] = $badBank[$offset] -bxor 1
+        $sum = 0
+        foreach ($value in $badBank) { $sum = ($sum + $value) -band 255 }
+        $badBank[0x3FFF] = ($badBank[0x3FFF] - $sum) -band 255
+        $badPath = Join-Path $moduleTests "malformed-$kind.bank"
+        [IO.File]::WriteAllBytes($badPath, $badBank)
+        Expect-Failure { Assert-PostModule $badPath -BankOnly } "checksum-correct malformed POST $kind"
+    }
     foreach ($delta in @(-1, 1)) {
         Expect-Failure { Assert-RomSize ([byte[]]::new(65536 + $delta)) 65536 'System' } "wrong system size"
         Expect-Failure { Assert-RomSize ([byte[]]::new(131072 + $delta)) 131072 'Physical' } "wrong physical size"
@@ -492,7 +539,7 @@ if ($SelfTest) {
     Expect-Failure { Assert-PostTrace $source $reorderedPost } "reordered POST checkpoints"
 
     $movedVgaPost = [regex]::Replace($bios, '(?m)^\s*post_code 0x60\s*\r?\n', '', 1)
-    $vgaCallPattern = [regex]::new('(?m)^(\s*call VGA_SEGMENT:VGA_ENTRY\s*)$')
+    $vgaCallPattern = [regex]::new('(?m)^(\s*call pnp_rom_enter\s*)$')
     $movedVgaPost = $vgaCallPattern.Replace($movedVgaPost, '    post_code 0x60' + [Environment]::NewLine + '$1', 1)
     Expect-Failure { Assert-PostTrace $source $movedVgaPost } "60h before retained VGA returns"
 
@@ -534,7 +581,7 @@ if ($SelfTest) {
     }
 
     Expect-Failure { Assert-PostTrace $source ($bios.Replace('jmp boot_retry', 'jmp hard_halt')) } "retry replaced by a fatal halt"
-    $earlyTone = $bios.Replace("    call chipset_late_cache`n    call post_success_tone", "    call post_success_tone`n    call chipset_late_cache")
+    $earlyTone = $bios.Replace("    cache_phase finish`n    call post_success_tone", "    call post_success_tone`n    cache_phase finish")
     Expect-Failure { Assert-PostTrace $source $earlyTone } "success tone before late cache qualification"
     Expect-Failure { Assert-PostTrace $source ($bios.Replace("    post_code 0xFF", "    post_code 0xFE")) } "missing late POST completion"
     Expect-Failure { Assert-NoTemporaryDiagnostics ($bios + "`n    post_code 0xCB") } "runtime IRQ tracing"
@@ -547,8 +594,11 @@ if ($SelfTest) {
     $extraLegendCode = $readme + [Environment]::NewLine + '| `FEh` | Unexpected code. |' + [Environment]::NewLine
     Expect-Failure { Assert-PostLegend $extraLegendCode } "an extra README POST code"
 
-    $drqCompletion = $bios.Replace("    test al, 0x21`n    jnz .controller`n    clc", "    test al, 0x21`n    jnz .controller`n    test al, 0x08`n    jnz .next`n    clc")
-    Expect-Failure { Assert-NoFinalDrqGate $drqCompletion } "a final DRQ-clear completion gate"
+    foreach ($test in @('0x80','0x21','0x08')) {
+        $completion = [regex]::Match($bios, '(?s)ata_wait_complete:(.*?)ata_wait_drq:').Groups[1].Value
+        $broken = $bios.Replace($completion, $completion.Replace("test al, $test", 'test al, 0'))
+        Expect-Failure { Assert-AtaCompletion $broken } "missing completion status $test"
+    }
 
     $warmOr = $bios.Replace("    test al, 0x04`n    jz .warm_marker_captured", "    test al, 0x04`n    nop")
     Expect-Failure { Assert-Keyboard $source $warmOr $keyboardGuest } "a BDA-only warm predicate"

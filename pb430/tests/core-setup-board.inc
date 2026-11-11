@@ -27,9 +27,13 @@ setup_test_board_saved:
     cmp byte [fs:C_CHIP],1
     jne .pending
     pushad
-    mov al,0x69
+    mov al,0x33
     call rtc_read
-    cmp al,0xC2
+    cmp al,'N'
+    jne .failed
+    mov al,0x34
+    call rtc_read
+    cmp al,6
     jne .failed
     mov al,0x1A
     call acc_read

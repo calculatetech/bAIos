@@ -122,6 +122,9 @@ Set segment registers and the BIOS-state address to their actual entry values.
 For a cache-sensitive reference routine, check byte identity as well as decoded instructions. Equivalent encodings can change the instruction stream.
 Test reset with a working boot device before and after restart. An empty-machine test that expects boot failure cannot prove device retention.
 Make fixtures accept the target's documented I/O behavior instead of changing firmware to satisfy donor fixtures.
+Prepare ordinary saved settings through the current Save owner. Use hand-encoded legacy records only for deliberate migration tests with independent expected results.
+Read Setup labels through the shared decoder or rendered screen cells. Do not assume that stored text is raw ASCII.
+Include pending dirty cache contents in warm-memory comparison baselines without flushing them early. The actual reset flush must still be required to preserve those bytes.
 Inspect which register effects the emulator actually implements. A named board model can omit the cache-tag or memory-controller behavior under diagnosis.
 Exercise interrupts inside the actual enabled window. An interrupt after the transition does not cover service accesses during transient cache modes.
 
@@ -157,3 +160,7 @@ Do not copy board-specific register recipes into this project-wide guide.
 Worked examples belong in port developer documents. A recorded physical result applies to its configuration. It does not make a hardware owner portable to another chipset.
 
 For shared ATA support, set `BOARD_ATA_PIO_MAX` to a documented ceiling from0 through4. The common driver handles capability limits, completion and reset. The generic host path requires working IORDY and retains current host strobes. A separate IDE controller or missing timing registers does not establish a lower ceiling. Use an adapter for qualified controller-specific timing. Keep that electrical qualification separate from software proof. See [the shared ATA contract](../shared/README.md).
+
+## Private POST placement
+
+Use the shared [ROM module contract](development/rom-modules.md) when a port needs transient code. Its existing adapter must establish the source mapping, complete call contract, memory charge and final release. Keep board transport details in the port guide.

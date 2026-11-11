@@ -1,3 +1,5 @@
+%ifndef PC_STATE_INCLUDED
+%define PC_STATE_INCLUDED
 %include "setup/defaults.inc"
 %ifndef BOARD_ATA_DEVICE_COUNT
 %define BOARD_ATA_DEVICE_COUNT 2
@@ -107,6 +109,10 @@
 %define C_PORTS             0x01E6 ; Eight active device selectors.
 %define U_PORTS             0x01EE ; Eight draft selectors, ends before200h.
 %define C_BOOT_FOURTH       0x01F6 ; Free gap after the device selectors.
+%define C_POST_DELAY        0x01F8 ; Index0/1/2 ->0/5/10 seconds before summary.
+%define U_POST_DELAY        0x01F9
+%define C_VIDEO_ORDER       0x01FA ; PCI hosts:0 ISA/PCI,1 PCI/ISA.
+%define U_VIDEO_ORDER       0x01FB
 %define U_BOOT_FOURTH       0x01F7
 %define P_FLOPPY            5
 %define P_MOUSE             6
@@ -117,6 +123,21 @@
 %define CHIP_SIZE           24
 %define U_CHIP_SCREEN       0x0278
 %define U_CHIP_VALUE        0x0279
+; Gap after the slave FDPT/native geometry (2E0..2F4) and before its model340h.
+; Keep these owners inside the Presario's one-KiB EBDA as well as larger ports.
+%define C_PNP               0x0300
+%define U_PNP               0x0310
+%define U_PNP_SCREEN        0x031F
+%define PNP_SIZE            15
+%define PNP_IRQ             0
+%define PNP_DMA             2
+%define PNP_IO              3 ; Two little-endian base/length word pairs; zero length disables.
+%define PNP_MEMORY          11 ; Twelve 16 KiB blocks at C0000h..EFFFFh.
+%define PNP_POLICY          13 ; 0 BIOS configures, 1 operating system configures.
+%define PNP_CLEAR           14 ; Pending until a real successful ESCD rebuild consumes it.
+%if C_PNP < 0x2F5 || C_PNP+PNP_SIZE > U_PNP || U_PNP+PNP_SIZE > U_PNP_SCREEN || U_PNP_SCREEN >= 0x340
+%error "PnP state exceeds its free gap inside the one-KiB EBDA"
+%endif
 %define S_RAM_TEST_BUFFER   0x1800 ; Excluded EBDA scratch for nondestructive RAM bursts.
 %ifndef RAM_TEST_BLOCK_SIZE
 %define RAM_TEST_BLOCK_SIZE 0x0800
@@ -179,3 +200,5 @@
     movzx %1,word [fs:S_INSTALLED_KIB]
 %endif
 %endmacro
+
+%endif

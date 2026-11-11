@@ -1,0 +1,683 @@
+{
+  "schema": 1,
+  "provenance": "Controlled synthetic RTC/default settings and caller sentinels executed against the preserved pre-F1 live composition. No vendor ROM/media/CMOS is contained here. Version glyphs alone are normalized to asterisks; all other4000 VRAM bytes are hashed. Eligible ports use the established actual module transport and external controller model for BOTH baseline and candidate; MP uses its unchanged inline model. Renderer-only BDA413 is independently fixed480KiB on both sides; actual transport memory charges are measured separately and real startup tests do not seed this value.",
+  "ports": {
+    "m919": {
+      "version": "0.21.0",
+      "image_sha256": "3f6e0c79adae8453fc312c01d7bb9e420345af53e2c83c3e7a8315d5478623e1",
+      "free_system_bytes": 217,
+      "private_module_bytes": 12878,
+      "profiles": {
+        "post_ui_begin:0:0": {
+          "VRAM_sha256": "0079f3eddc28740e0f5eb41d88b42d1da864d62ab19f6b98235830c6e8268253",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "post_ui_begin:1:0": {
+          "VRAM_sha256": "1f5f1ee5629669d75cb5013f71a2b403ca80a01fcd50c0ca3f9dad795a372f61",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "post_ui_begin:3:0": {
+          "VRAM_sha256": "9b16f5f396abb2e681a74fc454fc47c103fc7ef43ba4fb58cf7454d8a7d3a5e1",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "post_ui_begin:5:0": {
+          "VRAM_sha256": "9e1f21d560e2316b0479b3cfe37f89fb62468fef4971d22e43e23b115d71dd1a",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "setup_draw:0:0": {
+          "VRAM_sha256": "1700319345b700958d18c94cfda46af5e44db61680ca43caab71d36f80e34e2b",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:1": {
+          "VRAM_sha256": "5ed1762e2fef3020111c861ca52f7ccde8523ff82785306394ebcb5eb3698327",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:2": {
+          "VRAM_sha256": "aef5d95d93f978d240160fbd0979357947b96b3671973af36c9c9bfaa4adc53f",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:3": {
+          "VRAM_sha256": "9aeb5045df6704b5d2510e38e64649a9086264cff26bfd8727ac063d3fdee6db",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:4": {
+          "VRAM_sha256": "f3186b828521f67512e47f6379f75a424ff1ffd267b207472be46f28ea5ded7d",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:5": {
+          "VRAM_sha256": "90cc49e480f97f049d38887f166e76cfc4791891bc0b5e77e40c453c670cc725",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:6": {
+          "VRAM_sha256": "626b3e55547742ab721be8cddb4f2b2b1a98d4a9ab615ed2c0089c109c6d211e",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        }
+      }
+    },
+    "pb430": {
+      "version": "0.7.0",
+      "image_sha256": "4638d68b708797d41ed3437508b6c39a22ea88cfa2fb9586cb0bf751ea4cd4c7",
+      "free_system_bytes": 8,
+      "private_module_bytes": 11282,
+      "profiles": {
+        "post_ui_begin:0:0": {
+          "VRAM_sha256": "72d4af3193aa1a835838923819a3e015dde301e84ae10879dc671b90eac40306",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "post_ui_begin:1:0": {
+          "VRAM_sha256": "a8d7d5b11b1bbfec5cb2d381d9aab8e7cd1c0d356de87841690c4820c2c4e35b",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "post_ui_begin:3:0": {
+          "VRAM_sha256": "c5363d5cd2419885f9146f8f6f774daecf6da4dc642a1b6bb23095b387b1d0f6",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "post_ui_begin:5:0": {
+          "VRAM_sha256": "8e9c8d3a4690e42262f6f48c37a77e769115c87d97e82c24d02c181b07811241",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "setup_draw:0:0": {
+          "VRAM_sha256": "56b791856200b587c0650293972a600df7976788db1c2037eb09c49a771419de",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:1": {
+          "VRAM_sha256": "ba5b5c131461b595f98f6bd6b71b65ea082a245bdc3a72f7d404550b64504376",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:2": {
+          "VRAM_sha256": "649bed79f9bb8928f4ca674bc30718ee067d32401e606b53067d168460129956",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:3": {
+          "VRAM_sha256": "47cf73a7ff85c09133eb83af47c20e2044881ceb4d2df0dc890c925e820e0088",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:4": {
+          "VRAM_sha256": "9869e5a2cdb77a99278a25e7e4a626aa3f7c354bd8f09ef8449ec8d6f3c63808",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:5": {
+          "VRAM_sha256": "c5a6606c67027ffdd732fde1b0056f1335f05ac9a8315b7f848203637aa6480c",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:6": {
+          "VRAM_sha256": "947f40cbb0f16f311bc063af5cd54ab605d665ec2c56eb9ff308b036448d4ef5",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        }
+      }
+    },
+    "presario-800": {
+      "version": "0.7.0",
+      "image_sha256": "cd475f49adfa4c115f5028619e4ba7a5980824d0ad0f61cb1e58b8d85cb59997",
+      "free_system_bytes": 514,
+      "private_module_bytes": 10432,
+      "profiles": {
+        "post_ui_begin:0:0": {
+          "VRAM_sha256": "1ddf035f785918c6f18517753b165cc0f3ffca5e17a8bbf5275c3c0917b8fbaf",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "post_ui_begin:1:0": {
+          "VRAM_sha256": "990052c258f669c4e8b2bee777656809e0ec34dd9449884a9b515c679c583fb2",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "post_ui_begin:3:0": {
+          "VRAM_sha256": "91d7681e6334fabe42a6524f98fdb02014a0ca3579e3815d93a63ffec2fb3ed6",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "post_ui_begin:5:0": {
+          "VRAM_sha256": "e54223fbd4ff710a17e4177e0b3a697a72d9b9931524f4c78b2f5ac0ffb8e8fd",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "setup_draw:0:0": {
+          "VRAM_sha256": "25749d6172100d3ad24491d07af8f1d590014c0e3a3b888cfb4f82c5498ae27a",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:1": {
+          "VRAM_sha256": "ad5102f833f68dadbc39b167cd99d6b5a0ae4e931564957bd52c1baa5ca4cc19",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:2": {
+          "VRAM_sha256": "3f233cbc632fbeffe06ebef242a01bb4829ad60ee706ba8c826fc4f76ce345c4",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:3": {
+          "VRAM_sha256": "ac09be5ddac4449656026eeb3f600e4b401ebf32cef4c5388c786fc875e88a02",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:4": {
+          "VRAM_sha256": "132c8e103a4876fee5df0320ce1998290ea98ad6268de37d26d18d85cd851e4f",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:5": {
+          "VRAM_sha256": "060fc4712c2d7b1f4fc94c962f2f7e3c2e50c63e0320aff3ffe5811ae28328e2",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:6": {
+          "VRAM_sha256": "d13f04b03b093df19d315a553aaddb29c1e33ea5413c86c85ccb2d4f4ade2659",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        }
+      }
+    },
+    "mp386": {
+      "version": "0.7.1",
+      "image_sha256": "ae8b1b039c346d535faba2f9d8f6f546594c1a9f89690fd304d7da93e5fb7437",
+      "free_system_bytes": 8936,
+      "private_module_bytes": 0,
+      "profiles": {
+        "post_ui_begin:0:0": {
+          "VRAM_sha256": "0c881cbbe5c76d53c95b286b4bb877626d615ac18ef90e3daf573990d96ab83e",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "post_ui_begin:1:0": {
+          "VRAM_sha256": "486d6d12c6b44bbb46eb65a959c1b31f4be80b666b226217af21dc1768249077",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "post_ui_begin:3:0": {
+          "VRAM_sha256": "43a591cbff36e6d59f6ddb63f5a0c3894668e148be0482833d07d2d5599569e4",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "post_ui_begin:5:0": {
+          "VRAM_sha256": "a9469f670b8b39b8abd943b30efb2b4546b33e4ab34dd9570abfed65c1fa1cba",
+          "version_occurrences": 0,
+          "return_state": {
+            "EAX": 19088743,
+            "EBX": 38177486,
+            "ECX": 57266229,
+            "EDX": 76354972,
+            "ESI": 95443715,
+            "EDI": 114532458,
+            "EBP": 133621201,
+            "DS": 13398,
+            "ES": 17767,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674,
+            "EFLAGS": 663
+          }
+        },
+        "setup_draw:0:0": {
+          "VRAM_sha256": "40c9c6e6759d3a098543d78612f7e07161f2589e2175c403afa14732b2c6be63",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:1": {
+          "VRAM_sha256": "9257854d03ab35b71b36da3fe081c22e0372cfbef1d316c73f2c070e76f81452",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:2": {
+          "VRAM_sha256": "0852f9ad40813eca5f507116b9432819190e4b1105637b825b27b331c8c03522",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:3": {
+          "VRAM_sha256": "90ed9d6bdde978c65747df1ff3d1a7be097e8402cf6e0e72d86c2c79e953e28f",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:4": {
+          "VRAM_sha256": "239ef1093dcd4e1e79f982377fb1bae1b32161a12897d0032bfc77fb3d820416",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        },
+        "setup_draw:0:5": {
+          "VRAM_sha256": "dd3cf01094b5fd3b64c2e94527342e2d986d39f1ddf5de09a122154e97f1ce1d",
+          "version_occurrences": 1,
+          "return_state": {
+            "DS": 61440,
+            "ES": 47104,
+            "FS": 32768,
+            "GS": 22136,
+            "SS": 0,
+            "SP": 28674
+          }
+        }
+      }
+    }
+  },
+  "renderer_BDA413_KiB": 480
+}

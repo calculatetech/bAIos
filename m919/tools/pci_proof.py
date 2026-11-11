@@ -9,7 +9,7 @@ from unicorn import x86_const as x
 from cache_proof import SRAM,POSTHardware,composed,post_module
 from geometry_proof import invoke
 from shared.tools.pci_proof import PCI,Endpoint,api,public_call
-from shared.tools.ram_proof import Listing
+from shared.tools.ram_proof import Listing, fixture_directory
 PORT=Path(__file__).resolve().parents[1]
 REPOSITORY=PORT.parent
 
@@ -73,12 +73,13 @@ class Hardware(POSTHardware):
     def prepare(self,u):
         super().prepare(u)
         self.machine=u
-        listing=Listing(PORT/'build/hardware-tests/geometry/baios-m919.lst')
+        listing=Listing(getattr(self,'rom_image',PORT/'build/tests/geometry/baios-m919.bin').with_suffix('.lst'))
         self.cache_entry=0xF0000+listing.symbol('cache_initialize')
         self.ata_entry=0xF0000+listing.symbol('ata_detect_primary')
         self.ide_entry=0xF0000+listing.symbol('ide_apply_controller')
         self.vga_bdf=next(bdf for bdf,device in self.pci.endpoints.items() if device.read(8,4)>>16==0x0300)
-        folder=PORT/'build/hardware-tests/pci-providers';folder.mkdir(parents=True,exist_ok=True)
+        folder=(fixture_directory(self.rom_image,'pci-providers') if hasattr(self,'rom_image') else
+                PORT/'build/tests/pci-providers');folder.mkdir(parents=True,exist_ok=True)
         source=folder/f'vga{self.vga_kib}.asm';image=source.with_suffix('.bin')
         end=self.vga_kib*1024;self.near_end=end-32
         source.write_text(f'''bits 16
@@ -263,7 +264,7 @@ def interrupts():
     for slot,wires in ((12,(9,10,11,12)),(13,(12,9,10,11)),(14,(11,9,10,12))):
         for pin,irq in enumerate(wires,1):
             assert endpoints[slot*8+pin-1].read(0x3C,1)==irq,(slot,pin)
-            folder=PORT/'build/hardware-tests/pci-irq';folder.mkdir(parents=True,exist_ok=True)
+            folder=PORT/'build/tests/pci-irq';folder.mkdir(parents=True,exist_ok=True)
             source=folder/'guest.asm';image=folder/'guest.bin'
             source.write_text(f'%define IRQ_NUMBER {irq}\n%define IRQ_VECTOR {0x70+irq-8}\n%include "pci-irq.asm"\n')
             post_module().assemble(source,image,[REPOSITORY/'shared/tests/dos',folder]);guest=image.read_bytes()
@@ -290,7 +291,7 @@ def run():
     for size in (32,48,64):
         hardware=Hardware(vga_kib=size);row,fixture=compose(hardware);vga.append(hardware.finish(fixture))
     payload={'api':public,'bars':resources(),'bf':bf_modes(),'vga':vga,'irq':interrupts()}
-    image=PORT/'build/hardware-tests/geometry/baios-m919.bin';payload['rom_sha256']=hashlib.sha256(image.read_bytes()).hexdigest()
+    image=PORT/'build/tests/geometry/baios-m919.bin';payload['rom_sha256']=hashlib.sha256(image.read_bytes()).hexdigest()
     path=PORT/'build/research/hardware/pci-proof.json';path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps(payload,indent=2)+'\n')
     print(f'PCI installed API {len(public)}, BAR {len(payload["bars"])}, BF {len(payload["bf"])}, VGA {len(vga)}: PASS',flush=True)

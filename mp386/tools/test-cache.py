@@ -306,7 +306,8 @@ def boots(image, fault=None):
             if warm and address == post_entry:
                 assert mm.ram_banks[0,1][0x80000:0x80004] == b'KEEP'
             if address == option_entry:
-                assert 'Shadowed' in mm.text(16,24,40)
+                assert 'Not shadowed' in mm.text(16,24,40)
+                assert 'Shadowed' in mm.text(17,24,40)
                 expected = 'Cache test failed' if enabled and fault else '32 KB' if enabled else 'Disabled'
                 assert mm.text(4,24,22).strip() == expected, mm.text(4,0,80)
                 assert mm.controls[0xE0] == (0x6B if enabled and not fault else 0)

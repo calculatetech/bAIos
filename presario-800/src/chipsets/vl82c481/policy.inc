@@ -154,12 +154,44 @@ chipset_region_extent:
 
 chipset_settings_load:
     pushad
+    call settings_recovery_read
+    cmp al,0xD2
+    je .safe
+    call chipset_settings_load_raw
+    call settings_recovery_read
+    cmp al,0xD2
+    jne .done
+.safe:
+    mov di,C_CHIP
+    call chipset_defaults
+    mov byte [fs:C_CHIP],0xA6
+    mov byte [fs:C_CHIP+10],0x68
+.done:
+    popad
+    ret
+; Read and validate saved policy even when recovery selects safe live timings.
+; D2 replaced a legacy tag; the original tag is admitted only by its checksum.
+chipset_settings_load_raw:
+    pushad
     mov di, C_CHIP
     call chipset_defaults
+    call settings_nv6_present
+    jne .legacy
+    call settings_nv6_chip_load
+    jc .bad
+    mov si,C_CHIP
+    call chipset_valid
+    jc .bad
+    jmp .done
+.legacy:
     mov al, 0x69
     call rtc_read
-    cmp al, 0xD2
-    je .recovery
+    xor dh,dh
+    cmp al,0xD2
+    jne .tag
+    mov dh,1
+    mov al,0xC2
+.tag:
     cmp al, 0xC1
     je .record
     cmp al, 0xC2
@@ -178,8 +210,14 @@ chipset_settings_load:
     jb .byte
     mov al, 0x6A
     call rtc_read
-    add bl, al
-    jnz .bad
+    add bl,al
+    jz .checksum
+    test dh,dh
+    jz .bad
+    cmp bl,1
+    jne .bad
+    mov dl,0xC1
+.checksum:
     cmp dl, 0xC1
     jne .validate
     ; Verify the legacy masks before adding metadata. Never write CMOS here.
@@ -198,9 +236,6 @@ chipset_settings_load:
     call chipset_defaults
     mov byte [fs:C_VALID], 0
     jmp .done
-.recovery:
-    mov byte [fs:C_CHIP], 0xA6
-    mov byte [fs:C_CHIP+10], 0x68 ; Compatibility, 70 ns, conservative XCTL.
 .done:
     popad
     ret
@@ -280,61 +315,11 @@ chipset_profile_apply:
     ret
 
 chipset_settings_save:
-    pushad
-    xor dx, dx
-    mov al, 0x69
-    call rtc_read
-    cmp al, 0xD2
-    jne .validate
-    mov dl, 0xD2            ; Interrupted/failed recovery saves keep Compatibility.
-.validate:
-    mov si, U_CHIP
+    mov si,U_CHIP
     call chipset_valid
-    jc .bad
-    mov ax, 0x0069
-    mov ah, dl
-    call rtc_write
-    mov bl, 0xC2
-    xor bp, bp
-.byte:
-    mov al, [cs:chipset_cmos+bp]
-    mov ah, [fs:U_CHIP+bp]
-    add bl, ah
-    call rtc_write
-    inc bp
-    cmp bp, CHIP_SIZE
-    jb .byte
-    neg bl
-    mov al, 0x6A
-    mov ah, bl
-    call rtc_write
-    mov al, 0x6A
-    call settings_verify_byte
-    jne .bad
-    xor bp, bp
-.verify:
-    mov al, [cs:chipset_cmos+bp]
-    mov ah, [fs:U_CHIP+bp]
-    call settings_verify_byte
-    jne .bad
-    inc bp
-    cmp bp, CHIP_SIZE
-    jb .verify
-    mov ax, 0xC269
-    call rtc_write
-    mov ax, 0xC269
-    call settings_verify_byte
-    jne .bad
-    popad
-    clc
-    ret
-.bad:
-    mov ax, 0x0069
-    mov ah, dl
-    call rtc_write
-    popad
-    stc
-    ret
+    jc settings_nv6_bad
+    jmp settings_nv6_chip_save
+
 
 ; Before the interleave transition, use only disposable POST state.
 ; Reset the retry guard, but retain an actual defaults-restored notice.

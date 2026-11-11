@@ -16,6 +16,7 @@ def machine(l1=0, cache_kib=512, cls=timing.ACC, l2=1):
     chip[2] = l2
     chip[6] = 1
     m = timing.model(IMAGE, chip, cls)
+    timing.without_post_delay(m)
     sram = bytearray(cache_kib * 1024)
     def read(cpu, access, address, size, value, unused):
         if m.registers[0x1A] & 0x18 == 0x10:
@@ -41,6 +42,19 @@ def prepare_ui(m):
     m.irq_scans([0x1D, 0x38, 0xE0, 0x53])
     m.complete_reset(count=300000000)
     m.stop_address = 0xF0000+m.listing.symbol('.wait', 'boot_retry')
+
+
+def cold_policy(events, snapshots, writes, live):
+    starts=[i for name,i in events if name=='cache_initial_policy']
+    ends=[i for name,i in events if name=='cache_stock_cold_resume']
+    assert len(starts)==len(ends)==len(snapshots)
+    for start,end,regs in zip(starts,ends,snapshots):
+        interval=writes[start:end]
+        expected={4:0x14 if live else 0x54,6:0xB7,0x0B:0x15 if live else 5}
+        assert all(regs[i]==value and (i,value) in interval for i,value in expected.items())
+        assert regs[7]&0x1F==0x14 and regs[0x18]&0x73==0 and regs[0x1A]&0xBF==0x24
+        assert all((i,regs[i]) in interval for i in (7,0x18,0x1A))
+        if live:assert (0x1D,0xF0) in interval and (0x1E,0x7B) in interval
 
 
 def transition(m, script=None, cold=False, l1=1, l2=1, qualified=True):
@@ -78,20 +92,43 @@ def transition(m, script=None, cold=False, l1=1, l2=1, qualified=True):
     assert bool(m.registers[4] & 1) == bool(l1 and l2 and qualified)
     assert bytes(m.cpu.mem_read(m.base+0x61, 2)) == bytes((l1, l2))
     if cold:
-        initial = next(i for n, i in events if n == 'cache_initial_policy')
-        resume = next(i for n, i in events if n == 'cache_stock_cold_resume')
-        writes = m.acc_writes[initial:resume]
-        regs = cold_registers[0]
-        live = l1 and qualified
-        expected = {4: 0x14 if live else 0x54, 6: 0xB7,
-                    0x0B: 0x15 if live else 5}
-        assert all(regs[i] == value and (i, value) in writes for i, value in expected.items())
-        assert regs[7]&0x1F == 0x14 and regs[0x18]&0x73 == 0 and regs[0x1A]&0xBF == 0x24
-        assert all((i, regs[i]) in writes for i in (7, 0x18, 0x1A))
-        if live:
-            assert (0x1D, 0xF0) in writes and (0x1E, 0x7B) in writes, writes
+        cold_policy(events,cold_registers,m.acc_writes,l1 and qualified)
     return {'cold': cold, 'l1': l1, 'l2': l2, 'qualified': qualified,
             'owners': [n for n, _ in events]}
+
+
+def rejected_recovery(m):
+    names=('cache_stock_reset','cache_initialize','cache_initial_policy',
+           'cache_stock_cold_resume','chipset_late_cache')
+    points={0xF0000+m.listing.symbol(name):name for name in
+            (*names,'post_notice_wait','controlled_defaults_restart')}
+    events=[];snapshots=[];notice=[];defaults=[];resets=m.reset_count
+    def observe(mm,address):
+        name=points.get(address)
+        base=int.from_bytes(mm.cpu.mem_read(0x40E,2),'little')<<4
+        if name=='post_notice_wait':
+            assert not notice and mm.cpu.mem_read(base+0x174,1)==b'\0'
+            notice.append(True);mm.pending.append(0x20)
+        elif name=='controlled_defaults_restart':
+            assert mm.cpu.mem_read(base+0x174,1)==b'\1'
+            assert mm.cpu.mem_read(base+0x61,2)==b'\1\1'
+            defaults.append(True)
+        elif name in names:
+            events.append((name,len(mm.acc_writes)))
+            if name=='cache_stock_cold_resume':snapshots.append(bytes(mm.registers))
+    m.code_observer=observe
+    m.irq_scans([0x1D,0x38,0xE0,0x53]);assert m.reset_pending
+    m.complete_reset(count=300000000);m.code_observer=None
+    expected=list(names[:-1])+list(names[1:])
+    assert [name for name,_ in events]==expected,events
+    assert notice and defaults and m.reset_count==resets+2
+    assert len(snapshots)==2
+    cold_policy(events,snapshots,m.acc_writes,True)
+    assert m.stopped and m.posts[-1]==0xE4
+    assert m.cpu.mem_read(m.base+0x61,2)==b'\1\1'
+    assert not m.cpu.reg_read(x.UC_X86_REG_CR0)&0x40000000 and m.registers[4]&1
+    return dict(operation='rejected-save-followed-CAD',owners=expected,
+                actual_defaults_restart=True,cold_snapshots=len(snapshots),terminal='boot_retry')
 
 
 def run():
@@ -160,7 +197,7 @@ def run():
     m.open(edit(1)+[0x44, 28])
     assert errors and m.reset_count == resets
     m.reject = False
-    rows.append(dict(transition(m, None, True, 1, 1), operation='rejected-save-followed-CAD'))
+    rows.append(rejected_recovery(m))
     print('PASS rejected late Save defers reset but later CAD reinitializes cache', flush=True)
     m = machine(l1=0, l2=0)
     prepare_ui(m)

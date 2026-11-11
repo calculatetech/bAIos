@@ -8,8 +8,9 @@ import sys
 from pathlib import Path
 from unicorn import UC_HOOK_CODE,UC_HOOK_MEM_READ
 from unicorn import x86_const as x
-from shared.tools.ram_proof import Listing
+from shared.tools.ram_proof import Listing, fixture_directory
 from shared.tools.peripheral_proof import UART, Printer
+from shared.tools.post_fixture import execute_real, needs_module
 PORT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(PORT.parent/'presario-800/tools'))
 rtc=importlib.import_module('test-rtc')
@@ -17,7 +18,7 @@ setup=importlib.import_module('test-setup')
 
 
 def configure(image):
-    image=Path(image);folder=image.parent/'fixture-alias';folder.mkdir(exist_ok=True)
+    image=Path(image);folder=fixture_directory(image,'fixture-alias')
     # The donor runner's filename is a fixture API; bytes come from this candidate.
     (folder/'baios-presario800-system.rom').write_bytes(image.read_bytes()[65536:])
     rtc.BUILD=folder
@@ -31,7 +32,9 @@ def configure(image):
 
 
 class ACC(setup.Setup):
-    def __init__(self,image,payload=None,font_offset=None,video_vector=(0x100,0xC000),external_video=False):
+    def __init__(self,image,payload=None,font_offset=None,video_vector=(0x100,0xC000),external_video=False,isa_bus=None):
+        from shared.tools.isa_pnp_proof import Bus
+        self.isa_bus=Bus() if isa_bus is None else isa_bus
         self.listing=configure(image)
         self.provider_font_offset=font_offset if font_offset is not None else Path(image).read_bytes()[:32768].find((PORT/'reference/pb430-m27c1001.bin').read_bytes()[28169:32265])
         self.provider_vector=video_vector
@@ -44,14 +47,15 @@ class ACC(setup.Setup):
         self.stopped=False;self.visits=[];self.reset_count=0
         self.trace_owners={0xF0000+self.listing.symbol(name):name for name in ('startup','init_pic_pit','init_rtc','init_superio','initialize_video','init_keyboard','board_a20_handoff','settings_load','chipset_apply','init_peripherals','init_floppy','ata_detect_primary','init_mouse','init_fpu','setup_main','warm_reset','cache_initialize','cache_initial_policy','chipset_late_cache','option_rom_discovery','post_debug_summary','int19','boot_retry')}
         self.code_observer=None
-        super().__init__(segment=0x9E00)
+        super().__init__(segment=0x9E00,state_kib=8)
         self.stop_address=0xF0000+rtc.symbol('init_fpu')
         self.cpu.mem_map(0x200000,62*1024*1024)
         raw=Path(image).read_bytes();self.cpu.mem_write(0xE0000,raw)
+        self.physical_rom=raw
         self.cpu.mem_write(0xC0000,raw[:32768])
         self.vga_input=raw[:32768]
         self.external_video=external_video
-        self.cpu.hook_add(UC_HOOK_MEM_READ,self.video_read,begin=0xC0000,end=0xE7FFF)
+        self.cpu.hook_add(UC_HOOK_MEM_READ,self.video_read,begin=0xC0000,end=0xEFFFF)
         self.cpu.mem_write(0x40,struct.pack('<HH',0x100,0xC000))
         self.cpu.mem_write(self.base+0xD0,struct.pack('<H',15360))
         self.cpu.mem_write(self.base+0xD8,struct.pack('<II',15360,15360))
@@ -72,6 +76,8 @@ class ACC(setup.Setup):
             cpu.mem_write(address,bytes([255])*size)
         elif 0xE0000<=address<0xE8000 and not self.registers[2]&8:
             cpu.mem_write(address,self.vga_input[address-0xE0000:address-0xE0000+size])
+        elif 0xE8000<=address<0xF0000 and not self.registers[2]&8:
+            cpu.mem_write(address,self.physical_rom[address-0xE0000:address-0xE0000+size])
 
     def uart_mapping(self):
         r=self.registers; result={}
@@ -86,6 +92,9 @@ class ACC(setup.Setup):
         return {3:(de>>6)&3,4:(de>>4)&3}
 
     def port_in(self,cpu,port,size,unused):
+        if getattr(self,'isa_bus',None) is not None:
+            value=self.isa_bus.input(port,size)
+            if value is not None:return value
         if port in (0x3F4,0x3F5,0x3F7) and self.registers[0xFB]&2:return 255
         if port==0x71 and self.index==0xD and self.power_low:
             super().port_in(cpu,port,size,unused);return 0
@@ -107,6 +116,7 @@ class ACC(setup.Setup):
         return super().port_in(cpu,port,size,unused)
 
     def port_out(self,cpu,port,size,value,unused):
+        if getattr(self,'isa_bus',None) is not None and self.isa_bus.output(port,size,value):return
         if port==0x8F:
             assert size==1 and value==0,('refresh page register',size,value)
             return
@@ -175,13 +185,18 @@ class ACC(setup.Setup):
         super().code(cpu,address,size,unused)
 
     def call(self,name,flags=0x202,count=300000000):
+        self.ensure_post_ui(name)
         cpu=self.cpu
         for reg,value in ((x.UC_X86_REG_CS,0xF000),(x.UC_X86_REG_IP,rtc.symbol(name)),(x.UC_X86_REG_DS,0),(x.UC_X86_REG_ES,0),(x.UC_X86_REG_FS,self.segment),(x.UC_X86_REG_SS,0),(x.UC_X86_REG_SP,0x6FFE),(x.UC_X86_REG_EFLAGS,flags)):
             cpu.reg_write(reg,value)
         cpu.mem_write(0x6FFE,b'\xff\xff')
-        cpu.emu_start(0xF0000+rtc.symbol(name),0xFFFFF,count=count)
+        if needs_module(name) or name=='chipset_visible_ram_test':
+            execute_real(cpu,0xF0000+rtc.symbol(name),0xFFFFF,count)
+        else:cpu.emu_start(0xF0000+rtc.symbol(name),0xFFFFF,count=count)
         if self.reset_pending:self.complete_reset(count)
-        else:assert cpu.reg_read(x.UC_X86_REG_IP)==0xFFFF,(name,hex(cpu.reg_read(x.UC_X86_REG_IP)))
+        else:assert cpu.reg_read(x.UC_X86_REG_IP)==0xFFFF,(name,
+            hex(cpu.reg_read(x.UC_X86_REG_CS)),hex(cpu.reg_read(x.UC_X86_REG_IP)),
+            hex(cpu.reg_read(x.UC_X86_REG_SS)),hex(cpu.reg_read(x.UC_X86_REG_SP)))
 
     def complete_reset(self,count=100000000):
         cpu=self.cpu
@@ -191,8 +206,13 @@ class ACC(setup.Setup):
             self.script=self.after_reset_script.copy();self.after_reset_script=[]
             for reg,value in ((x.UC_X86_REG_CR0,0x60000010),(x.UC_X86_REG_EFLAGS,2),(x.UC_X86_REG_CS,0xF000),(x.UC_X86_REG_IP,0xFFF0),(x.UC_X86_REG_DS,0),(x.UC_X86_REG_ES,0),(x.UC_X86_REG_FS,0),(x.UC_X86_REG_GS,0),(x.UC_X86_REG_SS,0),(x.UC_X86_REG_EDX,0x403),(x.UC_X86_REG_ESP,0)):
                 cpu.reg_write(reg,value)
-            cpu.emu_start(0xFFFF0,0x100000,count=count)
-            assert self.stopped or self.reset_pending,('reset continuation failed',hex(cpu.reg_read(x.UC_X86_REG_IP)))
+            execute_real(cpu,0xFFFF0,0x100000,count)
+            self.segment=int.from_bytes(cpu.mem_read(0x40E,2),'little')
+            self.base=self.segment<<4
+            assert self.stopped or self.reset_pending,('reset continuation failed',
+                hex(cpu.reg_read(x.UC_X86_REG_CS)),hex(cpu.reg_read(x.UC_X86_REG_IP)),self.posts[-16:])
+        self.segment=int.from_bytes(cpu.mem_read(0x40E,2),'little')
+        self.base=self.segment<<4
 
     def public(self,vector,ax,dx=0,cx=0,bx=0):
         cpu=self.cpu
@@ -217,19 +237,19 @@ class ACC(setup.Setup):
             return
         super().interrupt(cpu,vector,unused)
 
-    def irq_scans(self,scans):
+    def irq_scans(self,scans,guest=0x90000):
         """Opaque PIC/8042 raises IRQ1; guest executes the installed IRQ owner."""
         for scan in scans:
             self.pending.append(scan)
             u=self.cpu
-            u.reg_write(x.UC_X86_REG_CS,0x9000);u.reg_write(x.UC_X86_REG_IP,0)
+            u.reg_write(x.UC_X86_REG_CS,guest>>4);u.reg_write(x.UC_X86_REG_IP,0)
             u.reg_write(x.UC_X86_REG_SS,0);u.reg_write(x.UC_X86_REG_SP,0x7000);u.reg_write(x.UC_X86_REG_EFLAGS,0x202)
-            u.mem_write(0x90000,b'\x90')
+            u.mem_write(guest,b'\x90')
             rtc.Clock.interrupt(self,u,9,None)
             begin=u.reg_read(x.UC_X86_REG_CS)*16+u.reg_read(x.UC_X86_REG_IP)
-            u.emu_start(begin,0x90000,count=1000000) # CAD now executes the stock131064-read teardown.
+            u.emu_start(begin,guest,count=1000000) # CAD executes the stock131064-read teardown.
             if self.reset_pending:break
-            assert u.reg_read(x.UC_X86_REG_CS)==0x9000 and u.reg_read(x.UC_X86_REG_IP)==0
+            assert u.reg_read(x.UC_X86_REG_CS)==guest>>4 and u.reg_read(x.UC_X86_REG_IP)==0
 
     def irq_current(self,scan):
         """Deliver an external IRQ1 while preserving the production continuation."""

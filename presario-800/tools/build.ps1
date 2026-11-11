@@ -3,6 +3,8 @@ param(
     [switch]$FloppyDiagnostic,
     [switch]$MouseDiagnostic,
     [switch]$KeyboardDiagnostic,
+    [switch]$PnpInterfaceTest,
+    [switch]$PnpPartialTest,
     [switch]$Vga141,
     [switch]$VgaBus07,
     [ValidateSet(50, 60)][int]$VgaClockMHz = 60,
@@ -73,6 +75,11 @@ if ($release -and $VgaClockMHz -eq 50) {
 $payloads = Join-Path $out "tests/payloads"
 [IO.Directory]::CreateDirectory($payloads) | Out-Null
 $system = Join-Path $out "baios-presario800-system.rom"
+$moduleWork = Join-Path $out 'tests/post-module'
+[IO.Directory]::CreateDirectory($moduleWork) | Out-Null
+$assembly = Join-Path $moduleWork 'raw-assembly.bin'
+$moduleBank = Join-Path $moduleWork 'post-module.bank.bin'
+$moduleReport = Join-Path $out 'post-module.json'
 $physicalName = if ($release) { "baios-presario800-vga$VgaClockMHz.bin" } elseif ($VgaBus07) { 'baios-presario800-vga141-bus07.bin' } else { 'baios-presario800-vga141.bin' }
 $physical = Join-Path $out $physicalName
 $bootTest = Join-Path $payloads "boot-test.bin"
@@ -97,17 +104,20 @@ function Invoke-Nasm([string]$Arguments, [string]$Description) {
     if ($process.ExitCode) { throw "$Description failed with exit code $($process.ExitCode)." }
 }
 $includePath = (Join-Path $root "src").TrimEnd('\') + '/'
+$sharedIncludePath = (Join-Path (Split-Path -Parent $root) "shared/src").TrimEnd('\') + '/'
 $biosSource = Join-Path $root "src/bios.asm"
 $testSource = Join-Path $root "tests/boot-test.asm"
 $keyboardSource = Join-Path $root "tests/keyboard-test.asm"
 $diagnosticDefine = if ($FloppyDiagnostic) { '-D FLOPPY_DIAGNOSTIC' } else { '' }
 if ($MouseDiagnostic) { $diagnosticDefine += ' -D MOUSE_DIAGNOSTIC' }
 if ($KeyboardDiagnostic) { $diagnosticDefine += ' -D KEYBOARD_DIAGNOSTIC' }
+if ($PnpInterfaceTest) { $diagnosticDefine += ' -D EMULATOR_PNP_TEST' }
+if ($PnpPartialTest) { $diagnosticDefine += ' -D EMULATOR_PNP_PARTIAL' }
 if ($Vga141) { $diagnosticDefine += ' -D VGA_BIOS_141' }
 $listing = Join-Path $out 'baios-presario800-system.lst'
 $testInclude = (Join-Path $root 'tests').TrimEnd('\') + '/'
 $testArguments = "-D EXPECTED_MEMORY_KIB=$TestMemoryKiB -I `"$testInclude`""
-Invoke-Nasm "$diagnosticDefine -f bin -I `"$includePath`" -l `"$listing`" -o `"$system`" `"$biosSource`"" "NASM"
+Invoke-Nasm "$diagnosticDefine -f bin -I `"$includePath`" -I `"$sharedIncludePath`" -l `"$listing`" -o `"$assembly`" `"$biosSource`"" "NASM"
 Invoke-Nasm "$testArguments -f bin -o `"$bootTest`" `"$testSource`"" "Boot-test assembly"
 Invoke-Nasm "$testArguments -D FAULT_TEST -f bin -o `"$faultTest`" `"$testSource`"" "Fault-test assembly"
 Invoke-Nasm "$testArguments -f bin -o `"$keyboardTest`" `"$keyboardSource`"" "Keyboard-test assembly"
@@ -136,7 +146,14 @@ $hardwareState = Join-Path $diagnostics 'HWSTATE.COM'
 $hardwareSource = Join-Path $root 'diagnostics/hw-state.asm'
 Invoke-Nasm "-f bin -o `"$hardwareState`" `"$hardwareSource`"" "Read-only hardware snapshot assembly"
 
-$systemBytes = [IO.File]::ReadAllBytes($system)
+$packer = Join-Path (Split-Path -Parent $root) 'shared/tools/post_module.py'
+& python -B $packer --intermediate $assembly --system $system --bank $moduleBank --report $moduleReport --bank-size 0x4000
+if ($LASTEXITCODE) { throw 'Private POST module serialization failed.' }
+[byte[]]$systemBytes = [IO.File]::ReadAllBytes($system)
+[byte[]]$postPayloadBytes = [IO.File]::ReadAllBytes($moduleBank)
+$moduleInfo = Get-Content -LiteralPath $moduleReport -Raw | ConvertFrom-Json
+$postPayloadLength = $moduleInfo.raw_bytes
+$postPayloadEntry = $moduleInfo.entry
 $listingLines = [IO.File]::ReadAllLines($listing)
 $endLine = [Array]::FindIndex($listingLines, [Predicate[string]] { param($line) $line.TrimEnd().EndsWith('rom_code_end:') })
 if ($endLine -lt 0) { throw 'ROM used-space marker was not found.' }
@@ -156,10 +173,14 @@ $systemBytes[65535] = (0x100 - $sum) -band 0xFF
 
 $referenceBytes = [IO.File]::ReadAllBytes($reference)
 if ($referenceBytes.Length -ne 131072) { throw "Reference ROM is not 128 KiB." }
+for ($i = 0xC000; $i -lt 0x10000; $i++) { if ($referenceBytes[$i] -ne 255) { throw 'Selected reference private POST range is not entirely FF.' } }
 $physicalBytes = [byte[]]::new(131072)
 [Array]::Copy($referenceBytes, 0, $physicalBytes, 0, 65536)
 if ($Vga141) { [Array]::Copy($vgaBytes, 0, $physicalBytes, 0, 32768) }
+[Array]::Copy($postPayloadBytes, 0, $physicalBytes, 0xC000, 16384)
 [Array]::Copy($systemBytes, 0, $physicalBytes, 65536, 65536)
+for ($i = 0x8000; $i -lt 0xC000; $i++) { if ($physicalBytes[$i] -ne $referenceBytes[$i]) { throw 'Retained OEM prefix changed.' } }
+if ($Vga141) { for ($i = 0; $i -lt 32768; $i++) { if ($physicalBytes[$i] -ne $vgaBytes[$i]) { throw 'Selected VGA prefix changed.' } } }
 [IO.File]::WriteAllBytes($physical, $physicalBytes)
 if ($release) { [IO.File]::WriteAllBytes((Join-Path $out 'baios-presario800.bin'), $physicalBytes) }
 
@@ -180,6 +201,9 @@ if ($release) {
     [IO.File]::WriteAllBytes($clockWrapper, $physicalBytes)
 }
 
+& python -B (Join-Path (Split-Path -Parent $root) 'shared/tools/rom_footprint.py') $physical $listing --module-offset 0xC000 --bank-bytes 0x4000 --transport top-alias | Out-Null
+if ($LASTEXITCODE) { throw 'ROM footprint reporting failed.' }
+
 [pscustomobject]@{
     SystemRom = $system
     PhysicalRom = $physical
@@ -194,6 +218,8 @@ if ($release) {
     CodeUsedBytes = $usedBytes
     CodeFreeBeforeF065 = 0xF065 - $usedBytes
     CodeFreeAfterF070 = 0xFFF0 - $cpuEnd
+    PostPayloadBytes = $postPayloadLength
+    PostPayloadBankBytes = 16384
     SystemFreeBytes = (0xF065 - $usedBytes) + (0xFFF0 - $cpuEnd)
     SystemSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $system).Hash
     PhysicalSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $physical).Hash

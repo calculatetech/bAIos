@@ -211,7 +211,7 @@ def run(m):
     class Mismatch(m.Setup):
         def port_in(self,cpu,port,size,unused):
             value=super().port_in(cpu,port,size,unused)
-            return value^4 if port==0x71 and self.index==0x3C and (0x38,66) in self.writes else value
+            return value^4 if port==0x71 and self.index==0x3C and (0x38,0) in self.writes else value
     s=Mismatch();errors=[]
     def failed(s):
         if 'CMOS verification failed.' in s.text(19,23,46):

@@ -71,4 +71,6 @@ for mode in ('cold','warm','full-warm'):
     rows.append({'mode':mode,'events':list(events),'checked_memory_accesses':checked[0],
                  'extended_memory_accesses':extended[0]})
     print(f'PASS {mode}: selected timings, both caches off for RAM, floppy next, stock L2 last',flush=True)
-(p/'build/diagnostics/ram-order-checks.json').write_text(json.dumps(rows,indent=2))
+target=p/'build/diagnostics/ram-order-checks.json'
+target.parent.mkdir(parents=True,exist_ok=True)
+target.write_text(json.dumps(rows,indent=2))

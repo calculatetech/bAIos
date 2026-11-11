@@ -58,6 +58,17 @@ post_ui_cache:
     mov di,3*160+24*2
     mov bh,7
     call setup_text
+    ui_text 4,3,u_l2,0x0B
+    mov di,4*160+24*2
+    call post_clear_value
+    mov si,u_disabled
+    cmp byte [fs:C_CHIP+2],0
+    jne .l2
+    mov si,u_post_enabled
+.l2:
+    mov di,4*160+24*2
+    mov bh,7
+    call setup_text
     pop es
     pop ds
     popad

@@ -1,16 +1,15 @@
 ; Legacy ISA ROM initialization and non-returning bootstrap continuation.
 ; Unused first-record gap3D..50, before chipset60; never floppy80/mouseB0.
-%define R_SCANNED 0x3D
-%define R_NEXT    0x3E
-%define R_ENTRY   0x40               ; offset,segment
-%define R_SS      0x44
-%define R_SP      0x46
-%define B_CURSOR  0x48               ; Next saved selection,0..4.
-%define B_ACTIVE  0x49
-%define B_DRIVE   0x4A
-%define B_ROM19   0x4C               ; Installed option-ROM bootstrap chain.
+%include "pc/rom-state.inc"
 
 option_rom_discovery:
+%ifdef BOARD_PNP_SUPPORT
+    push bx
+    mov bx,pnp_discovery_entry
+    call pnp_post_invoke
+    pop bx
+    ret
+%else
     pushf
     pushad
     push ds
@@ -87,36 +86,8 @@ option_rom_discovery:
     mov word [fs:R_ENTRY], 3
     mov [fs:R_ENTRY+2], dx
     call post_ui_rom
-    pushf
-    pushad
-    push ds
-    push es
-    push fs
-    push gs
-    mov [fs:R_SS], ss
-    mov [fs:R_SP], sp
-    mov ds, dx
-    xor ax, ax
-    mov es, ax                     ; ES:DI is not a PnP installation pointer.
-    xor di, di
-    cld
-    sti
-    call far [fs:R_ENTRY]
-    ; A returning legacy image can leave arbitrary segments/IF/DF/stack.
-    ; Resolve the current EBDA inline before touching its saved BIOS frame.
-    cli
-    xor ax, ax
-    mov fs, ax
-    mov fs, [fs:0x040E]
-    mov ss, [fs:R_SS]
-    mov sp, [fs:R_SP]
-    pop gs
-    pop fs
-    pop es
-    pop ds
-    popad
-    popf
-    cld
+    xor ax,ax
+    call boot_external_call
     call load_bios_state
     mov dx, [fs:R_NEXT]
     jmp .scan
@@ -156,6 +127,7 @@ option_rom_discovery:
     popad
     popf
     ret
+%endif
 
 ; INT18/19 and retry deliberately abandon the caller's failed stack.
 ; Reuse POST's bounded0:7000 stack and the current relocatable EBDA owner.
@@ -175,11 +147,19 @@ option_rom_discovery:
 boot_rom_fallback:
     boot_context
     cmp byte [fs:B_ACTIVE], 0xA5
+%ifdef BOARD_PNP_SUPPORT
+    je boot_candidate
+    cmp byte [fs:B_ACTIVE],0xA6
+%endif
     jne int19
     jmp boot_candidate
 
 int19:
     boot_context
+%ifdef BOARD_PNP_SUPPORT
+    cmp byte [fs:B_ACTIVE],0xA5
+    je boot_candidate           ; Loader19 advances a managed attempt too.
+%endif
 %ifdef BOARD_LATE_POST_TRACE
     post_code 0x5F
 %endif
@@ -209,6 +189,10 @@ int18:
     boot_context
     cmp byte [fs:B_ACTIVE], 0xA5
     je boot_candidate
+%ifdef BOARD_PNP_SUPPORT
+    cmp byte [fs:B_ACTIVE],0xA6
+    je boot_candidate
+%endif
     mov byte [fs:B_CURSOR], 0        ; A card chained into BIOS before our order.
     mov byte [fs:B_ACTIVE], 0xA5
 
@@ -216,6 +200,16 @@ boot_candidate:
     boot_context
     mov word [fs:B_DRIVE],0 ; Each selected source owns the buffer at7C00.
     call cd_boot_clear
+%ifdef BOARD_PNP_SUPPORT
+    mov byte [fs:B_ACTIVE],0xA5
+    call pnp_disconnect_active
+    call pnp_runtime_open
+    jc .categories
+    call pnp_boot_route
+    test byte [gs:si+P_T_FLAGS],1
+    jnz pnp_other_next
+.categories:
+%endif
     movzx bx, byte [fs:B_CURSOR]
     cmp bx, 4
     jae boot_retry
@@ -241,12 +235,16 @@ boot_candidate:
     call cd_boot
     jmp boot_candidate
 .other:
+%ifdef BOARD_PNP_SUPPORT
+    jmp pnp_other_begin
+%else
     cmp dword [fs:B_ROM19], 0
     je boot_candidate
     sti
     pushf
     call far [fs:B_ROM19]
     jmp boot_candidate
+%endif
 .ordinary:
     xor dx, dx
     cmp al, 1
@@ -255,12 +253,12 @@ boot_candidate:
     je boot_candidate
     cmp byte [fs:F_TYPES], 0
     jz boot_candidate
-    jmp .read
+    jmp boot_read
 .hdd:
     cmp byte [0x0475], 0            ; Published by native ATA or a ROM provider.
     je boot_candidate
     mov dx, 0x80
-.read:
+boot_read:
     mov [fs:B_DRIVE], dx
     mov word [es:0x7DFE], 0         ; Failed reads cannot reuse a signed old buffer.
     mov bx, 0x7C00
@@ -276,6 +274,9 @@ boot_candidate:
     jne boot_candidate
     mov dx, [fs:B_DRIVE]
     mov byte [0x0400+KB_POST_STATE], 0
+%ifdef BOARD_PNP_SUPPORT
+    call pnp_boot_handoff
+%endif
     sti
     jmp 0:0x7C00
 
@@ -332,4 +333,142 @@ msg_boot_retry db 'Press any key to retry',13,10,0
 %ifdef BOARD_BOOT_RETRY_TEST_SOURCE
 %include BOARD_BOOT_RETRY_TEST_SOURCE
 %endif
+%endif
+
+; Same returning external-call owner for legacy initialization and early static
+; reports. AL=0 prepares legacy ES:DI=0, AL=1 retains the caller buffer.
+boot_external_call:
+    pushf
+    pushad
+    push ds
+    push es
+    push fs
+    push gs
+    mov [fs:R_SS], ss
+    mov [fs:R_SP], sp
+    mov ds, dx
+%ifdef BOARD_PNP_SUPPORT
+    test dx,dx                  ; Zero segment: selected legacy VGA keeps AX.
+    jz .prepared
+%endif
+    test al,al
+    jnz .prepared
+    xor ax, ax
+    mov es, ax                     ; ES:DI is not a PnP installation pointer.
+    xor di, di
+.prepared:
+%ifdef BOARD_PNP_SUPPORT
+    jmp boot_external_prepared
+
+; The PnP caller already supplies genuine ES:DI, AX bus/role, BX CSN and DX.
+; Keep the same returning external-call/stack-recovery owner.
+boot_pnp_call:
+    pushf
+    pushad
+    push ds
+    push es
+    push fs
+    push gs
+    mov [fs:R_SS],ss
+    mov [fs:R_SP],sp
+    push word [fs:R_ENTRY+2]
+    pop ds
+%endif
+boot_external_prepared:
+    cld
+    sti
+%ifdef BOARD_PNP_SUPPORT
+    pushf                       ; Also admits the retained interrupt-style chain.
+%endif
+    call far [fs:R_ENTRY]
+%ifdef BOARD_PNP_SUPPORT
+    mov bx,ax                    ; Init status is an output, not restored AX.
+%endif
+
+    ; A returning legacy image can leave arbitrary segments/IF/DF/stack.
+    ; Resolve the current EBDA inline before touching its saved BIOS frame.
+    cli
+    xor ax, ax
+    mov fs, ax
+    mov fs, [fs:0x040E]
+    mov ss, [fs:R_SS]
+    mov sp, [fs:R_SP]
+%ifdef BOARD_PNP_SUPPORT
+    mov bp,sp
+    mov [ss:bp+36],bx
+%endif
+    pop gs
+    pop fs
+    pop es
+    pop ds
+    popad
+    popf
+    cld
+    ret
+
+%ifdef BOARD_PNP_SUPPORT
+pnp_rom_callback:
+    call boot_external_call
+    retf
+pnp_initialize_callback:
+    cmp cl,2
+    je .legacy_video
+    test cl,cl
+    jz .legacy
+%ifndef EMULATOR_PNP_PARTIAL
+    push word CFG_ROM_CODE_SEGMENT
+    pop es
+    mov di,pnp_installation
+%else
+    xor di,di
+    push di
+    pop es
+%endif
+    call boot_pnp_call
+    retf
+.legacy_video:
+    xor dx,dx
+    mov es,dx
+    xor di,di
+    call boot_external_call
+    retf
+.legacy:
+    mov dx,[fs:R_ENTRY+2]
+    xor ax,ax
+    call boot_external_call
+    retf
+pnp_post_rom_callback:
+    pushad
+    call post_ui_rom
+    popad
+    retf
+pnp_rom_error_callback:
+    pushad
+    mov al,0x10
+    mov si,msg_rom_invalid
+    jmp pnp_post_error
+pnp_incomplete_callback:
+    pushad
+    mov al,0x40
+    mov si,.message
+    jmp pnp_post_error
+.message: db 'PnP incomplete; rebuild kept.',13,10,0
+pnp_post_error:
+    push ds
+    or [fs:C_ERROR],al
+    xor ax,ax
+    mov ds,ax
+    cmp byte [fs:P_PHASE],0
+    je .text
+    call post_message_cursor
+.text:
+    call print_string
+    call post_error_notice
+    pop ds
+    popad
+    retf
+%endif
+
+%ifdef BOARD_PNP_SUPPORT
+%include "firmware/pnp-boot.inc"
 %endif

@@ -1,9 +1,15 @@
 %ifndef M919_BOARD_DEFINITION
+%define BOARD_PRIVATE_POST_CLOCK 1
+%define BOARD_PCI_VIDEO_ORDER 1
 %define M919_BOARD_DEFINITION
+%define BOARD_PNP_SUPPORT
+%define BOARD_ESCD_SOURCE "hardware/escd.inc"
+%define BOARD_ESCD_CAPACITY 8192
+%define BOARD_ESCD_BASE 0xE0000
 %define BOARD_KBC_NO_AUX_COMMANDS 1
-%define BOARD_RESET_NEAR 1
 %define BOARD_LATE_POST_TRACE 1
 %define BOARD_POST_SUMMARY_SHIFT -1
+%define BOARD_POST_RAM_ROW 6
 ; No RAM stack is available at the reset entry. Keep the old scanout blank
 ; until the VGA BIOS restores it, preserving clock bits and the selected index.
 %macro board_video_blank 1

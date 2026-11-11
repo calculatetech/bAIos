@@ -77,7 +77,11 @@ class DRAM:
         out=bytearray()
         for a in range(address,address+size):
             key=self.physical(a)
-            out.append(255 if key is None else self.data.get(key,self.initial(key)))
+            if key is None:
+                out.append(255)
+                continue
+            stored=self.data.get(key)
+            out.append(self.initial(key) if stored is None else stored)
         return bytes(out)
 
     def write(self,address,size,value):
@@ -91,10 +95,13 @@ class DRAM:
                     continue
                 self.data[key]=(value>>(i*8))&255
 
+    def preservation_snapshot(self):
+        return dict(self.data)
+
 
 def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revision=4, outside_wrap=False, memory=None,cpu_signature=0xDEAD04F0,rom_image=None):
     if rom_image is None:
-        result=build(PORT,'build/hardware-tests/geometry')
+        result=build(PORT,'build/tests/geometry')
     else:
         from shared.tools.rom import verify
         result=verify(PORT,rom_image)
@@ -111,7 +118,10 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     u.mem_map(0xFFFE0000,0x20000)
     u.mem_write(0xFFFE0000,rom_bytes)
     d=memory if memory is not None else DRAM(modules,flat,alias,fault,revision,outside_wrap)
-    original_data=dict(d.data)
+    original_data=d.preservation_snapshot()
+    entry_ebda=int.from_bytes(d.read(0x40E,2),'little')<<4
+    entry_ebda_size=d.read(entry_ebda,1)[0]*1024 if 0x10000<=entry_ebda<0xA0000 else 0
+    assert not entry_ebda_size or entry_ebda+entry_ebda_size<=0xA0000
     if memory is not None:memory.machine=u
     cmos=bytearray(getattr(memory,'initial_cmos',bytes(128)));index=0;config_address=0;terminal=[];remapping=[True]
     other_pci={}
@@ -119,8 +129,13 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     init=code+listing.symbol('ram_initialize')
     ready=code+listing.symbol('.ram_ready','startup')
     finish=code+listing.symbol('init_pic_pit')
+    try:
+        shadow_begin=code+listing.symbol('board_firmware_shadow')
+        shadow_end=code+listing.symbol('board_vga_shadow')
+    except StopIteration:
+        shadow_begin=shadow_end=-1 # Earlier images have no early F-copy owner.
     begin_state=cfg['platform']['state_seg']<<4
-    stack_ops=[];excluded_writes=[];instructions={};far_return=[False];far_return_enabled=[False]
+    stack_ops=[];excluded_writes=[];instructions={};far_return=[False];far_return_enabled=[False];instruction_count=[0]
 
     def read(uc,access,address,size,value,user):
         if address<0x10200000 and not 0xA0000<=address<0x100000:
@@ -129,6 +144,10 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     def write(uc,access,address,size,value,user):
         if 0xE0000<=address and address+size<=0xF0000 and not d.registers.get(0x55,0)&0x40:
             assert value.to_bytes(size,'little')==rom_bytes[address-0xE0000:address-0xE0000+size], 'E shadow copy differs from ROM'
+        elif 0xF0000<=address and address+size<=0x100000 and not d.registers.get(0x55,0)&0x40:
+            pc=(uc.reg_read(x.UC_X86_REG_CS)<<4)+uc.reg_read(x.UC_X86_REG_IP)
+            assert not remapping[0] and shadow_begin<=pc<shadow_end, 'F copy outside its post-mapper owner'
+            assert value.to_bytes(size,'little')==rom_bytes[address-0xE0000:address-0xE0000+size], 'F shadow copy differs from ROM'
         elif 0xA0000<=address<0x100000:
             excluded_writes.append(address)
         elif address<0x10200000:
@@ -169,6 +188,7 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
         if memory is not None:memory.outgoing(uc,port,size,value)
 
     def step(uc,address,size,user):
+        if far_return_enabled[0]:instruction_count[0]+=1
         if far_return_enabled[0] and bytes(uc.mem_read(address,1))==b'\xcb':
             # Unicorn retains the old IP on this nested E/F real-mode return.
             # Model only the CPU RETF; the query and both firmware callers run.
@@ -208,17 +228,18 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     if memory is not None and getattr(memory,'composed',False):memory.prepare(u)
     def execute(entry,end,count):
         far_return_enabled[0]=True
+        instruction_count[0]=0
         try:
-            for _ in range(32):
+            while instruction_count[0]<count:
                 far_return[0]=False
-                u.emu_start(entry,end,count=count)
+                u.emu_start(entry,end,count=count-instruction_count[0])
                 if not far_return[0]:break
                 entry=(u.reg_read(x.UC_X86_REG_CS)<<4)+u.reg_read(x.UC_X86_REG_IP)
-            else:raise AssertionError('Unbounded far returns in fixture')
+            else:raise AssertionError('Instruction budget exhausted across real far returns')
         finally:far_return_enabled[0]=False
     step.execute=execute
     execute(code+listing.symbol('startup'),code+0xFFFF,5000000+(memory.capacity*24 if memory is not None else 0))
-    assert terminal and not stack_ops and not excluded_writes,(terminal,stack_ops,excluded_writes)
+    assert terminal and not stack_ops and not excluded_writes,(terminal,stack_ops[:8],len(excluded_writes),excluded_writes[:8])
     if revision!=4:
         assert not any(offset==0x61 and value&0x30 for offset,size,value in d.writes),d.writes
     if terminal!=['published']:
@@ -237,6 +258,9 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
     assert total==expected*0x100000,(modules,total//0x100000,expected,d.registers)
     firmware_keys={d.physical(a) for a in range(0x10000)}
     firmware_keys.update(d.physical(a) for a in range(begin_state,0xA0000))
+    # A warm entry may follow a legal OS relocation. Early firmware still owns
+    # that complete advertised prefix until the normal memory producer replaces it.
+    firmware_keys.update(d.physical(a) for a in range(entry_ebda,entry_ebda+entry_ebda_size))
     for key in d.touched:
         if key not in firmware_keys:
             assert d.data.get(key,d.initial(key))==original_data.get(key,d.initial(key)),(key,d.data[key],original_data.get(key,d.initial(key)))
@@ -244,6 +268,12 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
             'banks':banks,'hb52':d.registers[0x52],'hb53':d.registers[0x53],'hb61':d.registers[0x61],
             'terminal':terminal,'no_ram_stack':True,'sentinels_restored':True,'excluded_regions_unchanged':True}
     return record,(u,d,listing,state,cmos,step)
+
+
+def prepare_component_post(fixture):
+    from shared.tools.post_fixture import ensure_module
+    _,d,listing,_,_,_=fixture
+    ensure_module(listing,'setup_main',d.read,lambda owner:invoke(fixture,owner,count=1000000))
 
 
 def invoke(fixture,name,iret=False,reset=False,count=100000):
@@ -262,6 +292,7 @@ def invoke(fixture,name,iret=False,reset=False,count=100000):
 
 
 def render_banks(fixture,expected):
+    prepare_component_post(fixture)
     u=fixture[0]
     u.reg_write(x.UC_X86_REG_DS,u.reg_read(x.UC_X86_REG_CS))
     u.reg_write(x.UC_X86_REG_ES,0xB800)
@@ -354,7 +385,7 @@ def services():
                  setup_total=setup_total,setup_extended=setup_extended,summary_extended=summary_extended)
         results.append(r)
     # Execute the optional serial/VGA diagnostic owner with the same published state.
-    report=build(PORT,'build/hardware-tests/geometry-report',defines=('EMULATOR_TEST',))
+    report=build(PORT,'build/tests/geometry-report',defines=('EMULATOR_TEST',))
     report_rom=Path(report['path'])
     u.mem_write(configuration(PORT)[1]['rom']['base'],report_rom.read_bytes())
     listing=Listing(report_rom.with_suffix('.lst'))
@@ -365,7 +396,7 @@ def services():
     assert text.endswith(' RAM=262144 KiB\r\n'),text
     results.append({'standalone_report':text,'rom_sha256':report['sha256']})
     # The actual RAM owner must traverse above the word boundary.
-    _,cfg=configuration(PORT);rom=PORT/'build/hardware-tests/geometry/baios-m919.bin'
+    _,cfg=configuration(PORT);rom=PORT/'build/tests/geometry/baios-m919.bin'
     for kib in (65536,131072):
         proof=ram_run(rom,cfg['rom'],constants(REPOSITORY/'shared/src/pc/state.inc'),kib=kib,
                       coverage=False,legacy=kib==65536)

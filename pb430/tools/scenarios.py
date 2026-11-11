@@ -3,6 +3,13 @@ import struct
 from pathlib import Path
 from unicorn import x86_const as x
 from core_proof import ACC,setup,rtc,PORT
+from shared.tools.checkpoint_proof import draft_from_active, nv6_payload
+
+
+def saved_chip(image,cmos):
+    loaded=ACC(image,cmos)
+    assert loaded.cpu.mem_read(loaded.base+0x174,1)==b'\1'
+    return bytes(loaded.cpu.mem_read(loaded.base+0x60,24))
 
 def setup_policy(image,seed):
     """Requested settings through the real draft/save/reset and cold POST owners."""
@@ -34,6 +41,7 @@ def setup_policy(image,seed):
         early=0xF0000+m.listing.symbol('post_early_setup')
         final=0xF0000+m.listing.symbol('post_ui_roms')
         def observe(model,address):
+            if address not in (early,final):return
             phase=model.cpu.mem_read(model.base+0x51,1)[0]
             if (address==early and phase==1) or (address==final and phase==5):
                 value=model.text(3,24,8).strip()
@@ -72,10 +80,10 @@ def setup_policy(image,seed):
         expected=drafts[0]
         if saving:
             assert m.reset_count==1 and m.posts[-1]==0xE4
-            assert m.cmos[0x71]==expected and m.cpu.mem_read(m.base+0x66,1)==bytes((expected,))
+            assert saved_chip(image,m.cmos)[6]==expected and m.cpu.mem_read(m.base+0x66,1)==bytes((expected,))
             assert min(blocks)==0x10000 and (max(blocks)<0x100000)==bool(expected)
             assert m.cpu.mem_read(m.base+0x50,1)==b'\x04'
-            if action=='defaults-save':assert boot(m)==(3,1,2,0) and m.cmos[0x70]==0
+            if action=='defaults-save':assert boot(m)==(3,1,2,0) and saved_chip(image,m.cmos)[5]==0
             assert bool(m.registers[0x1A]&0x80)==(action!='defaults-save')
             saved[expected]=bytes(m.cmos)
             if action in ('enable-save','disable-save'):
@@ -92,7 +100,7 @@ def setup_policy(image,seed):
                 m.after_reset_script=[0x50]*2+[15]+[0x50]*7+[1,1,28]
                 m.irq_scans([0x1D,0x38,0xE0,0x53]);assert m.reset_pending
                 m.complete_reset()
-                assert reopened==[expected] and m.posts[-1]==0xE4 and m.cmos[0x71]==expected
+                assert reopened==[expected] and m.posts[-1]==0xE4 and saved_chip(image,m.cmos)[6]==expected
                 m.code_observer=None
                 rows.append({'saved_fast_reopened_after_cad':expected,'draft_and_rendered_choice':True,'discard_keeps_saved_choice':True})
         else:
@@ -106,7 +114,14 @@ def setup_policy(image,seed):
         assert result['ram_flags']==4 and result['public_int15_kib']==1024
         assert all(item['unwritten_fill_bytes_this_reset']==0 for item in result['initialization'])
         rows.append({'cold_fast':fast,'result':result})
-    disabled=suite.chipset_record(bytearray(saved[1]),cpu=0,fast=1)
+    edited=ACC(image,saved[1])
+    draft_from_active(lambda off,size:bytes(edited.cpu.mem_read(edited.base+off,size)),
+                      lambda off,data:edited.cpu.mem_write(edited.base+off,data),edited.call)
+    edited.cpu.mem_write(edited.base+0x261,b'\0')
+    edited.call('settings_save');assert not edited.cpu.reg_read(x.UC_X86_REG_EFLAGS)&1
+    disabled=bytes(edited.cmos)
+    expected=bytearray(saved_chip(image,saved[1]));expected[1]=0
+    assert saved_chip(image,disabled)==bytes(expected)
     result=cold(image,banks=(2,0,0,0),expected_pattern=2,expected_map=0x30,cache_kib=512,complete_post=True,cmos_seed=disabled)
     rows.append({'cold_l1_disabled':result})
     # Every help string used by the composition must fit its existing panel.
@@ -214,6 +229,17 @@ def port_masks(model):
     return events
 
 
+def check_port_masks(events):
+    assert [row['owner'] for row in events]==[
+        'ports_apply','ide_apply_controller','ports_apply','ide_apply_controller'],events
+
+
+def saved_ports(image,cmos):
+    loaded=ACC(image,cmos)
+    assert loaded.cpu.mem_read(loaded.base+0x174,1)==b'\1'
+    return bytes(loaded.cpu.mem_read(loaded.base+0x1E6,8))
+
+
 def serial(image,seed):
     rows=[];addresses=(0,0x3F8,0x2F8,0x3E8,0x2E8)
     for owner in (0,1):
@@ -222,6 +248,7 @@ def serial(image,seed):
             m=ACC(image,ports_record(seed(),payload));m.continue_reset=True;mask_events=port_masks(m)
             scans=[0x50]*3+[28]+[0x50]*owner
             scans+=([0x4B] if choice==0 else [0x4D]*(choice-1))+[0x44,28]
+            m.ensure_post_ui('setup_post_gate')
             before=bytes(m.cmos);writes=tuple(m.acc_writes);observed=[]
             def observer(model):
                 if model.script==[0x44,28] and not model.pending:
@@ -232,7 +259,7 @@ def serial(image,seed):
             m.observer=observer;m.open(scans)
             assert observed and m.reset_count==1 and m.visits==['startup']
             wanted=payload.copy();wanted[owner]=choice
-            assert m.cmos[0x60:0x68]==bytes(wanted) and sum(m.cmos[0x5D:0x69])&255==0
+            assert saved_ports(image,m.cmos)==bytes(wanted)
             assert bytes(m.cpu.mem_read(m.base+0x1E6,8))==bytes(wanted)
             assert struct.unpack('<4H',m.cpu.mem_read(0x400,8))==(addresses[choice],0,0,0)
             assert ((struct.unpack('<H',m.cpu.mem_read(0x410,2))[0]>>9)&7)==int(bool(choice))
@@ -247,12 +274,12 @@ def serial(image,seed):
             else:
                 result,_=m.public(0x14,0x014D);assert result==0x804D
                 assert not m.devices_uart[owner].tx
-            assert len(mask_events)==2
+            check_port_masks(mask_events)
             rows.append({'uart':owner,'selector':choice,'base':addresses[choice],'irq_sources':m.irq_sources(),'int14_ax':result,'reset_vector':True,'masks':mask_events})
     # Simultaneous pair: two sources in one causal Save/reset/public-service case.
     m=ACC(image,ports_record(seed(),(1,2,1,2,0,1,1,1)));m.continue_reset=True;mask_events=port_masks(m)
     m.open([0x50]*3+[28,0x4D,0x50,0x4D,0x44,28])
-    assert m.cmos[0x60:0x62]==bytes((3,4))
+    assert saved_ports(image,m.cmos)[:2]==bytes((3,4))
     assert struct.unpack('<4H',m.cpu.mem_read(0x400,8))==(0x3E8,0x2E8,0,0)
     assert ((struct.unpack('<H',m.cpu.mem_read(0x410,2))[0]>>9)&7)==2
     assert m.irq_sources()=={3:3,4:2}
@@ -261,7 +288,7 @@ def serial(image,seed):
         result,_=m.public(0x14,0x0100|payload,dx=unit);assert result==0x6000|payload
         assert m.devices_uart[unit].tx==[payload]
     rows.append({'simultaneous_bases':[0x3E8,0x2E8],'irq_sources':m.irq_sources(),'int14_payloads':[0x41,0x42],'reset_vector':True,'masks':mask_events})
-    assert len(mask_events)==2
+    check_port_masks(mask_events)
     # Repeated preferred prefix must not truncate the later ISA candidate.
     from shared.tools.peripheral_proof import UART
     m=ACC(image,ports_record(seed(),(1,2,1,2,0,1,1,1)));m.extra_uarts[0x3E8]=UART();m.continue_reset=True;mask_events=port_masks(m)
@@ -272,7 +299,7 @@ def serial(image,seed):
     received,_=m.public(0x14,0x0200,dx=2);assert received&255==0xA6
     result,_=m.public(0x14,0x0143,dx=2);assert result==0x6043 and m.extra_uarts[0x3E8].tx==[0x43]
     rows.append({'duplicate_preferred_prefix':True,'later_isa_base':0x3E8,'bda_count':3,'int14_dx2_ax':result,'save_reset':True,'masks':mask_events})
-    assert len(mask_events)==2
+    check_port_masks(mask_events)
     n=ports_record(seed(),(1,1,2,3,1,1,1,1));m=ACC(image,n)
     assert m.cmos==n[:128] and m.cpu.mem_read(m.base+0x174,1)==b'\0'
     assert m.cpu.mem_read(m.base+0x1E6,8)==bytes((1,2,1,2,0,1,1,1))
@@ -287,8 +314,9 @@ def serial(image,seed):
             assert bytes(model.cmos)==original
             seen.append(True);model.observer=None;model.script=[0x44,28]
     m.observer=conflict;m.open([0x50]*3+[28,0x4D]);assert seen and m.reset_count==1
-    assert m.cmos[0x60:0x62]==bytes((3,2)) and struct.unpack('<2H',m.cpu.mem_read(0x400,4))==(0x3E8,0x2F8)
-    assert m.irq_sources()=={3:3,4:2} and len(mask_events)==2
+    assert saved_ports(image,m.cmos)[:2]==bytes((3,2)) and struct.unpack('<2H',m.cpu.mem_read(0x400,4))==(0x3E8,0x2F8)
+    assert m.irq_sources()=={3:3,4:2}
+    check_port_masks(mask_events)
     for unit,byte in ((0,0x51),(1,0x52)):
         received,_=m.public(0x14,0x0200,dx=unit);assert received&255==0xA6
         result,_=m.public(0x14,0x0100|byte,dx=unit);assert result==0x6000|byte and m.devices_uart[unit].tx==[byte],(unit,hex(result),m.devices_uart[unit].tx)
@@ -310,7 +338,7 @@ def parallel(image,seed):
             scans += [0x4B]*(2-choice) if choice<2 else [0x4D]*(choice-2)
             if mode:scans += [0x50,0x4D]
             m.open(scans+[0x44,28])
-            assert m.cmos[0x63:0x65]==bytes((choice,mode))
+            assert saved_ports(image,m.cmos)[3:5]==bytes((choice,mode))
             assert struct.unpack('<3H',m.cpu.mem_read(0x408,6))==(addresses[choice],0,0)
             equipment=struct.unpack('<H',m.cpu.mem_read(0x410,2))[0]
             assert equipment>>14==int(bool(choice))
@@ -320,7 +348,7 @@ def parallel(image,seed):
             result,_=m.public(0x17,0x005A)
             assert bool(result&0x100)==(not choice),(choice,mode,hex(result))
             assert m.printer.tx==([0x5A] if choice else [])
-            assert len(mask_events)==2
+            check_port_masks(mask_events)
             rows.append({'selector':choice,'mode':mode,'base':addresses[choice],'equipment_parallel_count':equipment>>14,'public_int11':equipment,'int17_ax':result,'masks':mask_events})
     return rows
 
@@ -376,7 +404,7 @@ def slow_refresh(image,seed):
         m.open(keys+tail);assert seen
         if saving:
             assert m.reset_count==1 and m.posts[-1]==0xE4
-            assert m.cmos[0x72]==wanted and m.cpu.mem_read(m.base+0x67,1)==bytes((wanted,))
+            assert saved_chip(image,m.cmos)[7]==wanted and m.cpu.mem_read(m.base+0x67,1)==bytes((wanted,))
             assert m.registers[5]&3==(3 if wanted else 0)
             assert normal and late==['before-ram','after-cache'],late
         else:
@@ -402,10 +430,12 @@ def chipset(image,seed):
         n[0x69]=0xC2;n[0x6B:0x80]=chip[:21];n[0x33:0x36]=chip[21:];n[0x6A]=(-0xC2-sum(chip))&255
         m=ACC(image,n);m.registers[0x1A]=0xC0;m.continue_reset=True
         m.open([0x50]*4+[28,28,0x4D,0x44,28])
-        assert m.cmos[0x6B]==int(not auto) and m.cmos[0x70]==1
+        fresh=ACC(image,bytes(m.cmos));fresh.call('settings_load')
+        saved=bytes(fresh.cpu.mem_read(fresh.base+0x60,24))
+        assert saved[0]==int(not auto) and saved[5]==1
         assert bool(m.registers[0x1A]&0x80)==(not auto)
         assert m.registers[0x1A]&0x40 and m.registers[0x1A]&0x3C==0x2C
-        rows.append({'auto':auto,'saved_manual_ads':m.cmos[0x70],'register1a':m.registers[0x1A],'reset':m.reset_count})
+        rows.append({'auto':auto,'saved_manual_ads':saved[5],'register1a':m.registers[0x1A],'reset':m.reset_count})
     for onboard,manual in ((True,False),(True,True),(False,True)):
         m=ACC(image,seed(),external_video=not onboard);m.cpu.mem_write(m.base+0x1007,bytes((int(onboard),)))
         m.continue_reset=True;m.stop_address=0xF0000+m.listing.symbol('.wait','boot_retry')
@@ -428,29 +458,38 @@ def chipset(image,seed):
                 assert model.text(10,49,8).strip()==('Enabled' if manual else 'Disabled')
                 seen.append(True);model.observer=None
         m.observer=draft;m.open(keys+[0x44,28]);assert seen and m.reset_count==1 and m.posts[-1]==0xE4
-        assert bytes(m.cpu.mem_read(m.base+0x60,6))==expected and bytes(m.cmos[0x6B:0x71])==expected
+        fresh=ACC(image,bytes(m.cmos));fresh.call('settings_load')
+        assert bytes(m.cpu.mem_read(m.base+0x60,6))==expected
+        assert bytes(fresh.cpu.mem_read(fresh.base+0x60,6))==expected
         assert m.cpu.reg_read(x.UC_X86_REG_CR0)&0x60000000==0x60000000
         assert not m.registers[4]&1 and not m.registers[2]&0x10 and bool(m.registers[2]&1)==onboard,(onboard,manual,m.registers[4],m.registers[2])
         rows.append({'onboard':onboard,'manual':manual,'all_bounded_fields':list(expected),'auto_ads_unavailable':not manual,'manual_ads_editable':manual,'video_fixed':onboard,'actual_save_reset_retry':True})
     return rows
 
 
-def clock(image,seed):
+def clock(image,seed,post_only=False):
+    from shared.tools.isa_pnp_proof import Bus
     rows=[]
     for invalid in (False,True):
         import importlib
         n=seed();n[0x3B]=(n[0x3B]&~0x18)|8;n[0xE]=0x80 if invalid else 0
         importlib.import_module('test-port').repair_checksum(n)
-        m=ACC(image,n);m.continue_reset=True
+        m=ACC(image,n,isa_bus=Bus([]));m.continue_reset=True
         m.stop_address=0xF0000+m.listing.symbol('.wait','boot_retry')
         m.open([0x44,28])
+        m.base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4;m.segment=m.base>>4
         assert m.posts[-1]==0xE4
         notice='WARNING: CMOS date/time not set.'
         assert (notice in m.console)==invalid,(invalid,m.console)
-        assert m.cmos[0x38:0x40]==n[0x38:0x40]
+        # This path performed F10/Enter and continued the actual Save/reset.
+        # Read-only/canceled paths elsewhere still compare their raw records.
+        from shared.tools.post_fixture import migrated_base
+        canonical=migrated_base('pb430',bytes((n[0x10],))+bytes(n[0x39:0x40]))
+        assert m.cmos[0x38:0x40]==b'B'+canonical[1:]
         assert tuple(m.cpu.mem_read(m.base+i,1)[0] for i in (0x172,0x189,0x18A,0x1F6))==(2,1,0,0)
         assert bool(m.invoke(4)[0])==invalid
         rows.append({'post_clock_invalid':invalid,'visible_notice':notice if invalid else None,'valid_settings_preserved':True,'terminal':0xE4,'public_clock_invalid':invalid})
+    if post_only:return rows
     n=seed();n[0xE]=0x80;m=ACC(image,n)
     original_date=bytes(m.cmos[7:10])
     m.open([15,0x50,28]+setup.keys('120000p\r')+[1,1,28])
@@ -523,7 +562,13 @@ def reset(image,seed):
     m.cold_boot();assert m.posts[-1]==0xE4 and ram_restored==[True,True]
     assert chronology==['handoff_entry','handoff_return','ram_entry','ram_return']*2
     assert m.port92==0xA4 and m.kbc_output&2 and not pending
-    assert m.public(0x12,0)[0]==632 and m.public(0x15,0x8800)[0]==64512
+    conventional=struct.unpack('<H',u.mem_read(0x413,2))[0]
+    base=struct.unpack('<H',u.mem_read(0x40E,2))[0]<<4
+    assert m.public(0x12,0)[0]==conventional and base==conventional*1024
+    assert base+u.mem_read(base,1)[0]*1024==640*1024
+    assert m.public(0x15,0x8800)[0]==64512
+    m.public(0x15,0xC100)
+    assert u.reg_read(x.UC_X86_REG_ES)<<4==base and u.mem_read(base+0x338,4)==bytes(4)
     # These four independent RAM windows expose physical bit20 wrapping.
     source=bytes((i*13+5)&255 for i in range(512))
     storage={0x800:bytearray([0xA1])*512,0x1800:bytearray([0xD4])*512,0x100800:bytearray(source),0x101800:bytearray([0x77])*512}
@@ -756,8 +801,8 @@ def shadow(image,seed):
             m.observer=observer
             m.open([0x50]*4+[28,28]+[0x50]*4+([] if onboard else [0x4D])+[0x44,28])
             assert seen and m.reset_count==1
-            assert m.cmos[0x6F]==0
-            assert bool(m.registers[2]&0x10)==system,(onboard,system,m.cmos[0x6E],hex(m.registers[2]))
+            assert saved_chip(image,m.cmos)[4]==0
+            assert bool(m.registers[2]&0x10)==system,(onboard,system,saved_chip(image,m.cmos)[3],hex(m.registers[2]))
             assert bool(m.registers[2]&1)==onboard
             assert m.cpu.mem_read(0xC0000,32768)==original
             assert m.cpu.mem_read(0xF0000,65536)==system_input
@@ -777,11 +822,14 @@ def shadow(image,seed):
                 m.complete_reset()
                 assert injected and m.reset_count==3
                 assert m.cpu.mem_read(m.base+0x1007,1)==b'\x01'
-                assert m.cmos[0x6F]==0 and m.registers[2]&1
+                assert saved_chip(image,m.cmos)[4]==0 and m.registers[2]&1
                 assert m.posts[-1]==0xE4
             # These installed services belong to this same UI/Save/reset/provider path.
             assert m.registers[2]&0x31==0x20|(int(system)<<4)|int(onboard) #bit3 is retained by the proved mappings.
-            assert m.public(0x12,0)[0]==632 and m.public(0x15,0x8800)[0]==15360
+            base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4
+            assert m.public(0x12,0)[0]==base>>10==int.from_bytes(m.cpu.mem_read(0x413,2),'little')
+            assert base+m.cpu.mem_read(base,1)[0]*1024==int.from_bytes(m.cpu.mem_read(0x508,2),'little')*1024
+            assert m.public(0x15,0x8800)[0]==15360
             for vector in (0x10,0x42):
                 result,_=m.public(vector,0x1130,bx=0x0600)
                 assert m.cpu.reg_read(x.UC_X86_REG_ES)==0xC000 and m.cpu.reg_read(x.UC_X86_REG_BP)==m.provider_font_offset
@@ -854,14 +902,17 @@ def shadow(image,seed):
             assert m.posts[-1]==0xE5 and provider_calls==[] and seen==['initialize_video']
             rows.append({'external_declared_bytes':length,'malformed':bad,'terminal':0xE5,'provider_not_called':True});continue
         assert m.posts[-1]==0xE4 and provider_calls==[0xC0003]
-        assert m.cmos[0x6F]==int(enabled) and m.registers[2]&0x23==0x20|int(enabled)
+        assert saved_chip(image,m.cmos)[4]==int(enabled) and m.registers[2]&0x23==0x20|int(enabled)
         extent=min(length,32768)
         assert seen==(['initialize_video','shadow_external_video'] if enabled else ['initialize_video'])
         assert copied==(list(range(extent)) if enabled else [])
         assert bytes(window[:extent])==(bytes(provider[:extent]) if enabled else bytes([0xA7])*extent)
         assert bytes(window[extent:])==bytes([0xA7])*(32768-extent)
         assert bytes(u.mem_read(0xC0000,length))==bytes(provider)
-        assert m.public(0x12,0)[0]==632 and m.public(0x15,0x8800)[0]==15360
+        base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4
+        assert m.public(0x12,0)[0]==base>>10==int.from_bytes(m.cpu.mem_read(0x413,2),'little')
+        assert base+m.cpu.mem_read(base,1)[0]*1024==int.from_bytes(m.cpu.mem_read(0x508,2),'little')*1024
+        assert m.public(0x15,0x8800)[0]==15360
         assert u.mem_read(0x40,4)==u.mem_read(0x108,4)==struct.pack('<HH',0x100,0xC000)
         for vector in (0x10,0x42):
             m.public(vector,0x1130,bx=0x0600)
@@ -904,8 +955,11 @@ def shadow(image,seed):
         assert bytes(u.mem_read(0xC0000,32768))==provider and u.mem_read(0x40,4)==raw
         assert m.registers[2]&0x23==0x20
         if accepted:
-            assert m.posts[-1]==0xE4 and m.cmos[0x6F]==0 and u.mem_read(0x108,4)==raw
-            assert m.public(0x12,0)[0]==632 and m.public(0x15,0x8800)[0]==15360
+            assert m.posts[-1]==0xE4 and saved_chip(image,m.cmos)[4]==0 and u.mem_read(0x108,4)==raw
+            base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4
+            assert m.public(0x12,0)[0]==base>>10==int.from_bytes(m.cpu.mem_read(0x413,2),'little')
+            assert base+m.cpu.mem_read(base,1)[0]*1024==int.from_bytes(m.cpu.mem_read(0x508,2),'little')*1024
+            assert m.public(0x15,0x8800)[0]==15360
             for vector in (0x10,0x42):
                 m.public(vector,0x1130,bx=0x0600)
                 assert u.reg_read(x.UC_X86_REG_ES)==0xC000 and u.reg_read(x.UC_X86_REG_BP)==m.provider_font_offset
@@ -974,7 +1028,7 @@ def setup_actions(image,seed):
         if action=='defaults-discard':
             chip=bytes((1,0,0,0,1,0))+bytes(18)
             n[0x69]=0xC2;n[0x6A]=(-0xC2-sum(chip))&255;n[0x6B:0x80]=chip[:21];n[0x33:0x36]=chip[21:]
-        m=ACC(image,n);m.call('chipset_apply');before=bytes(m.cmos);m.continue_reset=action=='save'
+        m=ACC(image,n);m.ensure_post_ui('setup_main');m.call('chipset_apply');before=bytes(m.cmos);m.continue_reset=action=='save'
         m.stop_address=0xF0000+m.listing.symbol('.wait','boot_retry')
         hardware=bytes(m.registers);cache_cr0=m.cpu.reg_read(x.UC_X86_REG_CR0);active=bytes(m.cpu.mem_read(m.base+0x60,24));defaults_seen=[]
         keys=[0x50]*4+[28,28,0x4D]
@@ -989,7 +1043,7 @@ def setup_actions(image,seed):
                     defaults_seen.append(True);model.observer=None
             m.observer=observer
         m.open(keys)
-        if action=='save':assert m.cmos[0x6B]==1 and m.reset_count==1
+        if action=='save':assert saved_chip(image,m.cmos)[0]==1 and m.reset_count==1
         else:
             assert bytes(m.cmos)==before and not m.reset_count and bytes(m.registers)==hardware
             assert m.cpu.mem_read(m.base+0x60,24)==active and m.cpu.reg_read(x.UC_X86_REG_CR0)==cache_cr0
@@ -999,7 +1053,9 @@ def setup_actions(image,seed):
             import importlib
             cold_result=importlib.import_module('test-port').native('setup-saved-cold',cmos=m.cmos,saved_ads=False)
             assert cold_result['terminal']==0x60;cold=True
-            assert (PORT/'build/tests/results/setup-saved-cold/vm/nvr/pb430.nvr').read_bytes()[0x69:0x80]==bytes(m.cmos[0x69:0x80])
+            retained=(PORT/'build/tests/results/setup-saved-cold/vm/nvr/pb430.nvr').read_bytes()
+            assert retained[0x33:0x36]==bytes(m.cmos[0x33:0x36]) and nv6_payload(retained)==nv6_payload(m.cmos)
+            assert saved_chip(image,retained)==saved_chip(image,m.cmos)
         # Runtime keyboard after UI/reset: same installed INT16 owns next input.
         m.cpu.mem_write(0x49E,b'\x02');m.scans([0x1E]);result,_=m.public(0x16,0x0000);assert result==0x1E61
         rows.append({'action':action,'saved':action=='save','defaults_draft_observed':bool(defaults_seen),'discard_hardware_preserved':action!='save','actual_cold_reload':cold,'runtime_int16':result})
@@ -1007,12 +1063,15 @@ def setup_actions(image,seed):
 
 
 def cache_composed(image,seed):
+    from importlib import import_module
     from unicorn import UC_HOOK_MEM_READ,UC_HOOK_MEM_WRITE
     rows=[]
     for kib,cpu_enabled,requested in ((0,True,True),(32,True,True),(64,True,True),(128,True,False),(128,True,True),(256,True,True),(512,True,True),(512,False,True)):
-        n=seed();chip=bytes((0,int(cpu_enabled),int(requested),1,1,1))+bytes(18)
+        n=seed();chip=bytes((0,int(cpu_enabled),int(requested),1,1,1,1))+bytes(17)
         n[0x69]=0xC2;n[0x6A]=(-0xC2-sum(chip))&255;n[0x6B:0x80]=chip[:21];n[0x33:0x36]=chip[21:]
-        m=ACC(image,n);u=m.cpu;m.continue_reset=True
+        m=ACC(image,n)
+        import_module('test-timing-setup').without_post_delay(m)
+        u=m.cpu;m.continue_reset=True
         m.stop_address=0xF0000+m.listing.symbol('.wait','boot_retry')
         fill_pc=0xF0000+m.listing.symbol('.reads','cache_stock_fill')
         ram=bytearray((i*13+7)&255 for i in range(0x60000));sram=bytearray(kib*1024);saved=bytes(ram);reads=[];preserved=[]
@@ -1068,7 +1127,7 @@ def cache_composed(image,seed):
         assert bool(m.registers[4]&1)==bool(effective)
         assert u.mem_read(m.base+0x1006,1)==bytes((int(effective),))
         assert bool(u.reg_read(x.UC_X86_REG_CR0)&0x40000000)==(not cpu_enabled)
-        assert m.cmos[0x6D]==int(requested)
+        assert saved_chip(image,m.cmos)[2]==int(requested)
         if kib and kib<128:
             assert code==0 and 0x16 in m.posts
             assert m.text(4,20,17)=='Present / unknown'
@@ -1177,8 +1236,12 @@ def cache_warm(image,seed):
     """Actual IRQ1 Caps Lock and Ctrl+Alt+Del with already active L2."""
     from unicorn import UC_HOOK_CODE,UC_HOOK_MEM_WRITE
     from shared.tools.ram_proof import constants
-    ram_flags=constants(PORT.parent/'shared/src/pc/state.inc')['P_RAM_FLAGS']
+    state=constants(PORT.parent/'shared/src/pc/state.inc')
+    ram_flags=state['P_RAM_FLAGS']
     m=ACC(image,seed());u=m.cpu;m.continue_reset=True
+    import importlib
+    u.mem_write(m.base+state['C_CHIP']+6,b'\x01')
+    importlib.import_module('test-timing-setup').without_post_delay(m)
     m.stop_address=0xF0000+m.listing.symbol('.wait','boot_retry')
     restore=0xF0000+m.listing.symbol('cache_late_restore')
     registers=(x.UC_X86_REG_EAX,x.UC_X86_REG_EBX,x.UC_X86_REG_ECX,x.UC_X86_REG_EDX,x.UC_X86_REG_ESI,x.UC_X86_REG_EDI,x.UC_X86_REG_EBP,x.UC_X86_REG_SS,x.UC_X86_REG_SP,x.UC_X86_REG_DS,x.UC_X86_REG_FS)
@@ -1266,7 +1329,8 @@ def cache_warm(image,seed):
         assert bytes(u.mem_read(m.base+0x1003,3))==facts
         assert u.mem_read(m.base+0x100C,1)==b'\xA8'
         assert m.registers[0x1E]==old and m.registers[4]&1
-        assert m.public(0x12,0)[0]==632
+        assert m.public(0x12,0)[0]==int.from_bytes(u.mem_read(0x413,2),'little')==m.base>>10
+        assert m.base+u.mem_read(m.base,1)[0]*1024==640*1024
         assert m.public(0x15,0x8800)[0]==extended
         rows.append({'prior_detection_valid':valid,'reserved_bit7':high,'previous_shutdown':shutdown,'normal_reset_shutdown_cleared':True,'caps_lock_flag':bool(caps),'actual_ctrl_alt_del':True,'visible_ram_test_skipped':bool(skipped),'irq0_after54_preserves_caller':True,'stock_pre_reset_writes':teardown,'first_acc_write':changed[0],'first_warm_ram_write':first[0],'cold_cache_probe_skipped':valid,'no_writeback_flush_before_l2_holdoff':True,'writeback_flush_states':flushes[flushed:],'cache_facts':list(facts),'post_codes':[f'{p:02X}' for p in stages],'terminal':'boot_retry E4'})
     return rows
@@ -1279,28 +1343,26 @@ def warm_boot_device(image,seed):
     class BootDevice(ACC):
         def __init__(self):
             self.disk_device=None
-            self.disk_word=0
             self.boot_sector=bytearray(512)
             self.boot_sector[:4]=b'BOOT'
             self.boot_sector[510:]=b'\x55\xAA'
             super().__init__(image,seed())
             self.disk_device=importlib.import_module('test-ide-options').Disk(('ata','absent'))
             self.disk_device.cpu=self.cpu
+            self.disk_device.disk_words.update({(0,n):word for n,word in enumerate(struct.unpack('<256H',self.boot_sector))})
         def port_in(self,cpu,port,size,unused):
             if self.disk_device is not None and (0x1F0<=port<=0x1F7 or port==0x3F6):
-                if port==0x1F0 and self.disk_device.ata.get(0x1F7)==0x20:
-                    self.disk_device.port_in(cpu,port,size,unused)
-                    value=struct.unpack_from('<H',self.boot_sector,self.disk_word*2)[0]
-                    self.disk_word+=1
-                    return value
                 return self.disk_device.port_in(cpu,port,size,unused)
             return super().port_in(cpu,port,size,unused)
         def port_out(self,cpu,port,size,value,unused):
             if self.disk_device is not None and (0x1F0<=port<=0x1F7 or port==0x3F6):
-                if port==0x1F7 and value==0x20:self.disk_word=0
                 return self.disk_device.port_out(cpu,port,size,value,unused)
             return super().port_out(cpu,port,size,value,unused)
     m=BootDevice();u=m.cpu;m.continue_reset=True;m.stop_address=0x7C00
+    from shared.tools.ram_proof import constants
+    state=constants(PORT.parent/'shared/src/pc/state.inc')
+    u.mem_write(m.base+state['C_CHIP']+6,b'\x01')
+    importlib.import_module('test-timing-setup').without_post_delay(m)
     owners=('chipset_visible_ram_test','init_floppy','ata_detect_primary','int19')
     addresses={0xF0000+m.listing.symbol(name):name for name in owners}
     visited=[]
@@ -1325,6 +1387,7 @@ def warm_boot_device(image,seed):
         assert 0xE4 not in m.posts and 'No boot device available' not in m.console
         assert (0,0xEC) in m.disk_device.selected_commands
         assert (0,0x20) in m.disk_device.selected_commands
+        u.reg_write(x.UC_X86_REG_ES,0)
         ax,flags=m.public(0x13,0x0201,dx=0x80,cx=1,bx=0x7E00)
         assert not flags&1 and ax==1,(hex(ax),hex(flags))
         assert bytes(u.mem_read(0x7E00,512))==bytes(m.boot_sector)
@@ -1476,14 +1539,16 @@ def option_roms(image,seed):
             m.cpu.mem_write(0xC0000,bytes(provider));m.cpu.mem_write(m.base+0x1007,b'\0');m.registers[2]=0xB8
         for address,data in inputs:m.cpu.mem_write(address,bytes(data))
         m.continue_reset=True;m.stop_address=0xF0000+m.listing.symbol('.wait','boot_retry')
-        scan=0xF0000+m.listing.symbol('option_rom_discovery');summary=0xF0000+m.listing.symbol('post_debug_summary');context=[];invocations=[];video_calls=[]
+        scan=0xF0000+m.listing.symbol('option_rom_discovery');continuation=0xF0000+m.listing.symbol('pnp_publish_finish');context=[];invocations=[];video_calls=[]
         regs=(x.UC_X86_REG_EAX,x.UC_X86_REG_EBX,x.UC_X86_REG_ECX,x.UC_X86_REG_EDX,x.UC_X86_REG_ESI,x.UC_X86_REG_EDI,x.UC_X86_REG_EBP,x.UC_X86_REG_ESP,x.UC_X86_REG_DS,x.UC_X86_REG_ES,x.UC_X86_REG_FS,x.UC_X86_REG_GS,x.UC_X86_REG_SS,x.UC_X86_REG_EFLAGS)
         def observer(model,address):
             if address==0xC0003:video_calls.append(address)
             if address in [location+3 for location,data in inputs]:invocations.append(address)
             if address==scan:context.append(tuple(model.cpu.reg_read(reg) for reg in regs))
-            elif address==summary:
-                assert context==[tuple(model.cpu.reg_read(reg) for reg in regs)],'Immediate scanner return context'
+            elif address==continuation:
+                after=tuple(model.cpu.reg_read(reg) for reg in regs)
+                assert len(context)==1 and context[0][:-1]==after[:-1],('Scanner return registers',name,context,after)
+                assert not (context[0][-1]^after[-1])&~0x08D5,('Scanner control flags',name,context,after)
                 context.append(True)
         m.code_observer=observer
         m.open([0x44,28]);assert context[-1] is True and m.posts[-1]==0xE4
@@ -1499,7 +1564,9 @@ def option_roms(image,seed):
             assert video_calls==[0xC0003] and m.cpu.mem_read(m.base+0x1007,1)==b'\0'
             assert bytes(m.cpu.mem_read(0xC0000,65536))==bytes(provider)
             assert m.registers[2]&0x23==0x20
-            assert m.public(0x12,0)[0]==632 and m.public(0x15,0x8800)[0]==15360
+            base=int.from_bytes(m.cpu.mem_read(0x40E,2),'little')<<4
+            assert m.public(0x12,0)[0]==base>>10==int.from_bytes(m.cpu.mem_read(0x413,2),'little')
+            assert m.public(0x15,0x8800)[0]==15360
             for vector in (0x10,0x42):
                 m.public(vector,0x1130,bx=0x0600)
                 assert m.cpu.reg_read(x.UC_X86_REG_ES)==0xC000 and m.cpu.reg_read(x.UC_X86_REG_BP)==m.provider_font_offset

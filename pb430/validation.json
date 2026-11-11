@@ -18,10 +18,25 @@
     }
   ],
   "checks": [
-    {"id": "cache-lifecycle", "argv": ["python", "-B", "shared/tests/test-cache-transitions.py", "--port", "pb430"]},
+    {
+      "id": "cache-lifecycle",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-cache-transitions.py",
+        "--port",
+        "pb430"
+      ]
+    },
     {
       "id": "firmware-cpu",
-      "argv": ["python", "-B", "pb430/tools/test-port.py", "--case", "cpu"]
+      "argv": [
+        "python",
+        "-B",
+        "pb430/tools/test-port.py",
+        "--case",
+        "cpu"
+      ]
     },
     {
       "id": "shared-ata-pio",
@@ -424,6 +439,110 @@
         "--output",
         "pb430/build/tests/pipeline-dma-cascade/proof.json"
       ]
+    },
+    {
+      "id": "shared-pnp",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-pnp.py",
+        "--case",
+        "all",
+        "--port",
+        "pb430"
+      ]
+    },
+    {
+      "id": "shared-pnp-settings",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-pnp-settings.py",
+        "--port",
+        "pb430"
+      ]
+    },
+    {
+      "id": "shared-ui-text",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-ui-text.py",
+        "--port",
+        "pb430"
+      ]
+    },
+    {
+      "id": "shared-rom-footprint",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-rom-footprint.py",
+        "--port",
+        "pb430",
+        "--case",
+        "all"
+      ]
+    },
+    {
+      "id": "shared-post-options",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-post-options.py",
+        "--port",
+        "pb430",
+        "--case",
+        "all"
+      ]
+    },
+    {
+      "id": "shared-live-post-probes",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "pb430",
+        "--case",
+        "probes"
+      ]
+    },
+    {
+      "id": "shared-live-post-table",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "pb430",
+        "--case",
+        "table"
+      ]
+    },
+    {
+      "id": "shared-live-post-screen",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "pb430",
+        "--case",
+        "screen"
+      ]
+    },
+    {
+      "id": "shared-live-post-summary",
+      "argv": [
+        "python",
+        "-B",
+        "shared/tests/test-live-post.py",
+        "--port",
+        "pb430",
+        "--case",
+        "summary"
+      ]
     }
   ],
   "case_sets": [
@@ -433,6 +552,70 @@
       "covered_by": {
         "cache": "cache-lifecycle"
       }
+    },
+    {
+      "script": "shared/tests/test-pnp.py",
+      "argument": "--case",
+      "exclude": [
+        "mp-negative"
+      ],
+      "covered_by": {
+        "all": "shared-pnp",
+        "abi": "shared-pnp",
+        "information-services": "shared-pnp",
+        "nodes": "shared-pnp",
+        "set-node": "shared-pnp",
+        "image-contract": "shared-pnp",
+        "isolation": "shared-pnp",
+        "resource-reopen": "shared-pnp",
+        "logical-devices": "shared-pnp",
+        "memory-and-streams": "shared-pnp",
+        "resource-semantics": "shared-pnp",
+        "dependent-alternatives": "shared-pnp",
+        "composed-resources": "shared-pnp",
+        "option-roms": "shared-pnp",
+        "boot-continuation": "shared-pnp",
+        "placement": "shared-pnp"
+      }
+    },
+    {
+      "script": "shared/tests/test-ui-text.py",
+      "argument": "--case",
+      "covered_by": {
+        "strings": "shared-ui-text",
+        "renderer": "shared-ui-text",
+        "setup": "shared-ui-text",
+        "compatibility": "shared-ui-text",
+        "image-contract": "shared-ui-text"
+      }
+    },
+    {
+      "script": "shared/tests/test-rom-footprint.py",
+      "argument": "--case",
+      "covered_by": {
+        "measurement": "shared-rom-footprint",
+        "private-ui": "shared-rom-footprint",
+        "startup": "shared-rom-footprint",
+        "setup-continuation": "shared-rom-footprint",
+        "roundtrip": "shared-rom-footprint",
+        "capacity": "shared-rom-footprint",
+        "popups": "shared-rom-footprint",
+        "lifetime": "shared-rom-footprint",
+        "all": "shared-rom-footprint"
+      }
+    },
+    {
+      "script": "shared/tests/test-post-options.py",
+      "covered_by": {
+        "settings": "shared-post-options",
+        "timer": "shared-post-options",
+        "keyboard": "shared-post-options",
+        "video": "shared-post-options",
+        "all": "shared-post-options"
+      }
+    },
+    {
+      "script": "shared/tests/test-live-post.py"
     }
   ],
   "historical_checks": [],
@@ -480,7 +663,8 @@
   ],
   "coverage_notes": [
     "--stock-vga retains the original OEM provider. The delivered 50/60 MHz pair uses the same VGA1.41 provider and system BIOS.",
-    "Builders execute their assembled diagnostic checks directly. The profile-build test also proves a fresh standalone diagnostic build."
+    "Builders execute their assembled diagnostic checks directly. The profile-build test also proves a fresh standalone diagnostic build.",
+    "Shared ROM footprint checks use the current normal builders, actual module transports and complete declared variants. Per-build rom-footprint.json separates resident, private and temporary RAM costs."
   ],
   "wrapped_tests": {
     "pb430/tools/test-cache-lifecycle.py": [

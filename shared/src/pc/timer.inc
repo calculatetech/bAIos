@@ -16,8 +16,19 @@ int08:
     out 0x20, al
     ; A polled Pause may wait inside IRQ1. IRQ0 must no longer block the
     ; lower-priority keyboard interrupt that supplies the resume key.
+    ; A masked IRQ1 may belong to an OS keyboard transaction. Do not steal
+    ; its scan byte or send an LED command from the background timer.
+    in al,0x21
+    test al,2
+    jnz .keyboard_owned
+    ; Runtime keyboard drivers own scan delivery, even before their virtual
+    ; IRQ is pending. Keep fallback scans in POST and explicit INT16 reads.
+    cmp byte [KB_POST_STATE],0
+    je .keyboard_leds
     call keyboard_poll
+.keyboard_leds:
     call keyboard_led_tick
+.keyboard_owned:
     call floppy_motor_tick
     ; Logitech 6.23 waits on INT1Ch during startup calibration (765Ah).
     ; Preserve the interrupted program across the installed timer hook.

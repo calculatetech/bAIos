@@ -284,7 +284,7 @@ class WTSequence(POSTHardware):
     def prepare(self,u):
         super().prepare(u)
         from geometry_proof import Listing
-        self.pattern_entry=0xF0000+Listing(PORT/'build/hardware-tests/geometry/baios-m919.lst').symbol('.patterns','cache_qualify')
+        self.pattern_entry=0xF0000+Listing(PORT/'build/tests/geometry/baios-m919.lst').symbol('.patterns','cache_qualify')
 
     def observe(self,u,address,size):
         if self.continuing and address==self.qualify_entry:
@@ -528,7 +528,7 @@ class ParityHardware(POSTHardware):
     def prepare(self,u):
         super().prepare(u)
         from geometry_proof import Listing
-        l=Listing(PORT/'build/hardware-tests/geometry/baios-m919.lst')
+        l=Listing(PORT/'build/tests/geometry/baios-m919.lst')
         self.parity_seed=0xF0000+l.symbol('.seed','chipset_parity_apply')
         self.parity_done=0xF0000+l.symbol('.seeded','chipset_parity_apply')
         self.seeding=False;self.seed_count=0;self.seed_ranges=[];self.ram_testing=False;self.ram_pattern_count=0
@@ -594,7 +594,7 @@ def parity():
 def speed():
     from shared.tools.rom import build, configuration, verify
     _,cfg=configuration(PORT)
-    folder=PORT/'build/hardware-tests/cache-baseline'
+    folder=PORT/'build/tests/cache-baseline'
     result=build(PORT,str(folder.relative_to(PORT)))
     previous=(PORT/'tests/baselines/cache.inc').read_text(encoding='utf-8')
     current=(PORT/'src/hardware/cache.inc').read_text()

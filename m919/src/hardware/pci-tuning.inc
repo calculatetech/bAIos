@@ -66,6 +66,12 @@ board_pci_runtime_policy:
     or ax,1 << 6
 .isa_mask:
     push ax
+    mov bx,pnp_irq_mask
+    call pnp_post_invoke
+    and bp,ax
+    pop ax
+    or ax,dx
+    push ax
     mov [fs:HW_PCI_USED_IRQS],bp
     xor di,di
 .link:

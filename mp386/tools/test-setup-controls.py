@@ -28,7 +28,14 @@ def invoke(m, name, **registers):
 
 
 def text(m, pointer):
-    return bytes(m.cpu.mem_read(0xF0000+pointer, 128)).split(b'\0')[0].decode('ascii')
+    # Canonical labels can be encoded; read the actual shared renderer output.
+    saved=m.cpu.context_save();screen=bytes(m.cpu.mem_read(0xB8000,4000))
+    try:
+        m.cpu.mem_write(0xB8000,b'\0\x07'*2000)
+        invoke(m,'setup_text',SI=pointer,DI=0,BX=0x0700)
+        return bytes(m.cpu.mem_read(0xB8000,4000))[::2].split(b'\0')[0].decode('cp437')
+    finally:
+        m.cpu.mem_write(0xB8000,screen);m.cpu.context_restore(saved)
 
 
 def data_address(m, name):
@@ -42,6 +49,7 @@ def check(image):
     m.cpu.mem_write(0x413,struct.pack('<H',632))
     invoke(m, 'chipset_defaults', DI=0x60)
     defaults = bytes(m.cpu.mem_read(m.base+0x60, 24))
+    invoke(m, 'setup_defaults')
     for strap in (0,1,6,7):
         m.clock_switches = strap
         invoke(m,'chipset_defaults',DI=0x260)
@@ -71,27 +79,44 @@ def check(image):
             expected[index] = (before[index] & 0xE000) | word
     assert m.ti == expected and m.maps == maps, [(hex(k),hex(expected.get(k,0)),hex(v)) for k,v in m.ti.items() if expected.get(k) != v]
     m.cpu.mem_write(m.base+0x260, bytes(requested))
+    invoke(m, 'settings_save') # Only the complete owner migrates legacy storage.
+    assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
+    assert m.cmos[0x33:0x35]==b'N\x06'
+    m.nvram[0x229]=0xD2
     original_nv = bytes(m.nvram)
     invoke(m, 'chipset_settings_save')
     assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
     assert m.nvram[0x229] == 0xD2, 'Local Save released recovery before whole-save verification'
-    invoke(m, 'chipset_timing_saved')
+    invoke(m, 'settings_save')
     assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
-    assert all(0x229 <= address <= 0x23F for address, value in m.nv_writes)
+    assert m.nvram[0x229]==0
+    assert all(0x200 <= address <= 0x23F for address, value in m.nv_writes)
     assert bytes(m.nvram[0x240:]) == original_nv[0x240:]
     saved = bytes(m.nvram)
     m.cpu.mem_write(m.base+0x60, bytes(24))
     invoke(m, 'chipset_settings_load')
     assert bytes(m.cpu.mem_read(m.base+0x60, 24)) == requested
-    m.nvram[0x22B] ^= 1
+    m.nvram[0x216] ^= 1
     invoke(m, 'chipset_settings_load')
     assert bytes(m.cpu.mem_read(m.base+0x60, 24)) == defaults
     m.nvram[:] = saved
-    m.nvram[0x22B] = 2  # Correct checksum cannot make an out-of-range Fast Boot valid.
-    m.nvram[0x22A] = (-0xD3-sum(m.nvram[0x22B:0x240])) & 255
+    m.nvram[0x216] = 2  # Correct NV6 checksum cannot make Fast Boot2 valid.
+    payload=[m.nvram[0x200+i-0x40] if i>=0x40 else m.cmos[i]
+             for i in list(range(0x40,0x69))+list(range(0x6A,0x80))+[0x11,0x13,0x2D]]
+    m.cmos[0x35]=(-ord('N')-6-sum(payload))&255
     invoke(m, 'chipset_settings_load')
     assert bytes(m.cpu.mem_read(m.base+0x60, 24)) == defaults
+    # Retain independent D3 legacy semantic-invalid loader coverage.
+    m.cmos[0x33:0x36]=bytes(3)
+    m.nvram[0x229]=0xD3
+    m.nvram[0x22B:0x240]=requested[:21]
+    m.nvram[0x22B]=2
+    m.nvram[0x22A]=(-0xD3-sum(m.nvram[0x22B:0x240]))&255
+    invoke(m,'chipset_settings_load')
+    assert bytes(m.cpu.mem_read(m.base+0x60,24))==defaults
     m.nvram[:] = saved
+    m.cmos[0x33:0x35]=b'N\x06'
+    m.cmos[0x35]=(-ord('N')-6-sum(saved[0x200:0x229]+saved[0x22A:0x240])-sum(m.cmos[i] for i in (0x11,0x13,0x2D)))&255
     m.cpu.mem_write(m.base+0x260, defaults)
 
     groups = struct.unpack('<8H', m.cpu.mem_read(0xF0000+data_address(m,'chipset_groups'), 16))
@@ -147,14 +172,23 @@ def check(image):
     assert 'Off/On LPT2' in m.text(15, 24, 53)
     assert 'On/On Disabled' in m.text(16, 24, 53)
     invoke(m, 'setup_draft_defaults')
-    rows = bytes(m.cpu.mem_read(0xF0000+data_address(m,'u_boot_rows'), 8))
-    pointers = struct.unpack('<8H', m.cpu.mem_read(0xF0000+data_address(m,'u_boot_pointers'), 16))
-    labels = struct.unpack('<8H', m.cpu.mem_read(0xF0000+data_address(m,'u_boot_labels'), 16))
-    assert [text(m, p) for p in labels][-1] == 'Fast Boot'
+    count=(data_address(m,'u_ide_rows')-data_address(m,'u_boot_labels'))//2
+    rows = bytes(m.cpu.mem_read(0xF0000+data_address(m,'u_boot_rows'), count))
+    pointers = struct.unpack('<'+str(count)+'H', m.cpu.mem_read(0xF0000+data_address(m,'u_boot_pointers'), count*2))
+    labels = struct.unpack('<'+str(count)+'H', m.cpu.mem_read(0xF0000+data_address(m,'u_boot_labels'), count*2))
+    names=[text(m,p) for p in labels]
+    assert names==['First Boot Device','Second Boot Device','Third Boot Device','Fourth Boot Device',
+                   'Floppy Seek','Boot Num Lock','Halt On','Fast Boot','POST Delay (Seconds)']
     assert bytes(m.cpu.mem_read(m.base+pointers[0], 1)) == b'\x03'
     assert bytes(m.cpu.mem_read(m.base+pointers[1], 1)) == b'\x01'
     assert bytes(m.cpu.mem_read(m.base+pointers[2], 1)) == b'\x02'
-    assert pointers[-1] == 0x260 and rows[-1] == 12
+    fast=names.index('Fast Boot')
+    assert pointers[fast] == 0x260 and rows[fast] == 12
+    from shared.tools.ram_proof import constants
+    state=constants(port.PORT.parent/'shared/src/pc/state.inc')
+    delay=names.index('POST Delay (Seconds)')
+    assert pointers[delay]==state['U_POST_DELAY'] and rows[delay]==13
+    assert m.cpu.mem_read(m.base+pointers[delay],1)==b'\x01'
     invoke(m,'ide_defaults',DI=0x1B0)
     invoke(m,'ports_defaults',DI=0x1EE)
     invoke(m,'chipset_defaults',DI=0x260)
@@ -168,9 +202,10 @@ def check(image):
     seed = (bytes(m.cmos),bytes(m.nvram))
     class FailedCell(bytearray):
         def __setitem__(self,index,value):
-            if index != 0x22F:
+            if index != 0x21A:
                 super().__setitem__(index,value)
     m.nvram = FailedCell(m.nvram)
+    m.nvram[0x229]=0xD2
     m.cpu.mem_write(m.base+0x264,bytes((defaults[4]^1,)))
     invoke(m,'chipset_settings_save')
     assert m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
@@ -180,14 +215,34 @@ def check(image):
                 switches=True, cache_option_removed=True, standard_boot_and_fast_boot=True), seed
 
 
+def saved_chipset_patch(image, target, updates):
+    """Edit a current record through its actual standalone NV6 owner."""
+    # Use the existing mapped owner fixture before the target's first POST has
+    # established its MCU decoders; preserve the target's live warm-boot RAM.
+    m = cache.configured(image)
+    m.cmos[:], m.nvram[:] = bytes(target.cmos), bytes(target.nvram)
+    assert m.cmos[0x33:0x35] == b'N\x06'
+    protected = bytes(m.nvram[0x240:])
+    invoke(m, 'chipset_settings_load')
+    draft = bytearray(m.cpu.mem_read(m.base+0x60, 24))
+    for offset, value in updates.items():
+        draft[offset] = value
+    m.cpu.mem_write(m.base+0x260, bytes(draft))
+    invoke(m, 'chipset_settings_save')
+    assert not m.cpu.reg_read(x.UC_X86_REG_EFLAGS) & 1
+    assert m.cmos[0x33:0x35] == b'N\x06' and bytes(m.nvram[0x240:]) == protected
+    invoke(m, 'chipset_settings_load')
+    assert m.cpu.mem_read(m.base+0x60, 24) == bytes(draft)
+    target.cmos[:], target.nvram[:] = bytes(m.cmos), bytes(m.nvram)
+
+
 def boot_check(image, seed):
     from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE
     results = []
     for fast in (0,1):
         m = port.machine(image,controllers=((16,16),(64,64),(64,64)),cache=True)
         m.cmos[:],m.nvram[:] = seed
-        m.nvram[0x22B] = fast
-        m.nvram[0x22A] = (-0xD3-sum(m.nvram[0x22B:0x240])) & 255
+        saved_chipset_patch(image, m, {0: fast})
         m.script_after_post = []
         decoder = m.ram_key
         m.ram_key = lambda address: None if 0xFE0000 <= address < 0x1000000 else decoder(address)
@@ -217,11 +272,7 @@ def boot_check(image, seed):
             if warm:
                 m.controls[0xE1] |= 0x20
                 m.write_bus(0x180000,b'KEEP')
-                m.nvram[0x22C] = 0
-                m.nvram[0x22D] = 0xA5
-                m.nvram[0x22F] = 0x19
-                m.nvram[0x232] = 0xE5
-                m.nvram[0x22A] = (-0xD3-sum(m.nvram[0x22B:0x240])) & 255
+                saved_chipset_patch(image, m, {1: 0, 2: 0xA5, 4: 0x19, 7: 0xE5})
             m.boot(warm=warm,count=5000000)
             assert m.booted and bool(extended) == (not fast)
             assert m.cpu.mem_read(m.base+0x60,1) == bytes((fast,))
@@ -298,8 +349,7 @@ def empty_bank_navigation(image, seed):
 def interactive_setup(image, seed):
     m = port.machine(image,controllers=((16,16),(64,64),(64,64)),cache=True)
     m.cmos[:],m.nvram[:] = seed
-    m.nvram[0x22B] = 0
-    m.nvram[0x22A] = (-0xD3-sum(m.nvram[0x22B:0x240])) & 255
+    saved_chipset_patch(image, m, {0: 0})
     m.script_after_post = []
     decoder = m.ram_key
     m.ram_key = lambda address: None if 0xFE0000 <= address < 0x1000000 else decoder(address)

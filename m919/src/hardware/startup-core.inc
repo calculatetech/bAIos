@@ -130,6 +130,7 @@ board_smm_startup:
     call board_smm_initialize
     cache_phase early
     call chipset_early_bus_timing
+    call board_firmware_shadow
     ; IBC51 describes installed RAM in 4 MiB units, independently of CMOS.
     mov eax,[fs:S_INSTALLED_KIB32]
     add eax,1024
@@ -142,8 +143,11 @@ board_smm_startup:
     mov bl,0x51
     call isa_write
     call init_pic_pit
+    post_code 0x40
     call init_rtc
+    post_code 0x41
     call init_at_prerequisites
+    post_code 0x42
     call init_superio
 .pci_policy:
     ; Bench-confirmed PCI throughput fix; the bit's hardware function is unknown.
@@ -162,7 +166,8 @@ board_smm_startup:
     in al,dx
     or al,0x08
     out dx,al
-    call pci_initialize
+    call pnp_pci_initialize
+    post_code 0x52
     call initialize_video
     jc video_failed
     xor ax,ax
@@ -170,6 +175,9 @@ board_smm_startup:
     mov es,ax
     mov eax,[0x40]
     mov [0x108],eax             ; INT42 follows the actual VGA entry.
+    call post_ui_begin          ; Video is useful before the keyboard is armed.
+    mov al,1
+    call post_status
     call init_keyboard
     call arm_keyboard_runtime
     jc keyboard_runtime_failed

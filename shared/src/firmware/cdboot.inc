@@ -210,6 +210,9 @@ cd_try_boot:
     push ax
     push bx
     cld
+%ifdef BOARD_PNP_SUPPORT
+    call pnp_boot_handoff
+%endif
     sti
     retf
 .fail:

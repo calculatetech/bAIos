@@ -2,6 +2,7 @@
 %define BOARD_ATA_PIO_MAX 4
 %endif
 ; Assembly-time board composition. No runtime board detection.
+%define BOARD_PNP_SUPPORT
 %define BOARD_DISPLAY_NAME 'Compaq Presario 800'
 %define BOARD_VENDOR 'Compaq'
 %define BOARD_PRODUCT 'Presario 800'
@@ -110,6 +111,7 @@
 
 ; Generic services retain this board's one-KiB state and POST scratch phase.
 %define CFG_ROM_SIZE 131072
+%define CFG_ROM_CODE_SEGMENT 0xF000
 %define CFG_ROM_MODEL_BYTE 0xFC
 %define CFG_PLATFORM_SYSTEM_SUBMODEL 1
 %define CFG_PLATFORM_SYSTEM_REVISION 0

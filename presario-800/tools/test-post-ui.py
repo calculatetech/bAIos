@@ -29,6 +29,7 @@ def display():
             m.cpu.mem_write(m.base + offset + 0x20, b'\x01')
             m.cpu.mem_write(m.base + offset + 0x2E, struct.pack('<I', 0x0FFFFFFF))
             m.cpu.mem_write(m.base + offset + 0x140, b'MAXIMUM MODEL '+b'X'*26+b'\0')
+        m.ensure_post_ui('post_ui_begin') # Actual loader precedes the no-write baseline.
         saved = bytes(m.cmos)
         m.call('post_ui_begin')
         header = bytes(m.cpu.mem_read(0xB8000, 160))
@@ -44,9 +45,10 @@ def display():
         assert m.text(9, 24, 14) == '1.2 MB, 5.25 i'
         assert m.text(11, 24, 40) == 'MAXIMUM MODEL '+ 'X'*26
         assert m.text(11, 64, 16) == m.text(12, 64, 16) == ' '*16
-        assert m.text(15, 3, 8) == 'VGA BIOS'
-        assert m.text(16, 3, 11) == 'System BIOS'
-        assert m.text(17, 24, 12) == 'Not detected'
+        assert m.text(15, 0, 80) == ' '*80
+        assert m.text(16, 3, 8) == 'VGA BIOS'
+        assert m.text(17, 3, 11) == 'System BIOS'
+        assert m.text(18, 24, 12) == 'Not detected'
         assert m.cpu.mem_read(0x450, 2) == b'\x03\x16'
         assert 'Pause' not in m.text(24, 0, 80)
         assert bytes(m.cmos) == saved

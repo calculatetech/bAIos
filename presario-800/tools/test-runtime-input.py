@@ -1,11 +1,10 @@
 """Check real IRQ1/INT16 codes and BIOS descriptors consumed by Windows."""
-import functools
 import importlib
 import struct
+import sys
 
 setup = importlib.import_module('test-setup')
 rtc = importlib.import_module('test-rtc')
-rtc.symbol = functools.cache(rtc.symbol)
 x = rtc.x
 
 
@@ -36,6 +35,9 @@ def invoke(model, ax, cx=0, vector=0x16, flags=0x202):
 
 
 def main():
+    sys.path.insert(0, str(rtc.ROOT.parent))
+    from shared.tools.post_fixture import bind_rtc_candidate
+    bind_rtc_candidate(rtc, rtc.BUILD / 'baios-presario800-system.rom')
     model = setup.Setup()
     model.cpu.mem_write(0x49E, b'\0')  # External runtime context, not POST.
     model.cpu.mem_write(0x496, b'\x10')

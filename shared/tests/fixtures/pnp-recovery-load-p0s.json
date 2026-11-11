@@ -1,0 +1,246 @@
+{
+  "source_checkpoint": "89e2cfdcf292f7b72de94f7285ce0bd476cf7ab0",
+  "scope": "Only old P0S logical chipset/valid results used by settings_regressions; no complete firmware bytes.",
+  "controlled_inputs": "pnp-legacy-settings.json original logical fixture; existing settings_regressions producer preserves ordinary fields, adds PnP0884A20003200010031000050A0101 through real full Save; legacy-prior inputs and single bad-checksum/D2 mutations are defined in that tracked owner.",
+  "ports": {
+    "m919": {
+      "image_sha256": "ea8d8e8d64599977225040a453ba671fc27e82f269d798124f6fd54466fcb8b5",
+      "expectations": [
+        {
+          "C_CHIP": "000000400000000800000060000000000000000000000000",
+          "C_VALID": "01",
+          "format": "legacy",
+          "bad_checksum": false,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "000001400000000800000060000000000000000000000000",
+          "C_VALID": "01",
+          "format": "legacy",
+          "bad_checksum": false,
+          "recovery_D2": true
+        },
+        {
+          "C_CHIP": "000100400000000800000060000000000000000000000000",
+          "C_VALID": "00",
+          "format": "legacy",
+          "bad_checksum": true,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "000001400000000800000060000000000000000000000000",
+          "C_VALID": "01",
+          "format": "legacy",
+          "bad_checksum": true,
+          "recovery_D2": true
+        },
+        {
+          "C_CHIP": "000000400000000800000060000000000000000000000000",
+          "C_VALID": "01",
+          "format": "nv6",
+          "bad_checksum": false,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "000001400000000800000060000000000000000000000000",
+          "C_VALID": "01",
+          "format": "nv6",
+          "bad_checksum": false,
+          "recovery_D2": true
+        },
+        {
+          "C_CHIP": "000100400000000800000060000000000000000000000000",
+          "C_VALID": "00",
+          "format": "nv6",
+          "bad_checksum": true,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "000001400000000800000060000000000000000000000000",
+          "C_VALID": "00",
+          "format": "nv6",
+          "bad_checksum": true,
+          "recovery_D2": true
+        },
+        {
+          "C_CHIP": "000000400000000800000060000000000000000000000000",
+          "C_VALID": "00",
+          "format": "legacy-prior",
+          "bad_checksum": false,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "000100400000000800000060000000000000000000000000",
+          "C_VALID": "00",
+          "format": "legacy-prior",
+          "bad_checksum": false,
+          "recovery_D2": true
+        },
+        {
+          "C_CHIP": "000100400000000800000060000000000000000000000000",
+          "C_VALID": "00",
+          "format": "legacy-prior",
+          "bad_checksum": true,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "000100400000000800000060000000000000000000000000",
+          "C_VALID": "00",
+          "format": "legacy-prior",
+          "bad_checksum": true,
+          "recovery_D2": true
+        }
+      ]
+    },
+    "pb430": {
+      "image_sha256": "627a7a15a756e7ed7136c68ef736cf33137b000df49b3dd79886e8d4b40b8a4d",
+      "expectations": [
+        {
+          "C_CHIP": "0001010100000000000000000000001500000000001000a3",
+          "C_VALID": "01",
+          "format": "legacy",
+          "bad_checksum": false,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "0001000101000000000000000000001500000000001000a3",
+          "C_VALID": "01",
+          "format": "legacy",
+          "bad_checksum": false,
+          "recovery_D2": true
+        },
+        {
+          "C_CHIP": "0001010101000000000000000000001500000000001000a3",
+          "C_VALID": "00",
+          "format": "legacy",
+          "bad_checksum": true,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "0001000101000000000000000000001500000000001000a3",
+          "C_VALID": "01",
+          "format": "legacy",
+          "bad_checksum": true,
+          "recovery_D2": true
+        },
+        {
+          "C_CHIP": "0001010100000000000000000000001500000000001000a3",
+          "C_VALID": "01",
+          "format": "nv6",
+          "bad_checksum": false,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "0001000101000000000000000000001500000000001000a3",
+          "C_VALID": "01",
+          "format": "nv6",
+          "bad_checksum": false,
+          "recovery_D2": true
+        },
+        {
+          "C_CHIP": "0001010101000000000000000000001500000000001000a3",
+          "C_VALID": "00",
+          "format": "nv6",
+          "bad_checksum": true,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "0001000101000000000000000000001500000000001000a3",
+          "C_VALID": "00",
+          "format": "nv6",
+          "bad_checksum": true,
+          "recovery_D2": true
+        }
+      ]
+    },
+    "presario-800": {
+      "image_sha256": "27cc9713793aa664b3f078c03cd53d073c5b9f89c2daff4a9a628c5520b3cf03",
+      "expectations": [
+        {
+          "C_CHIP": "96160000883830000031285555555555aa00000000030002",
+          "C_VALID": "01",
+          "format": "legacy",
+          "bad_checksum": false,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "a6160000883830000031685555555555aa00000000030003",
+          "C_VALID": "01",
+          "format": "legacy",
+          "bad_checksum": false,
+          "recovery_D2": true
+        },
+        {
+          "C_CHIP": "96160000883830000031285555555555aa00000000030003",
+          "C_VALID": "00",
+          "format": "legacy",
+          "bad_checksum": true,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "a6160000883830000031685555555555aa00000000030003",
+          "C_VALID": "01",
+          "format": "legacy",
+          "bad_checksum": true,
+          "recovery_D2": true
+        },
+        {
+          "C_CHIP": "96160000883830000031285555555555aa00000000030002",
+          "C_VALID": "01",
+          "format": "nv6",
+          "bad_checksum": false,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "a6160000883830000031685555555555aa00000000030003",
+          "C_VALID": "01",
+          "format": "nv6",
+          "bad_checksum": false,
+          "recovery_D2": true
+        },
+        {
+          "C_CHIP": "96160000883830000031285555555555aa00000000030003",
+          "C_VALID": "00",
+          "format": "nv6",
+          "bad_checksum": true,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "a6160000883830000031685555555555aa00000000030003",
+          "C_VALID": "00",
+          "format": "nv6",
+          "bad_checksum": true,
+          "recovery_D2": true
+        },
+        {
+          "C_CHIP": "96160000883830000031a85555555555aa00000000030002",
+          "C_VALID": "01",
+          "format": "legacy-prior",
+          "bad_checksum": false,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "a6160000883830000031685555555555aa00000000030003",
+          "C_VALID": "01",
+          "format": "legacy-prior",
+          "bad_checksum": false,
+          "recovery_D2": true
+        },
+        {
+          "C_CHIP": "96160000883830000031285555555555aa00000000030003",
+          "C_VALID": "00",
+          "format": "legacy-prior",
+          "bad_checksum": true,
+          "recovery_D2": false
+        },
+        {
+          "C_CHIP": "a6160000883830000031685555555555aa00000000030003",
+          "C_VALID": "01",
+          "format": "legacy-prior",
+          "bad_checksum": true,
+          "recovery_D2": true
+        }
+      ]
+    }
+  }
+}

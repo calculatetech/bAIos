@@ -123,6 +123,8 @@ board_ports_help_topics:
     dw u_ecp_dma,u_ecp_dma_help1,u_ecp_dma_help2
     dw u_devices,u_help_devices1,u_help_devices2
 u_ecp_dma db 'Parallel ECP DMA Channel',0
-u_ecp_dma_help1 db 'DMA channel used by the parallel port in ECP mode.',0
-u_ecp_dma_help2 db '3 is the default. Avoid other devices using it.',0
+u_ecp_dma_help1:
+    ui_string 'DMA channel used by the parallel port in ECP mode.', u_ecp_dma_help1
+u_ecp_dma_help2:
+    ui_string '3 is the default. Avoid other devices using it.', u_ecp_dma_help2
 u_ecp_dma_values dw chip_wait_1,chip_wait_3

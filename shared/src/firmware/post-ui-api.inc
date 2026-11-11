@@ -1,0 +1,188 @@
+; One list owns the private UI exports and resident imports.
+post_ui_export setup_main
+post_ui_export setup_video_mode
+post_ui_export setup_draw
+post_ui_export post_debug_summary
+post_ui_export post_header
+post_ui_export post_ui_begin
+post_ui_export post_ui_floppy
+post_ui_export post_ui_disks
+post_ui_export post_ui_disk
+post_ui_export post_ram_start
+post_ui_export post_ram_finish
+post_ui_export post_ui_banks
+post_ui_export post_ui_roms
+post_ui_export post_ram_status
+post_ui_export post_clear_value
+post_ui_export post_count
+post_ui_import post_entering_setup,post_entering_setup
+post_ui_import post_features,post_features
+post_ui_export post_message_cursor
+post_ui_export post_ui_rom
+post_ui_export post_rom_state_text
+%ifdef EMULATOR_CHIPSET_POST_UI
+post_ui_export post_ui_capture
+%endif
+post_ui_import chipset_ui_change,chipset_ui_change
+post_ui_import chipset_ui_count,chipset_ui_count
+post_ui_import chipset_ui_draw,chipset_ui_draw
+post_ui_import chipset_ui_page,chipset_ui_page
+post_ui_import chipset_ui_select,chipset_ui_select
+post_ui_import ide_copy_bytes,ide_copy_bytes
+post_ui_import load_bios_state,load_bios_state
+post_ui_import ports_summary,ports_summary
+post_ui_import post_device_label,post_device_label
+post_ui_import post_memory_banks,post_memory_banks
+post_ui_import post_processor_name,post_processor_name
+post_ui_import post_rom_state,post_rom_state
+post_ui_import post_summary_base_memory,post_summary_base_memory
+post_ui_import post_summary_cache,post_summary_cache
+post_ui_import post_ui_cache,post_ui_cache
+post_ui_import rtc_read,rtc_read
+post_ui_import settings_save,settings_save
+post_ui_import setup_color,setup_color
+post_ui_import setup_defaults,setup_defaults
+post_ui_import setup_hex8,setup_hex8
+post_ui_import setup_number,setup_number
+post_ui_import setup_text,setup_text
+post_ui_import setup_value,setup_value
+%ifdef BOARD_ATA_PIO_MAX
+%ifndef BOARD_ATA_PIO_ADAPTER
+post_ui_import ide_pio_mode_text,ide_pio_mode_text
+%endif
+%endif
+%ifdef BOARD_FLOPPY_POST_DETAILS
+post_ui_import ui_board_floppy_details,BOARD_FLOPPY_POST_DETAILS
+%endif
+%ifdef BOARD_PORTS_SETUP_DRAW
+post_ui_import ui_board_ports_draw,BOARD_PORTS_SETUP_DRAW
+%endif
+%ifdef EMULATOR_CHIPSET_TEST
+post_ui_import chipset_test_capture_drain,chipset_test_capture_drain
+%endif
+%ifdef EMULATOR_PORTS_TEST
+post_ui_import ports_test_capture_drain,ports_test_capture_drain
+%endif
+%ifdef EMULATOR_CHIPSET_SUMMARY_LONG
+post_ui_import summary_test_prepare_long,summary_test_prepare_long
+%endif
+%ifdef EMULATOR_POST_SUMMARY_TEST
+post_ui_import summary_test_begin,summary_test_begin
+%elifdef EMULATOR_TEST
+%ifndef EMULATOR_CHIPSET_PREVIEW
+post_ui_import summary_test_begin,summary_test_begin
+%endif
+%endif
+%ifdef EMULATOR_CHIPSET_POST_UI
+%ifndef EMULATOR_CHIPSET_PREVIEW
+post_ui_import setup_test_snapshot,setup_test_snapshot
+post_ui_import setup_test_dump,setup_test_dump
+post_ui_import emulator_exit,emulator_exit
+%endif
+%endif
+post_ui_import chipset_ui_available,chipset_ui_available
+post_ui_import chipset_ui_choice_draw,chipset_ui_choice_draw
+post_ui_import chipset_ui_commit,chipset_ui_commit
+post_ui_import chipset_ui_editable,chipset_ui_editable
+post_ui_import chipset_ui_help,chipset_ui_help
+post_ui_import chipset_ui_indicator,chipset_ui_indicator
+post_ui_import chipset_ui_option_text,chipset_ui_option_text
+post_ui_import chipset_ui_parameters,chipset_ui_parameters
+post_ui_import chipset_ui_row,chipset_ui_row
+post_ui_import ide_type_valid,ide_type_valid
+%ifdef BOARD_ATA_PIO_POLICY
+post_ui_import ide_ui_pio_value,ide_ui_pio_value
+%endif
+post_ui_import pnp_settings_valid,pnp_settings_valid
+post_ui_import ports_ui_available,ports_ui_available
+post_ui_import ports_ui_candidate,ports_ui_candidate
+post_ui_import ports_ui_visible,ports_ui_visible
+post_ui_import setup_hex_number,setup_hex_number
+post_ui_export chipset_ui_choices
+post_ui_export ide_ui_change
+post_ui_export ide_ui_draw
+post_ui_export ide_ui_enable_index
+post_ui_export ide_ui_enable_pointer
+post_ui_export ide_ui_number
+post_ui_export ide_ui_parameters
+post_ui_export ide_ui_record
+post_ui_export ide_ui_select
+post_ui_export ide_ui_set_type
+post_ui_export ide_ui_store
+post_ui_export ide_ui_type_text
+post_ui_export ide_ui_type_value
+post_ui_export ide_ui_types
+%ifdef BOARD_PNP_SUPPORT
+post_ui_export pnp_ui_bit
+%endif
+%ifdef BOARD_PNP_SUPPORT
+post_ui_export pnp_ui_change
+%endif
+%ifdef BOARD_PNP_SUPPORT
+post_ui_export pnp_ui_choices
+%endif
+%ifdef BOARD_PNP_SUPPORT
+post_ui_export pnp_ui_commit
+%endif
+%ifdef BOARD_PNP_SUPPORT
+post_ui_export pnp_ui_count
+%endif
+%ifdef BOARD_PNP_SUPPORT
+post_ui_export pnp_ui_draw
+%endif
+%ifdef BOARD_PNP_SUPPORT
+post_ui_export pnp_ui_help
+%endif
+%ifdef BOARD_PNP_SUPPORT
+post_ui_export pnp_ui_number
+%endif
+%ifdef BOARD_PNP_SUPPORT
+post_ui_export pnp_ui_parameters
+%endif
+%ifdef BOARD_PNP_SUPPORT
+post_ui_export pnp_ui_select
+%endif
+post_ui_export ports_ui_change
+post_ui_export ports_ui_choice_valid
+post_ui_export ports_ui_choices
+post_ui_export ports_ui_draw
+post_ui_export ports_ui_parameters
+post_ui_export setup_boot_choice_valid
+post_ui_export setup_boot_parameters
+post_ui_export setup_change
+post_ui_export setup_choice_highlight
+post_ui_export setup_choices
+post_ui_export setup_clock
+post_ui_export setup_colored_number
+post_ui_export setup_confirm
+post_ui_export setup_edit_apply
+post_ui_export setup_edit_begin
+post_ui_export setup_enum_store
+post_ui_export setup_field_available
+post_ui_export setup_field_color
+post_ui_export setup_field_highlight
+post_ui_export setup_format_time
+post_ui_export setup_help
+post_ui_export setup_ide_controller_parameters
+%ifdef BOARD_IDE_SECONDARY_DISABLE_POLICY
+post_ui_export setup_ide_controller_store
+%endif
+post_ui_export setup_modal_footer
+post_ui_export setup_number_editor
+post_ui_export setup_pair
+post_ui_export setup_parse_pair
+post_ui_export setup_restore_text
+post_ui_export setup_selection_bar
+post_ui_export setup_submenu_arrow
+%ifdef BOARD_PORTS_SETUP_PARAMETERS
+post_ui_import ui_board_ports_setup_parameters,BOARD_PORTS_SETUP_PARAMETERS
+%endif
+%ifdef BOARD_PORTS_SETUP_CHOICE_VALID
+post_ui_import ui_board_ports_setup_choice_valid,BOARD_PORTS_SETUP_CHOICE_VALID
+%endif
+%ifdef BOARD_PORTS_SETUP_HELP
+post_ui_import ui_board_ports_setup_help,BOARD_PORTS_SETUP_HELP
+%endif
+%ifdef BOARD_PORTS_SETUP_COMMIT
+post_ui_import ui_board_ports_setup_commit,BOARD_PORTS_SETUP_COMMIT
+%endif
