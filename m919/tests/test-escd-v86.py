@@ -25,6 +25,7 @@ class Virtual(flash.Flash):
         self.pci[0x800090A8]=0;self.pci[0x800090A2]=0
         self.original=(self.pci_address,self.pci.copy(),self.nmi,self.snapshot())
         self.smm=False;self.pending=False;self.action=None;self.smi_count=0
+        self.watched_entries=()
         self.decoder=Cs(CS_ARCH_X86,CS_MODE_16)
         self.pages={page:page for page in range(512)}
         self.pages.update({0x20:0x140,0x21:0x170,0x22:0x150})
@@ -64,6 +65,11 @@ class Virtual(flash.Flash):
     def enter(self):
         u=self.cpu;layout=MAPS['Am5x86']
         self.context=u.context_save()
+        if self.watched_entries:
+            # Isolate the SMM copy from any MMU updates by the public caller.
+            self.entries_before=tuple(value&~0x60 for value in self.paging_entries())
+            for address,value in zip(self.watched_entries,self.entries_before):
+                u.mem_write(address,struct.pack('<I',value))
         saved=bytearray(512)
         for name,offset in layout.items():
             struct.pack_into('<H' if name in SEGMENTS else '<I',saved,offset-0xFE00,u.reg_read(REGS[name]))
@@ -88,6 +94,7 @@ class Virtual(flash.Flash):
 
     def resume(self):
         u=self.cpu;layout=MAPS['Am5x86']
+        if self.watched_entries:self.entries_after=self.paging_entries()
         self.smr[:]=u.mem_read(0xA0000,65536)
         reply={name:struct.unpack_from('<I',self.smr,layout[name])[0] for name in ('EAX','EBX','ECX','EFLAGS')}
         u.mem_write(0xA0000,self.vga)
@@ -112,10 +119,14 @@ class Virtual(flash.Flash):
     def get_virtual(self,address,length):
         return bytes(self.cpu.mem_read((self.pages[at>>12]<<12)+(at&4095),1)[0] for at in range(address,address+length))
 
-    def request_virtual(self,fn,data=None):
-        address=0x20FFF
+    def paging_entries(self):
+        return tuple(struct.unpack('<I',self.cpu.mem_read(address,4))[0] for address in self.watched_entries)
+
+    def request_virtual(self,fn,data=None,*,segment=0x2000,offset=0xFFF,watch_pages=()):
+        address=(segment<<4)+offset
         if data is not None:self.put_virtual(address,data)
-        status=self.far(fn,[0xFFF,self.buffer,self.nvs,self.bios])
+        self.watched_entries=(0x180000,*(0x181000+page*4 for page in watch_pages)) if watch_pages else ()
+        status=self.far(fn,[offset,segment,self.nvs,self.bios])
         assert (self.pci_address,self.pci,self.nmi,self.snapshot())==self.original
         return status
 
@@ -125,13 +136,23 @@ def main():
     data=bytearray(seed+bytes(range(163)));struct.pack_into('<H',data,0,len(data))
     for kind in ('mx','sst'):
         c=Virtual(kind)
-        assert c.request_virtual(0x43,data)==0,kind
+        assert c.request_virtual(0x43,data,watch_pages=(0x20,0x21))==0,kind
+        assert c.entries_after==tuple(value|0x20 for value in c.entries_before),'V86 source pages must be accessed and clean'
         assert c.get_virtual(0x20FFF,len(data))==data,'write modified virtual caller input'
         c.put_virtual(0x20FFF,b'\xCC'*len(data))
-        assert c.request_virtual(0x42)==0,kind
+        assert c.request_virtual(0x42,watch_pages=(0x20,0x21))==0,kind
+        assert c.entries_after==tuple(value|mask for value,mask in zip(c.entries_before,(0x20,0x60,0x60)))
         assert c.get_virtual(0x20FFF,len(data))==flash.canonical(data)
         assert c.smi_count==2
         assert flash.Flash(kind,storage=c.flash).read()==flash.canonical(data),'V86 write did not persist'
+        # ES and SS differ by an amount that changes a truncated linear offset.
+        c.put_virtual(0x1FFFF,b'\xCC'*len(data))
+        assert c.request_virtual(0x42,segment=0x1F00)==0
+        assert c.get_virtual(0x1FFFF,len(data))==flash.canonical(data)
+        crossing=(0x1201<<4)+0xFF80
+        c.put_virtual(crossing,b'\xCC'*len(data))
+        assert c.request_virtual(0x42,segment=0x1201,offset=0xFF80)==0x55
+        assert c.get_virtual(crossing,len(data))==b'\xCC'*len(data)
         if kind=='mx':
             maximum=bytearray(seed+bytes((n*73)&255 for n in range(8192-14)))
             struct.pack_into('<H',maximum,0,len(maximum))
@@ -143,10 +164,11 @@ def main():
             original=c.get_virtual(0x20FFF,len(data))
             for at,value in ((0x180000,0x181005),(0x181000+0x21*4,0xA0007),(0x181000+0x21*4,0)):
                 prior=bytes(c.cpu.mem_read(at,4));c.cpu.mem_write(at,struct.pack('<I',value))
-                assert c.request_virtual(0x42)==0x55
+                assert c.request_virtual(0x42,watch_pages=(0x20,0x21))==0x55
                 assert c.get_virtual(0x20FFF,len(data))==original,'rejected output partially changed data'
+                assert all(not entry&0x40 for entry in c.entries_after),'rejected output marked a page dirty'
                 c.cpu.mem_write(at,prior)
-        print(kind,'true V86/PG cross-page nonidentity read/write via SMM passed')
+        print(kind,'V86 ES bounds, nonidentity paging and accessed/dirty flags passed')
     former=Virtual()
     entry=0xF0000+former.listing.symbol('board_escd')
     def bypass(cpu,address,size,unused):

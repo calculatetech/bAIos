@@ -16,7 +16,7 @@ board_escd_smm_entry:
     mov [cs:SMM_ESCD],ax
     mov eax,[cs:0xFFE8]
     mov [cs:SMM_ESCD+4],eax
-    movzx edx,word [cs:0xFFA8]
+    movzx edx,word [cs:0xFFA8] ; Saved ES in the 486 SMM state map.
     shl edx,4
     sub eax,edx
     mov [cs:SMM_ESCD+12],ax
@@ -90,14 +90,12 @@ board_escd_smm_pages:
     add eax,ecx
     cmp eax,0x10000
     ja .bad
-    mov [cs:SMM_ESCD+8],ecx
     mov eax,[cs:SMM_ESCD+4]
     xor edi,edi
 .page:
-    push eax
     call board_escd_smm_translate
-    pop eax
     jc .bad
+    mov [cs:SMM_ESCD+0x40+edi],edx
     mov edx,eax
     and edx,0xFFF
     neg edx
@@ -138,6 +136,12 @@ board_escd_smm_copy:
     lea edi,[ebp+SMM_ESCD_BUFFER]
     jmp .copy
 .output:
+    ; All output pages passed validation. Mark the page that receives data.
+    test dword [cs:0xFFFC],0x80000000
+    jz .output_address
+    mov edx,[cs:SMM_ESCD+0x40+ebx]
+    or byte [ds:edx],0x40
+.output_address:
     xor ax,ax
     mov es,ax
     mov ax,cs
@@ -154,11 +158,10 @@ board_escd_smm_copy:
     jb .page
     ret
 
-; EAX linear -> ESI physical, using the interrupted V86 task's CR3 map.
+; EAX linear -> ESI physical, EDX leaf entry address when paging is enabled.
 board_escd_smm_translate:
     push ebx
     push ecx
-    push edx
     mov ebx,eax
     mov esi,eax
     test dword [cs:0xFFFC],0x80000000
@@ -169,32 +172,36 @@ board_escd_smm_translate:
     jc .bad
     mov edx,eax
     shr edx,22
-    mov esi,[ds:esi+edx*4]
-    mov edx,esi
-    and edx,0x85
-    cmp edx,5
+    lea edx,[esi+edx*4]
+    mov esi,[ds:edx]
+    mov ecx,esi
+    and cl,0x85
+    cmp cl,5
     jne .bad
     cmp word [cs:SMM_ESCD],4
     jne .directory_readable
     test si,2
     jz .bad
 .directory_readable:
+    or byte [ds:edx],0x20
     and esi,0xFFFFF000
     call board_escd_smm_ram_page
     jc .bad
     mov edx,eax
     shr edx,12
     and edx,0x3FF
-    mov esi,[ds:esi+edx*4]
-    mov edx,esi
-    and edx,5
-    cmp edx,5
+    lea edx,[esi+edx*4]
+    mov esi,[ds:edx]
+    mov ecx,esi
+    and cl,5
+    cmp cl,5
     jne .bad
     cmp word [cs:SMM_ESCD],4
     jne .readable
     test si,2
     jz .bad
 .readable:
+    or byte [ds:edx],0x20
     and esi,0xFFFFF000
     and ebx,0xFFF
     or esi,ebx
@@ -204,7 +211,6 @@ board_escd_smm_translate:
 .bad:
     stc
 .done:
-    pop edx
     pop ecx
     pop ebx
     ret

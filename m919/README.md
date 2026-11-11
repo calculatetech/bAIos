@@ -20,7 +20,7 @@ Intel ICU and WINICU use the ESCD database in the BIOS flash. Saving it requires
 
 ## Known limitations
 
-Intel ICU, WINICU, and Creative CTCM and CTCU work on the tested M919. Windows 95 testing is in progress.
+Intel ICU, WINICU, and Creative CTCM and CTCU passed on an M919 with version 0.26.16. Version 0.26.17 corrects how the BIOS exchanges data with DOS memory managers. Windows 95 hardware testing is in progress.
 
 Revision3.4 can fail to warm reset with Microsoft EMM386 loaded. Its recurring floppy-controller problem is also unresolved. A successful boot with different memory managers does not remove those limitations.
 
