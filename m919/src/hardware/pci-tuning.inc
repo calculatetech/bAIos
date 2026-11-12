@@ -1,8 +1,53 @@
 ; Board routes from the identical $IRT tables in all four original AMI ROMs.
 ; Rows are devices 0C/0D/0E, columns INTA..INTD, values routing links 0..3.
 board_pci_slot_links db 0,1,2,3, 3,0,1,2, 2,0,1,3
-board_pci_irq_values db 0,4,5,7,9,10,11,12,14,15,3,0xFF
 board_pci_irq_priority db 11,12,9,10,5,3,4,7,14,15,0
+
+; BX=BDF, DI=board interrupt link, CF=unroutable. Only function 0 accepts
+; a manual pin override; multifunction cards otherwise use their own pins.
+board_pci_slot_link:
+    mov ax,bx
+    and al,0xF8
+    sub ax,0x60
+    cmp ax,0x10
+    ja .bad
+    shr ax,1
+    mov di,ax
+    mov eax,ebx
+    shl eax,8
+    or eax,0x8000003C
+    call pci_read
+    test bl,7
+    jnz .pin
+    mov dl,[fs:C_CHIP+17]
+    and dl,0xF0
+    cmp dl,0xF0
+    jne .pin
+    mov si,di
+    shr si,3
+    mov al,[fs:C_CHIP+16+si]
+    test di,4
+    jz .choice
+    shr al,4
+.choice:
+    and al,15
+    test al,al
+    jz .pin
+    mov ah,al
+.pin:
+    cmp ah,1
+    jb .bad
+    cmp ah,4
+    ja .bad
+    movzx si,ah
+    dec si
+    add si,di
+    movzx di,byte [cs:board_pci_slot_links+si]
+    clc
+    ret
+.bad:
+    stc
+    ret
 
 ; Apply after the active peripheral policy is published, before option ROMs.
 board_pci_runtime_policy:
@@ -73,39 +118,45 @@ board_pci_runtime_policy:
     or ax,dx
     push ax
     mov [fs:HW_PCI_USED_IRQS],bp
+    mov word [fs:HW_PCI_ROUTE_MASKS],0
+    xor ebx,ebx
+.active:
+    mov eax,ebx
+    shl eax,8
+    or eax,0x80000000
+    call pci_read
+    cmp ax,0xFFFF
+    je .active_next
+    test ax,ax
+    jz .active_next
+    call board_pci_slot_link
+    jc .active_next
+    bts word [fs:HW_PCI_ROUTE_MASKS],di
+.active_next:
+    call pci_next_function
+    cmp bx,256
+    jb .active
     xor di,di
 .link:
-    mov bx,di
-    shr bx,1
-    mov al,[fs:C_CHIP+16+bx]
-    test di,1
-    jz .selection
-    shr al,4
-.selection:
-    and ax,15
-    mov bx,ax
-    mov al,[cs:board_pci_irq_values+bx]
-    cmp al,0xFF
-    je .selected
-    test al,al
-    jnz .explicit
+    bt word [fs:HW_PCI_ROUTE_MASKS],di
+    jnc .unavailable
     mov si,board_pci_irq_priority
 .automatic:
     mov al,[cs:si]
     inc si
     test al,al
-    jz .unavailable
+    jz .share
     movzx bx,al
     bt bp,bx
     jnc .automatic
     btr bp,bx
     jmp .selected
-.explicit:
-    movzx bx,al
-    bt [fs:HW_PCI_USED_IRQS],bx
-    jnc .unavailable
-    btr bp,bx
-    jmp .selected
+.share:
+    mov bp,[fs:HW_PCI_USED_IRQS] ; Reuse allowed PCI IRQs after distinct choices run out.
+    test bp,bp
+    jz .unavailable
+    mov si,board_pci_irq_priority
+    jmp .automatic
 .unavailable:
     mov al,0xFF
 .selected:
@@ -148,25 +199,8 @@ board_pci_runtime_policy:
     or eax,0x80000004
     call pci_command_write
 .pin:
-    mov ax,bx
-    and al,0xF8
-    sub ax,0x60
-    cmp ax,0x10
-    ja .advance
-    shr ax,1
-    mov di,ax
-    mov eax,ebx
-    shl eax,8
-    or eax,0x8000003C
-    call pci_read
-    cmp ah,1
-    jb .advance
-    cmp ah,4
-    ja .advance
-    movzx si,ah
-    dec si
-    add si,di
-    movzx di,byte [cs:board_pci_slot_links+si]
+    call board_pci_slot_link
+    jc .advance
     mov cl,[fs:HW_PCI_LINKS+di]
     cmp cl,0xFF
     je .line

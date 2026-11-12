@@ -272,6 +272,21 @@ boot_read:
     jnz boot_candidate
     cmp word [es:0x7DFE], 0xAA55
     jne boot_candidate
+    test byte [fs:B_DRIVE],0x80
+    jz .handoff
+    ; Skip empty bootstrap code even when disk ID and partitions are present.
+    xor ax,ax
+    mov di,0x7C00
+    mov cx,220
+    repe scasw
+    je boot_candidate
+    dec ax
+    mov di,0x7C00
+    mov cx,220
+    repe scasw
+    je boot_candidate
+.handoff:
+    xor ax,ax
     mov dx, [fs:B_DRIVE]
     mov byte [0x0400+KB_POST_STATE], 0
 %ifdef BOARD_PNP_SUPPORT

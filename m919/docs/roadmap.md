@@ -42,6 +42,8 @@ No task is declined.
 
 ## Completed
 
+- **M919-013: Correct boot fallback and expansion resource assignment.** Keep one operating-system enumeration owner per bus and controller. Preserve private onboard resource reservations, preferred ISA profiles, PCI interrupt routing and saved settings. Skip empty hard-disk boot code and keep ESCD notices clear of the device table. The [compatibility specification](plans/M919-013-resource-compatibility.md) defines the supported paths and proof.
+
 - **M919-012: Publish the confirmed PCI and sound fixes.** Hardware experiments are complete, including user validation at 40 MHz with PCI graphics. Version 0.18.2 restores conservative defaults and persistent settings, removes Register Lab and unsuccessful comparison overrides, and retains the confirmed throughput/crackle fixes plus IDE-channel and COM/LPT controls. Complete software validation, boundary trace closure and native review passed. VLB palette corruption remains an accepted limitation. See the [production plan](plans/M919-012-pci-performance.md) and [findings](research/pci-performance.md).
 
 - **M919-011: Restore fast shared cache qualification.** The unchanged shared test runs from the existing uncached system shadow. Direct SRAM probes, controller initialization, full cache-capacity coverage and failure recovery are preserved. The user confirms fast startup with version0.15.1.

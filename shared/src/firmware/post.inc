@@ -120,14 +120,26 @@ post_status:
     push cs
     pop ds
     ; Publication can release the private UI; notices must remain resident.
+    mov di,22*160
+    cmp al,10
+    jb .row
+    cmp byte [fs:S_POST_ESCD_ROW],0xFF
+    je .done
+    movzx ax,byte [fs:S_POST_ESCD_ROW]
+    test ax,ax
+    jz .row
+    dec ax
+    imul di,ax,160
+.row:
     mov ax,0xB800
     mov es,ax
-    mov di,22*160
+    push di
     mov ax,0x0720
-    mov cx,160
+    mov cx,80
     cld
     rep stosw
-    mov di,22*160+3*2
+    pop di
+    add di,3*2
     mov bh,7
     call setup_text
 .done:

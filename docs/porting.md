@@ -161,6 +161,12 @@ Worked examples belong in port developer documents. A recorded physical result a
 
 For shared ATA support, set `BOARD_ATA_PIO_MAX` to a documented ceiling from0 through4. The common driver handles capability limits, completion and reset. The generic host path requires working IORDY and retains current host strobes. A separate IDE controller or missing timing registers does not establish a lower ceiling. Use an adapter for qualified controller-specific timing. Keep that electrical qualification separate from software proof. See [the shared ATA contract](../shared/README.md).
 
+Give each operating-system device one enumeration owner. When PCI exposes an IDE controller, omit its duplicate legacy IDE BIOS node. Keep enabled channel resources reserved in the internal allocator. When a PCI-to-ISA bridge exposes the ISA bus, omit the separate ISA bus BIOS node. Keep ISA card discovery and configuration active. Use board adapter declarations for both policies. Check public node counts, handles and resources alongside the PCI inventory. Retain legacy nodes on systems that need BIOS enumeration.
+
+Include operating-system device enumeration in port validation. Successful BIOS calls and DOS configuration utilities do not establish a correct device tree. Inspect bridge children and controller resources after the first operating-system boot. A duplicate bus node can prevent its device loader from starting even when BIOS resource allocation succeeds.
+
+After correcting duplicate IDE enumeration, an installed operating system can retain obsolete device entries and a failed-driver flag. Confirm normal protected-mode disk access after rediscovery. Record operating-system cleanup separately from firmware changes. The ISA bus rule follows the [Windows 95 hardware design guide, page 234](https://www.bitsavers.org/pdf/microsoft/windows_95/Hardware_Design_Guide_for_Windows_95_1994.pdf).
+
 ## Private POST placement
 
 Use the shared [ROM module contract](development/rom-modules.md) when a port needs transient code. Its existing adapter must establish the source mapping, complete call contract, memory charge and final release. Keep board transport details in the port guide.

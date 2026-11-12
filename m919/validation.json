@@ -426,6 +426,30 @@
         "--port",
         "m919"
       ]
+    },
+    {
+      "id": "boot-fallback",
+      "argv": ["python", "-B", "shared/tests/test-boot-fallback.py", "--image", "m919/build/baios-m919.bin"]
+    },
+    {
+      "id": "escd-status-placement",
+      "argv": ["python", "-B", "shared/tests/test-post-escd-status.py"]
+    },
+    {
+      "id": "pci-slot-policy",
+      "argv": ["python", "-B", "m919/tools/test-pci-slot-policy.py"]
+    },
+    {
+      "id": "pci-enumeration-ownership",
+      "argv": ["python", "-B", "m919/tools/test-pnp-ide.py"]
+    },
+    {
+      "id": "gameport-diagnostic",
+      "argv": ["python", "-B", "m919/tools/test-pnp-gameport.py"]
+    },
+    {
+      "id": "pci-routing",
+      "argv": ["python", "-B", "m919/tools/tuning_proof.py", "--case", "irq", "--case", "irq-setup", "--output", "m919/build/tests/pci-routing.json"]
     }
   ],
   "case_sets": [

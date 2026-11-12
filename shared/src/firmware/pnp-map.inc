@@ -211,7 +211,7 @@ pnp_seed:
     call pnp_map_node
     jc .bad
     inc bx
-    cmp bx,PNP_NODE_COUNT
+    cmp bx,PNP_RESOURCE_NODE_COUNT
     jb .node
 %ifdef M919_BOARD_DEFINITION
     cmp word [fs:M_VGA_BDF],0xFFFF
@@ -324,7 +324,7 @@ pnp_pci_candidate_core:
     mov edx,ecx
     mov ecx,esi
     mov ah,al
-    mov al,1
+    mov al,0x81             ; PCI bus ownership, with full I/O address decode.
     call pnp_claim_query
     jc .done
     mov esi,4

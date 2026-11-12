@@ -113,6 +113,11 @@ chipset_settings_load_raw:
     mov byte [fs:C_VALID], 0
     jmp .done
 .done:
+    ; Old IRQ-number choices cannot be interpreted as per-slot pin choices.
+    cmp byte [fs:C_CHIP+17],0xF0
+    jae .pins
+    mov word [fs:C_CHIP+16],0xF000
+.pins:
     popad
     ret
 chipset_settings_save:
@@ -250,6 +255,24 @@ chipset_valid:
     shr al,2
     shr ah,1
     loop .pio
+    mov al,[fs:si+17]
+    and al,0xF0
+    cmp al,0xF0
+    jne .legacy_irqs
+    mov al,[fs:si+16]
+    and al,15
+    cmp al,4
+    ja .bad
+    mov al,[fs:si+16]
+    shr al,4
+    cmp al,4
+    ja .bad
+    mov al,[fs:si+17]
+    and al,15
+    cmp al,4
+    ja .bad
+    jmp .good
+.legacy_irqs:
     mov bx,16
 .irq_byte:
     mov al,[fs:si+bx]

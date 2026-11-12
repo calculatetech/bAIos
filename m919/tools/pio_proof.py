@@ -401,7 +401,7 @@ def policy_cases(image):
     rows = []
     for action in ('cancel', 'save', 'failed-save'):
         m = Screen(image, requests=0, clock=0, post=True)
-        m.cpu.mem_write(m.base+0x60, bytes.fromhex('A0010070900000A255070F6E010F01FCA9870F0100000000'))
+        m.cpu.mem_write(m.base+0x60, bytes.fromhex('A0010070900000A255070F6E010F01FC21F30F0100000000'))
         m.cpu.mem_write(m.base+0x60+21,b'\x01') # Opaque old selector remains saved, without affecting PIO.
         original = bytes(m.cpu.mem_read(m.base+0x60, 24))
         for policy in range(4):
@@ -472,7 +472,7 @@ def policy_cases(image):
                     fresh.writes.clear();fresh.call('settings_load')
                     assert not fresh.writes
                     actual=bytes(fresh.cpu.mem_read(fresh.base+0x60,24))
-                    assert actual==(bytes(chip) if invalid is None else bytes.fromhex('000100400000000800000060000000000000000000000000')),(invalid,pos,actual.hex())
+                    assert actual==(bytes(chip) if invalid is None else bytes.fromhex('0001004000000008000000600000000000F0000000000000')),(invalid,pos,actual.hex())
                     assert bytes(fresh.cpu.mem_read(fresh.base+0xA00,51))==devices
                     assert bytes(fresh.cpu.mem_read(fresh.base+fresh.state['C_PORTS'],8))==ports
                     if invalid is None:

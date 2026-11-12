@@ -834,7 +834,9 @@ def pci_precedence(output='build/tests/pnp-runtime'):
         endpoint=Endpoint(bars={0x10:0xFFFFFFF1})
         bus.pci=PCI({0x60:endpoint});bus.pci_address=0
         m=isa_machine('m919',bus,output)
-        m.call('settings_load');m.call('pnp_publish')
+        m.call('settings_load');m.call('setup_defaults');m.draft()
+        policy=bytearray(15);struct.pack_into('<HH',policy,3,0xC000,16)
+        m.put('U_PNP',policy);assert m.call('settings_save');m.call('settings_load');m.call('pnp_publish')
         m.cpu.mem_write(0x413,struct.pack('<H',m.base>>10))
         if pci_first:
             assert m.call('pnp_journal_begin') and m.call('pnp_work_begin') and m.call('pnp_seed')
@@ -846,7 +848,7 @@ def pci_precedence(output='build/tests/pnp-runtime'):
         if pci_first:
             assert bar==0xC010 and card.registers[0][0x30]==0
         else:
-            assert card.registers[0][0x30]==1 and bar==0xC030,(card.registers,hex(bar))
+            assert card.registers[0][0x30]==1 and bar==0xC020,(card.registers,hex(bar))
             assert bytes(card.registers[0][at] for at in (0x60,0x61))==b'\xC0\x10'
         results.append({'PCI_first':pci_first,'actual_BAR':hex(bar),'actual_ISA_active':card.registers[0][0x30]})
     return {'required_before_relocatable_PCI':results,'whole_initializer_reorder_would_steal_required_resource':True}
@@ -1032,6 +1034,97 @@ def pci_final_routing(output='build/tests/pnp-runtime'):
             'actual_southbridge_peer_bits_and_Activate_preserved':True}
 
 
+def pci_irq_reservations(output='build/tests/pnp-runtime'):
+    """Unused routing links must not starve an installed Auto-configured device."""
+    from shared.tools.isa_pnp_proof import Bus,Card,serial
+    from shared.tools.pci_proof import PCI,Endpoint
+    stream=b'\x0A\x10\0\x82\x03\0ISA\x15\x41\xD0\x05\0\0\x22\x20\0\x79\0'
+    board_state=settings.constants(ROOT/'m919/src/hardware/board-definition.inc')
+    tested=[]
+    for reserved,positions in ((1<<10,(0x68,)),(1<<10,(0x60,0x70,0x68)),
+                               (0xDEB8&~(1<<9),(0x60,0x68)),(0xDEB8,(0x68,))):
+        endpoints={bdf:Endpoint(identity=0x920010B7,pin=1,bars={0x10:0xFFFFFF81}) for bdf in positions}
+        bridge=Endpoint(identity=0x88861060,cls=0x060100)
+        bus=Bus([Card(serial(b'\x41\xD0\xFF\xFF',1),stream)])
+        bus.pci=PCI({**endpoints,0x90:bridge});bus.pci_address=0;bus.ports={0x4D0:0xFF,0x4D1:0xFF}
+        m=isa_machine('m919',bus,output);m.call('settings_load');m.call('setup_defaults');m.draft()
+        policy=bytearray(15);struct.pack_into('<H',policy,0,reserved)
+        m.put('U_PNP',policy);assert m.call('settings_save');m.call('settings_load');m.call('pnp_publish')
+        m.cpu.mem_write(0x413,struct.pack('<H',m.base>>10));m.call('pnp_prepare')
+        # Populate the existing onboard producers, including both legacy IDE IRQs.
+        m.cpu.mem_write(0x400,struct.pack('<4H',0x3F8,0x2F8,0,0))
+        m.cpu.mem_write(0x408,struct.pack('<3H',0x378,0,0))
+        m.cpu.mem_write(m.base+board_state['HW_IDE_USABLE'],b'\x01');m.put('C_IDE',b'\x01')
+        m.call('pci_initialize');m.call('board_pci_runtime_policy')
+        lines=[endpoint.read(0x3C,1) for endpoint in endpoints.values()]
+        allowed=0xDEB8&~(reserved|(1<<3)|(1<<4)|(1<<5)|(1<<6)|(1<<7)|(1<<14)|(1<<15))
+        for line in lines:
+            assert (line!=0xFF and bool(allowed&(1<<line))) if allowed else line==0xFF,(reserved,lines,allowed)
+        if allowed==1<<9:assert lines==[9]*len(positions)
+        if positions==(0x60,0x70,0x68):assert lines==[11,12,9],lines
+        if len(positions)<=allowed.bit_count():assert len(set(lines))==len(lines),lines
+        if bus.cards[0].registers[0][0x30]:
+            assert not (bus.ports[0x4D0]|bus.ports[0x4D1]<<8)&(1<<5)
+        tested.append({'reserved':reserved,'slots':positions,'IRQs':lines})
+    return tested
+
+
+def pci_irq_settings(output='build/tests/pnp-runtime'):
+    """Pin choices round-trip without changing the existing packed payload."""
+    m=settings.Settings('m919',output)
+    m.call('settings_load');m.call('setup_defaults');m.draft()
+    original=m.get('U_CHIP',24)
+    assert original[16:18]==b'\0\xF0'
+    for slot in range(3):
+        for pin in range(5):
+            draft=bytearray(original)
+            draft[16+slot//2]|=pin<<(4*(slot&1))
+            m.put('U_CHIP',draft)
+            assert m.call('settings_save')
+            m.call('settings_load')
+            assert m.get('C_CHIP',24)==draft,(slot,pin)
+    # Old IRQ selectors are retired, not reinterpreted as pins. Other fields survive.
+    draft=bytearray(original);draft[9]=7;draft[16:18]=b'\xA5\xB4'
+    m.put('U_CHIP',draft);assert m.call('settings_save')
+    persistent=m.snapshot();m.call('settings_load')
+    draft[16:18]=b'\0\xF0'
+    assert m.get('C_CHIP',24)==draft and m.snapshot()==persistent
+    for offset,value in ((16,5),(16,0x50),(17,0xF5),(17,0xE0)):
+        invalid=bytearray(original);invalid[offset]=value
+        m.put('U_CHIP',invalid)
+        before=m.snapshot()
+        # 0..11 in all four nibbles remains a valid legacy input.
+        if offset==16:invalid[17]=0xF0;m.put('U_CHIP',invalid)
+        assert not m.call('settings_save'),(offset,value)
+        assert m.snapshot()==before
+    return {'saved_pin_choices':15,'legacy_IRQ_choices_reset_to_Auto':True,
+            'other_settings_preserved':True,'invalid_pin_choices_rejected':True}
+
+
+def pci_retained_endpoint(output='build/tests/pnp-runtime'):
+    """Repeat real PCI/PnP initialization with the previous device state retained."""
+    from shared.tools.isa_pnp_proof import Bus
+    from shared.tools.pci_proof import PCI,Endpoint
+    tested=[]
+    for bdf in (0x60,0x68,0x70):
+        endpoint=Endpoint(identity=0x920010B7,pin=1,bars={0x10:0xFFFFFF01,0x14:0xFFFFFF00})
+        bridge=Endpoint(identity=0x88861060,cls=0x060100)
+        bus=Bus();bus.pci=PCI({bdf:endpoint,0x90:bridge});bus.pci_address=0
+        bus.ports={0x4D0:0,0x4D1:0}
+        m=isa_machine('m919',bus,output);m.call('settings_load');m.call('setup_defaults');m.draft()
+        assert m.call('settings_save')
+        boots=[]
+        for repeat in range(3):
+            m.cpu.mem_write(0x413,struct.pack('<H',m.base>>10))
+            m.call('pnp_pci_initialize');m.call('pnp_configure_isa');m.call('board_pci_runtime_policy')
+            current=(endpoint.read(0,4),endpoint.read(4,2)&7,endpoint.read(0x10,4),endpoint.read(0x14,4),endpoint.read(0x3C,1))
+            assert current[0]==0x920010B7 and current[1]==3 and 0<current[4]<16,current
+            if boots:assert current==boots[0],(bdf,boots,current)
+            boots.append(current);m.call('pnp_journal_release')
+        tested.append({'BDF':bdf,'retained_state_initializations':boots})
+    return tested
+
+
 def pci_manual_windows(output='build/tests/pnp-runtime'):
     from shared.tools.isa_pnp_proof import Bus,Card,serial
     from shared.tools.pci_proof import PCI,Endpoint
@@ -1042,12 +1135,12 @@ def pci_manual_windows(output='build/tests/pnp-runtime'):
         endpoint=Endpoint(bars={0x10:0xFFFFFFF1});bus.pci=PCI({0x60:endpoint});bus.pci_address=0
         m=isa_machine('m919',bus,output);m.call('settings_load');m.call('setup_defaults');m.draft()
         policy=bytearray(15)
-        if reserved:struct.pack_into('<HHHH',policy,3,0xC01F,1,0xC030,16)
+        if reserved:struct.pack_into('<HHHH',policy,3,0xC00F,1,0xC010,16)
         m.put('U_PNP',policy);assert m.call('settings_save');m.call('settings_load');m.call('pnp_publish')
         m.cpu.mem_write(0x413,struct.pack('<H',m.base>>10));before=m.snapshot();m.writes.clear()
         m.call('pnp_prepare');m.call('pci_initialize')
         base=endpoint.read(0x10,4)&~3
-        assert base==(0xC050 if reserved else 0xC010),hex(base)
+        assert base==(0xC020 if reserved else 0xC000),hex(base)
         assert endpoint.read(4,2)&7==1 and bus.cards[0].registers[0][0x30]==1
         assert m.snapshot()==before and not m.writes
         tested.append({'manual_last_byte_and_later_window':reserved,'actual_BAR':hex(base),'actual_IO_decode_only':True})
@@ -1416,6 +1509,70 @@ def allocation_fixture(port,cards,policy=None,bus=None,configure=None,draft=None
                 assert all(i<activations[-1] for i,event in enumerate(bus.config_writes)
                            if event[:2]==(card.csn,n) and event[2]!=0x30)
     return m,bus
+
+
+def preferred_profiles(port):
+    """Higher addresses in preferred profiles precede lower fallback ranges."""
+    from shared.tools.isa_pnp_proof import Card,serial
+    device=lambda product:b'\x15\x41\xD0'+product.to_bytes(2,'big')+b'\0'
+    fixed=lambda base,size:b'\x4B'+struct.pack('<HB',base,size)
+    variable=lambda lo,hi,step,size:b'\x47\x01'+struct.pack('<HHBB',lo,hi,step,size)
+    audio=fixed(0x220,16)+fixed(0x388,4)
+    stream=b'\x0A\x10\0\x82\x03\0ISA'+device(0x0400)+variable(0x800,0xFF8,8,8)
+    stream+=device(0x0500)+b'\x31\0'+audio+fixed(0x330,2)
+    stream+=b'\x31\x01'+audio+variable(0x300,0x330,0x30,2)+b'\x38'
+    stream+=device(0xB02F)+b'\x31\0'+fixed(0x201,1)
+    stream+=b'\x31\x01'+variable(0x200,0x20F,1,1)+b'\x38\x79\0'
+    tested=[]
+    for blocked in ((),(0x201,),(0x330,),(0x201,0x330)):
+        policy=bytearray(15)
+        for at,base in enumerate(blocked):struct.pack_into('<HH',policy,3+at*4,base,1 if base==0x201 else 2)
+        card=Card(serial(b'\x41\xD0\xFF\xFF',1),stream,ldns=3)
+        machine,bus=allocation_fixture(port,[card],policy=policy)
+        actual=[]
+        for ldn,register,preferred,fallback in ((1,0x64,0x330,0x300),(2,0x60,0x201,0x200)):
+            row=card.registers[ldn]
+            base=row[register]*256+row[register+1]
+            assert row[0x30]==1 and base==(fallback if preferred in blocked else preferred),(port,blocked,ldn,row)
+            assert (card.csn,ldn,register,base>>8) in bus.config_writes
+            assert (card.csn,ldn,register+1,base&255) in bus.config_writes
+            actual.append(base)
+        tested.append({'reserved':blocked,'selected_MIDI_gameport':actual})
+    return tested
+
+
+def pci_isa_io_aliases():
+    """PCI claims must not consume ISA aliases that the bridge does not forward."""
+    from shared.tools.isa_pnp_proof import Bus,Card,serial
+    version=b'\x0A\x10\0\x82\x03\0ISA'
+    device=lambda product:b'\x15\x41\xD0'+product.to_bytes(2,'big')+b'\0'
+    fixed=lambda base,size:b'\x4B'+struct.pack('<HB',base,size)
+    variable=lambda lo,hi,step,size:b'\x47\x01'+struct.pack('<HHBB',lo,hi,step,size)
+    stream=version+device(0x0500)+b'\x31\0'+fixed(0x220,16)+fixed(0x388,4)+fixed(0x330,2)
+    stream+=b'\x31\x01'+variable(0x220,0x220,1,16)+fixed(0x388,4)+variable(0x300,0x330,0x30,2)+b'\x38'
+    stream+=device(0xB02F)+b'\x31\0'+fixed(0x201,1)+b'\x31\x01'+variable(0x200,0x20F,1,1)+b'\x38\x79\0'
+    tested=[]
+    for pci_first in (False,True):
+        card=Card(serial(b'\x41\xD0\xFF\xFF',1),stream,ldns=2)
+        m=isa_machine('m919',Bus([card]),OUTPUT)
+        m.call('settings_load');m.call('setup_defaults');m.draft();assert m.call('settings_save')
+        m.call('settings_load');m.call('pnp_publish');m.cpu.mem_write(0x413,struct.pack('<H',m.base>>10))
+        m.call('pnp_prepare_video')
+        if not pci_first:m.call('pnp_configure_isa')
+        assert m.call('pnp_pci_candidate_core',AX=2,ECX=0xC200,ESI=0x80)
+        if pci_first:m.call('pnp_configure_isa')
+        for n,register,base in ((0,0x64,0x330),(1,0x60,0x201)):
+            row=card.registers[n]
+            assert row[0x30] and row[register]*256+row[register+1]==base,(pci_first,n,row)
+        # Actual overlap remains forbidden in both bus directions.
+        assert not m.call('pnp_pci_candidate_core',AX=2,ECX=0x201,ESI=1)
+        assert not m.call('pnp_claim_query',AX=0x200,EDX=0xC27F,ECX=1)
+        assert m.call('pnp_claim_query',AX=0x281,EDX=0xC280,ECX=1)
+        # ISA-to-ISA aliases and large PCI windows retain their distinct rules.
+        assert not m.call('pnp_claim_query',AX=0x201,EDX=0xA201,ECX=1)
+        assert m.call('pnp_claim_query',AX=0x281,EDX=0xD000,ECX=0x400)
+        tested.append({'PCI_first':pci_first,'MIDI':0x330,'gameport':0x201})
+    return tested
 
 
 def allocation_causal(port,groups=None):
@@ -2101,6 +2258,7 @@ def legacy_recovery(port):
     elif port=='mp386':nv[0x229]=0xD2
     else:cmos[0x69]=0xD2
     initial=Caller(port,'real',(bytes(cmos),bytes(nv)))
+    if port=='m919':expected['C_CHIP'][16:18]=b'\0\xF0'
     state=startup_result(initial)
     cmos=bytes.fromhex(state['cmos']);nv[0x200:0x240]=bytes.fromhex(state['nvram_0200_023f'])
     caller=Caller(port,'ss32',(cmos,bytes(nv)))
@@ -2295,9 +2453,9 @@ def m919_resources(c):
 
 def inventory(port):
     common=['PNP0000','PNP0100','PNP0200','PNP0303' if port in ('pb430','presario-800') else 'PNP0301',
-            'PNP0B00','PNP0800','PNP0C01','PNP0A00','PNP0500']
+            'PNP0B00','PNP0800','PNP0C01','PNP0A03' if port=='m919' else 'PNP0A00','PNP0500']
     if port!='presario-800':common+=['PNP0500']
-    return common+['PNP0400','PNP0700','PNP0600']+(['PNP0A03'] if port=='m919' else
+    return common+['PNP0400','PNP0700']+([] if port=='m919' else ['PNP0600'])+([] if port=='m919' else
            ['PNP0900','PNP0F13'] if port in ('pb430','presario-800') else [])
 
 
@@ -2342,6 +2500,9 @@ def complete_nodes(port):
     ports=bytes.fromhex(fixture['expected']['C_PORTS'])
     def verify(c,view,expected_ports,ide,secondary=True,dma1=False):
         resources=resource_oracle(port,expected_ports,ide,secondary,dma1=dma1)
+        if port=='m919':
+            resources[7]=resources.pop()  # The PCI root replaces the separately enumerated ISA bus.
+            resources.pop()              # PCI enumerates IDE; the allocator retains its private claim.
         identities=inventory(port)
         if port=='m919' and expected_ports[4]==2:identities[10]='PNP0401'
         c.cpu.mem_write(0x20100,b'\xCC'*12)
@@ -2497,7 +2658,9 @@ def nodes(port):
     assert not c.io,'Current-node query performed hardware I/O'
     ids=[r[0] for r in result]
     assert ids.count('PNP0500')==(1 if port=='presario-800' else 2),ids
-    assert 'PNP0700' in ids and 'PNP0600' in ids and 'PNP0A00' in ids
+    assert 'PNP0700' in ids
+    assert ('PNP0A00' in ids)==(port!='m919'),ids
+    assert ('PNP0600' in ids)==(port!='m919'),ids
     assert ('PNP0900' in ids)==(port in ('presario-800','pb430'))
     for identity,_,node,blocks in result:
         routing=3 if port=='mp386' else 0
@@ -2549,7 +2712,9 @@ def public_commit_contracts(port):
         assert c.far(2,[8,0x200,c.buffer,3,c.bios])==0
         decoded,base,payload=decode_saved(c)
         fixture=json.loads((ROOT/'shared/tests/fixtures/pnp-legacy-settings.json').read_text())['ports'][port]
-        assert all(decoded[key]==bytes.fromhex(value) for key,value in fixture['expected'].items())
+        expected={key:bytes.fromhex(value) for key,value in fixture['expected'].items()}
+        if port=='m919':expected['C_CHIP']=expected['C_CHIP'][:16]+b'\0\xF0'+expected['C_CHIP'][18:]
+        assert all(decoded[key]==value for key,value in expected.items())
         assert base==migrated_base(port,bytes(saved[0][i] for i in [0x10,*range(0x39,0x40)]))
         assert bytes(c.cpu.mem_read(c.base,c.allocated))==draft
         settings.check_mutation(port,saved,c.snapshot(),c.writes,'settings_save')
@@ -2620,6 +2785,7 @@ def set_node(port):
     original=node
     fixture=json.loads((ROOT/'shared/tests/fixtures/pnp-legacy-settings.json').read_text())['ports'][port]
     expected={key:bytes.fromhex(value) for key,value in fixture['expected'].items()}
+    if port=='m919':expected['C_CHIP']=expected['C_CHIP'][:16]+b'\0\xF0'+expected['C_CHIP'][18:]
     c.put('U_PNP',bytes.fromhex('0080A20003200010031000050A0101'))
     c.put('U_PORTS',b'\x04\x03\x02\x03\x01\x00\x00\x01')
     c.put('U_IDE',b'\xC6'*(51 if port=='m919' else 25))
@@ -2877,7 +3043,7 @@ def startup(port,cmos,nv,causal=False,pnp_bus=None,phases=(False,True),external_
         boundaries.append([min(writes),max(writes)])
     def observe(cpu,address,listing):
         if pnp_bus is not None and getattr(pnp_bus,'runtime_continue',False):return
-        if pnp_bus is not None and id(cpu) not in configuration_hooked:
+        if pnp_bus is not None and port=='presario-800' and id(cpu) not in configuration_hooked:
             configuration_hooked.add(id(cpu))
             cpu.hook_add(UC_HOOK_CODE,lambda u,a,z,v:observe(u,a,listing),None,configuration_end,configuration_end)
         if address==settings_entry:
@@ -3230,16 +3396,16 @@ def pci_manual_oracle(reserved):
         for tag,data in node:
             if tag==0x4B:
                 base,length=struct.unpack('<HB',data)
-                addresses={a for a in range(65536) if ((a-base)&1023)<length}
+                addresses=set(range(base,base+length)) # PCI positive decode precedes ISA alias forwarding.
             elif tag==0x47:
                 info,base,maximum,alignment,length=struct.unpack('<BHHBB',data)
                 assert base==maximum and info==1
                 addresses=set(range(base,base+length))
             else:continue
             if addresses:claims.append((f'onboard_node_{n}',addresses))
-    claims.append(('required_ISA',set(range(0xC010,0xC020))))
+    claims.append(('required_ISA',set(range(0xC030,0xC040))))
     if reserved:
-        claims.extend([('manual_last_byte',{0xC03F}),('later_manual_window',set(range(0xC050,0xC060)))])
+        claims.extend([('manual_last_byte',{0xC00F}),('later_manual_window',set(range(0xC010,0xC020)))])
     candidates=[]
     for base in range(0xC000,0x10000,16):
         interval=set(range(base,base+16))
@@ -4868,6 +5034,7 @@ def runtime_retry(port,post=None):
         m.put(field,bytes((value,)))
     m.runtime_kbc_queue.append(0x1E) # Arrived before the exhausted retry epoch.
     assert runtime_execute_boot(m,fdc_attached=True)['terminal']=='retry'
+    m.cpu.hook_del(fdc_hook) # The retry scenario supplies its own timer wakes.
     before=[struct.unpack('<16H',m.cpu.mem_read(0x900+n*32,32))[:3] for n in range(2)]
     assert before==[(1,1,1),(1,1,1)],before
     m.cpu.mem_write(0x6EF,b'\x01') # External media becomes readable; no BIOS change.
@@ -4898,7 +5065,6 @@ def runtime_retry(port,post=None):
         run(8000000)
     finally:
         m.cpu.hook_del(h)
-        m.cpu.hook_del(fdc_hook)
     assert loaded==[0x81] and m.cpu.mem_read(0x6F0,2)==b'\x02\0',(loaded,waits,
         hex(m.cpu.reg_read(x.UC_X86_REG_CS)),hex(m.cpu.reg_read(x.UC_X86_REG_IP)),
         bytes(m.cpu.mem_read(0x417,0x27)).hex(),m.runtime_kbc_queue,
@@ -5157,6 +5323,10 @@ def allocation_startup_causal(port,groups=None,pci_cases=(False,True),video_case
                 def observe_startup(self,m,cpu,address,listing):self.cpu=cpu
             stream=prefix[:-3]+b'\x09\0\x01'+b'\x47\x01'+struct.pack('<HHBB',0x300,0x310,16,8)+b'\x79\0'
             bus=Display([Card(serial(b'\x41\xD0\xFF\xFF',1),stream)] if configurable else [])
+            if configurable:
+                # A boot display already decodes its bootstrap resources;
+                # ISA discovery intentionally follows visible RAM/cache POST.
+                bus.cards[0].registers[0].update({0x30:1,0x60:3,0x61:0x10})
             raw=bytearray(32768);raw[:3]=b'\x55\xAA\x40'
             # Actual expansion instructions read the assigned device before
             # installing an IRET INT10 provider. No BCV/IPL semantics involved.
@@ -5180,19 +5350,20 @@ def allocation_startup_causal(port,groups=None,pci_cases=(False,True),video_case
         from shared.tools.pci_proof import PCI,Endpoint
         tested=[]
         for reserved in pci_cases:
-            stream=prefix+b'\x47\x01'+struct.pack('<HHBB',0xC010,0xC010,1,16)+b'\x79\0'
+            stream=prefix+b'\x47\x01'+struct.pack('<HHBB',0xC030,0xC030,1,16)+b'\x79\0'
             bus=Bus([Card(serial(b'\x41\xD0\xFF\xFF',1),stream)])
             endpoint=Endpoint(bars={0x10:0xFFFFFFF1});bus.pci=PCI({0x58:endpoint})
             policy=bytearray(15)
-            # C010 is required ISA; C03F is the next PCI candidate's last byte.
-            if reserved:struct.pack_into('<HHHH',policy,3,0xC03F,1,0xC050,16)
+            # Keep fixed ISA outside the PCI candidates so this contrast
+            # isolates both manual exclusions, not pre-video census order.
+            if reserved:struct.pack_into('<HHHH',policy,3,0xC00F,1,0xC010,16)
             m=saved(policy)
             result=startup(port,bytes(m.cmos).hex(),'',pnp_bus=bus,phases=(False,))
             bar=endpoint.read(0x10,4)&~3
             expected,candidates=pci_manual_oracle(reserved)
             assert bar==expected,(reserved,hex(bar),candidates)
             assert endpoint.read(4,2)&7==1 and bus.cards[0].registers[0][0x30]==1
-            assert bytes(bus.cards[0].registers[0][a] for a in (0x60,0x61))==b'\xC0\x10'
+            assert bytes(bus.cards[0].registers[0][a] for a in (0x60,0x61))==b'\xC0\x30'
             tested.append({'manual_windows':reserved,'actual_BAR':bar,'actual_command':endpoint.read(4,2),
                            'independent_candidate_exclusions':candidates,
                            'endpoint_writes':endpoint.writes,'actual_reset_to_finish':result})
@@ -5427,7 +5598,9 @@ def runtime_static_buffer(port):
             def write(cpu,access,address,length,value,unused):
                 if active[0] is not None and active[0][0]-16<=address<active[0][0]+1040:written.update(range(address,address+length))
             m.cpu.hook_add(UC_HOOK_CODE,entry);m.cpu.hook_add(UC_HOOK_MEM_WRITE,write)
-        m,bus=allocation_fixture(port,[card],bus=bus,configure=configure)
+        policy=bytearray(15)
+        if port=='m919':struct.pack_into('<HHHH',policy,3,0xC000,16,0xC020,16)
+        m,bus=allocation_fixture(port,[card],policy=policy,bus=bus,configure=configure)
         assert card.registers[0][0x30]==1 and len(bounds)==int(present)
         query=m.call('pnp_claim_query',AX=0x201,EDX=0xC010,ECX=16)
         assert query==(not present),(port,present,query,bounds,bytes(m.cpu.mem_read(int.from_bytes(m.cpu.mem_read(m.base+0x330,4),'little'),32)).hex())
@@ -5435,11 +5608,9 @@ def runtime_static_buffer(port):
         bar=None
         if port=='m919':
             m.call('pci_initialize');bar=endpoint.read(0x10,4)&~3
-            # The first16-byte candidate C000 aliases DMA0..0F. Without
-            # the report C010 is free. With it, C010/C030 are static claims,
-            # C020 aliases PIC20..21, and C040 aliases PIT40..43, so C050
-            # is the first free candidate. These are independent AT decodes.
-            assert bar==(0xC050 if present else 0xC010),hex(bar)
+            # Explicit windows block C000/C020. The actual static report
+            # blocks C010/C030, including its last distinct descriptor.
+            assert bar==(0xC040 if present else 0xC010),hex(bar)
             assert endpoint.read(4,2)&1
         results.append({'static_present':present,'actual_vector_boundaries':bounds,'ISA_active':True,'actual_PCI_BAR':bar,
                         'complete_later_resource_after_124_duplicate_descriptors':True})
@@ -5701,6 +5872,7 @@ def boot_continuation(port):
             'APM':{name:runtime_apm(port,mode) for name,mode in (('real',1),('pm16',2),('pm32',3))}}
 def composed_resources(port):
     result={'joint_and_dependent':dependent_alternatives(port,OUTPUT),'map':onboard_map(port,OUTPUT),
+            'preferred_profile_addresses':preferred_profiles(port),
             'policy_and_release':allocation_policy(port,OUTPUT),'retirement':clear_retirement(port,OUTPUT),
             'bad_End_valid_next_and_unassignable_Clear':rebuild_clear(port,OUTPUT),
             'early_actual_decode':early_port_ownership(port,OUTPUT),
@@ -5709,7 +5881,7 @@ def composed_resources(port):
             'startup_video_PCI_Clear':allocation_startup_causal(port),
             'finish_unverifiable_rollback':finish_retirement_unverifiable(port)}
     if port=='pb430':result['actual_fixed_video']=pb_fixed_video(OUTPUT)
-    if port=='m919':result.update(PCI_precedence=pci_precedence(OUTPUT),PCI_fixed_ROM=pci_fixed_rom(OUTPUT),
+    if port=='m919':result.update(PCI_precedence=pci_precedence(OUTPUT),PCI_ISA_aliases=pci_isa_io_aliases(),PCI_IRQ_reservations=pci_irq_reservations(OUTPUT),PCI_IRQ_settings=pci_irq_settings(OUTPUT),PCI_retained_endpoint=pci_retained_endpoint(OUTPUT),PCI_fixed_ROM=pci_fixed_rom(OUTPUT),
                                   selected_VGA_legacy=selected_vga_resources(OUTPUT),
                                   PCI_VGA_first_use=pci_vga_first_use(OUTPUT),
                                   final_routing=pci_final_routing(OUTPUT),PCI_manual_windows=pci_manual_windows(OUTPUT))
@@ -5850,7 +6022,9 @@ def settings_regressions(port):
                 new.call('settings_load')
                 assert not new.writes
                 row=expected[fmt,bad,recovery]
-                assert new.get('C_CHIP',24)==bytes.fromhex(row['C_CHIP']),(port,fmt,bad,recovery,'chip')
+                chip=bytes.fromhex(row['C_CHIP'])
+                if port=='m919':chip=chip[:16]+b'\0\xF0'+chip[18:]
+                assert new.get('C_CHIP',24)==chip,(port,fmt,bad,recovery,'chip')
                 assert new.get('C_VALID')==bytes.fromhex(row['C_VALID']),(port,fmt,bad,recovery,'valid')
                 state=bytes(new.cpu.mem_read(new.base,new.allocated));saved=new.snapshot()
                 new.call('pnp_publish')

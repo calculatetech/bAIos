@@ -103,19 +103,8 @@ chipset_ui_choice_order:
     xor al,3
 .posted:
     cmp si,chip_posted_values
-    jne .irq
+    jne .done
     mov si,chip_posted_choices
     xor al,1
-    ret
-.irq:
-    cmp si,chip_irq_values
-    jne .done
-    mov si,chip_irq_choices
-    cmp al,0
-    je .swap_irq
-    cmp al,10
-    jne .done
-.swap_irq:
-    xor al,10
 .done:
     ret

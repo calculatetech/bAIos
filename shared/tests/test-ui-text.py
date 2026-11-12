@@ -38,6 +38,11 @@ LIVE_PNP_TEXT={
     'pnp_help2':b'Example: Start 220h, decimal Count 16.',
     'pnp_help3':b'Count 0 disables the range.'}
 LIVE_PNP_MAIN=['pnp_irqs','pnp_dmas','pnp_windows','pnp_memory','pnp_config','pnp_clear']
+LIVE_M919_IRQ_TEXT={
+    'chip_irq_1':b'Slot 1 Using INT#','chip_irq_2':b'Slot 2 Using INT#','chip_irq_3':b'Slot 3 Using INT#',
+    'chip_irq_help1':b'Auto uses the interrupt pin reported by each card.',
+    'chip_irq_help2':b'Use Auto unless the card reports the wrong pin.'}
+RETIRED_M919_IRQ_TEXT={'chip_irq_4',*(f'chip_irq{i}' for i in (3,4,5,7,9,10,11,12,14,15))}
 
 
 def build(port):
@@ -172,21 +177,30 @@ def strings(port):
     for name, row in baseline['strings'].items():
         if port=='mp386' and name.startswith('pnp_'):continue  # Forward chipset-scope correction.
         if name=='pnp_irqs_high':continue
+        if port=='m919' and name in RETIRED_M919_IRQ_TEXT:continue
         expected = LIVE_PNP_TEXT.get(name,bytes.fromhex(row['hex']))
+        if port=='m919':expected=LIVE_M919_IRQ_TEXT.get(name,expected)
         at = address(s, name)
         actual = render(s, at, len(expected))
         assert actual == b''.join(bytes((v,7)) for v in expected), name
         stored = cstring(s, at)
         if stored[:1] == b'\x01':
-            assert (row['compress'] or name in LIVE_PNP_TEXT or name in SPACE_MANIFEST['ports'][port]['strings']) and len(stored) < len(expected), name
+            assert (row['compress'] or name in LIVE_PNP_TEXT or name in LIVE_M919_IRQ_TEXT or name in SPACE_MANIFEST['ports'][port]['strings']) and len(stored) < len(expected), name
             encoded += 1
         else:
             assert stored == expected, name
     for table, labels in baseline['tables'].items():
         if port=='mp386' and table.startswith('pnp_'):continue
+        if port=='m919' and table in ('chip_irq_values','chip_irq_choices'):continue
         if table=='pnp_main_labels':labels=LIVE_PNP_MAIN
         pointers = struct.unpack('<'+'H'*len(labels), s.cpu.mem_read(0xF0000+address(s,table),len(labels)*2))
         assert pointers == tuple(address(s,label) for label in labels), table
+    if port=='m919':
+        names=('chip_auto','chip_inta','chip_intb','chip_intc','chip_intd')
+        pointers=struct.unpack('<5H',s.cpu.mem_read(0xF0000+address(s,'chip_pin_values'),10))
+        assert pointers==tuple(address(s,name) for name in names)
+        for at,label in zip(pointers,(b'Auto',b'INTA',b'INTB',b'INTC',b'INTD')):
+            assert render(s,at,len(label))==b''.join(bytes((v,7)) for v in label)
     assert encoded > 0
     depths = [0]*128
     pairs = bytes(s.cpu.mem_read(0xF0000+address(s,'ui_text_pairs'),256))

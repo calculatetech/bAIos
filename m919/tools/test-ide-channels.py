@@ -84,11 +84,21 @@ def run(image, baseline=None):
         assert ide[0x41] == (0x2D | gates)
         assert ide[4] == (0xA0 | enabled)
         assert all(ide.get(n, 0) == value for n, value in peers.items())
-        # Explicit IRQ14/15 requests distinguish reservation from route allocation.
-        d.write(base + state['C_CHIP'] + 16, 1, 0x98)
+        # Two active PCI routes compete for the only unreserved IRQs, 14/15.
+        for bdf in (0x60,0x68):
+            d.devices[bdf]={0:0x34,1:0x12,0x3D:1,0x3C:255}
+        for name in ('pnp_journal_begin','pnp_work_begin'):
+            f[0].reg_write(x.UC_X86_REG_BX,f[2].symbol(name));invoke(f,'pnp_post_invoke')
+        for irq in range(3,14):
+            if not 0xDEB8&(1<<irq):continue
+            for reg,value in ((x.UC_X86_REG_AX,0x300),(x.UC_X86_REG_EDX,irq),
+                              (x.UC_X86_REG_ECX,1),(x.UC_X86_REG_ESI,2),
+                              (x.UC_X86_REG_BX,f[2].symbol('pnp_reserve'))):
+                f[0].reg_write(reg,value)
+            invoke(f,'pnp_post_invoke')
         invoke(f, 'board_pci_runtime_policy', count=300000)
-        links = list(d.read(base + 0x10A4, 2))
-        assert links == ([14, 15] if not enabled else [255, 15] if secondary else [255, 255]), links
+        links = [d.read(base+0x10A4+i,1)[0] for i in (0,3)]
+        assert links == ([14, 15] if not enabled else [15, 15] if secondary else [255, 255]), links
         rows.append(dict(enabled=enabled, secondary_disabled=secondary, decode=ide[0x41], peer_fields_unchanged=True, irq_links=links))
 
         m = PIO(image, ('ata', 'ata', 'packet', 'ata'), post=True)

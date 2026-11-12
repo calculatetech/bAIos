@@ -209,7 +209,8 @@ def main():
                 for virtual in (False, True) for shutdown in (0, 5, 0x0A)]
         rows += [warm_mode(arguments.image, True, 5, busy_after) for busy_after in (0, 1, 2)]
         rows += [warm_mode(arguments.image, False, 0x0A, 0)]
-        output = arguments.image.parent.parent / 'warm-mode.json'
+        output = Path(__file__).resolve().parents[1] / 'build/tests/reset-video/warm-mode.json'
+        output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps({'baseline_reproduced':bool(arguments.baseline_mode),
                                     'cases':rows, 'limits':'Direct V86 with IOPL3; explicit privileged-op oracle. No loaded EMM386 claim.'}, indent=2) + '\n')
         print(f'PASS {len(rows)} real/V86 reset/timeout cases; {output}', flush=True)
@@ -227,7 +228,8 @@ def main():
             for selector in (0, 1, 0x15)
             for clock in (0, 1, 0x29, 0xDF)]
     rows.extend(check(arguments.image, 'startup', 0x15, 1, resume=code) for code in (5,0x0A))
-    output = arguments.image.parent.parent / 'reset.json'
+    output = Path(__file__).resolve().parents[1] / 'build/tests/reset-video/reset.json'
+    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(rows, indent=2) + '\n')
     print(f'PASS {len(rows)} reset/clock/index/service-resume cases; {output}', flush=True)
 

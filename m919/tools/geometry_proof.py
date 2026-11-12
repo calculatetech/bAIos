@@ -134,6 +134,8 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
         shadow_end=code+listing.symbol('board_vga_shadow')
     except StopIteration:
         shadow_begin=shadow_end=-1 # Earlier images have no early F-copy owner.
+    try:private_shadow=(listing.symbol('pnp_board_pci_rom_shadow'),listing.symbol('pnp_board_pci_rom_protect'))
+    except StopIteration:private_shadow=(-1,-1)
     begin_state=cfg['platform']['state_seg']<<4
     stack_ops=[];excluded_writes=[];instructions={};far_return=[False];far_return_enabled=[False];instruction_count=[0]
 
@@ -146,7 +148,10 @@ def mapped(modules, *, flat=None, alias=None, fault=None, expected=None, revisio
             assert value.to_bytes(size,'little')==rom_bytes[address-0xE0000:address-0xE0000+size], 'E shadow copy differs from ROM'
         elif 0xF0000<=address and address+size<=0x100000 and not d.registers.get(0x55,0)&0x40:
             pc=(uc.reg_read(x.UC_X86_REG_CS)<<4)+uc.reg_read(x.UC_X86_REG_IP)
-            assert not remapping[0] and shadow_begin<=pc<shadow_end, 'F copy outside its post-mapper owner'
+            base=int.from_bytes(uc.mem_read(0x40E,2),'little')<<4
+            segment=int.from_bytes(uc.mem_read(base+0x33A,2),'little')
+            private=segment>=0x1000 and (segment<<4)+private_shadow[0]<=pc<(segment<<4)+private_shadow[1]
+            assert not remapping[0] and (shadow_begin<=pc<shadow_end or private), 'F copy outside its post-mapper owner'
             assert value.to_bytes(size,'little')==rom_bytes[address-0xE0000:address-0xE0000+size], 'F shadow copy differs from ROM'
         elif 0xA0000<=address<0x100000:
             excluded_writes.append(address)
