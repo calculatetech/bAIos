@@ -1,5 +1,5 @@
 CHIP_GROUP_COUNT equ 7
-CHIP_FIELD_COUNT equ 45
+CHIP_FIELD_COUNT equ 44
 CHIP_OPTION_BYTES equ 24
 CHIP_RECORD_TAG equ 0x57
 chip_group_0:
@@ -26,10 +26,9 @@ chip_group_1:
     chipset_field chip_palette,18,3,1,2,chip_enable_values,chip_palette_help1,chip_palette_help2
     chipset_field chip_ide_trigger,19,0,1,2,chip_trigger_values,chip_trigger_help1,chip_trigger_help2
 chip_group_2:
-    chipset_field chip_irq_1,16,0,15,12,chip_irq_values,chip_irq_help1,chip_irq_help2
-    chipset_field chip_irq_2,16,4,15,12,chip_irq_values,chip_irq_help1,chip_irq_help2
-    chipset_field chip_irq_3,17,0,15,12,chip_irq_values,chip_irq_help1,chip_irq_help2
-    chipset_field chip_irq_4,17,4,15,12,chip_irq_values,chip_irq_help1,chip_irq_help2
+    chipset_field chip_irq_1,16,0,15,5,chip_pin_values,chip_irq_1_help,chip_irq_help2
+    chipset_field chip_irq_2,16,4,15,5,chip_pin_values,chip_irq_2_help,chip_irq_help2
+    chipset_field chip_irq_3,17,0,15,5,chip_pin_values,chip_irq_3_help,chip_irq_help2
 chip_group_3:
     chipset_field chip_mapping,18,0,1,2,chip_enable_values,chip_mapping_help1,chip_mapping_help2
     chipset_field chip_ldev,7,3,3,3,chip_ldev_values,chip_ldev_help1,chip_keep_help
@@ -57,7 +56,7 @@ chip_group_6:
 chipset_groups:
     dw chip_group_0,chip_group_1,chip_group_2,chip_group_3,chip_group_4,chip_group_5,chip_group_6
 chipset_group_counts:
-    db 10,11,4,3,3,7,7
+    db 10,11,3,3,3,7,7
 chipset_group_labels dw chip_cache,chip_bus,chip_irqs,chip_local_bus,chip_isa_bus,chip_memory,chip_rom
 chipset_group_help:
     dw chip_cache,chip_l1_help1,chip_l1_help2
@@ -77,7 +76,7 @@ chipset_views:
     db 0,11
     dw chip_rows_1,chip_headers
     dw chip_irqs
-    db 0,4
+    db 0,3
     dw chip_rows_2,chip_headers
     dw chip_local_bus
     db 0,3
@@ -93,14 +92,14 @@ chipset_views:
     dw chip_rows_6,chip_headers
 chip_rows_0 db 5,6,7,8,9,10,11,12,13,14
 chip_rows_1 db 5,6,7,8,9,10,11,12,13,14,15
-chip_rows_2 db 5,6,7,8
+chip_rows_2 db 5,6,7
 chip_rows_3 db 5,6,7
 chip_rows_4 db 5,6,7
 chip_rows_5 db 5,6,7,8,9,10,11
 chip_rows_6 db 5,6,7,8,9,10,11
 chip_headers db 0
 ; Three DRAM waits, 3-2-2-2 cache burst, FPM, WB, no posting, 2 T2 sampling, 2-BCLK recovery.
-chipset_default db 0,DEFAULT_CACHE_ENABLED,1-DEFAULT_CACHE_ENABLED,(DEFAULT_CACHE_WRITE_BACK << 6),0,0,0,8,0,0,0,0x60,0,0,0,0,0,0,0,0,0,0,0,0
+chipset_default db 0,DEFAULT_CACHE_ENABLED,1-DEFAULT_CACHE_ENABLED,(DEFAULT_CACHE_WRITE_BACK << 6),0,0,0,8,0,0,0,0x60,0,0,0,0,0,0xF0,0,0,0,0,0,0
     times CHIP_SIZE-CHIP_OPTION_BYTES db 0
 ; Byte21 retains its old packed bit as opaque compatibility data.
 chipset_masks db 0xF0,1,1,0x70,0x90,3,1,0xFF,0xFF,7,0x0F,0x7F,1,0x0F,1,0xFC,0xFF,0xFF,0x0F,1,0xFF,1,3,0x1F
@@ -389,38 +388,35 @@ chip_shadow_d400 db 'D4000-D7FFF Shadow',0
 chip_shadow_d800 db 'D8000-DBFFF Shadow',0
 chip_shadow_dc00 db 'DC000-DFFFF Shadow',0
 chip_irq_help1:
-    ui_string 'Assigns an interrupt to this PCI routing link.', chip_irq_help1
+    ui_string 'Auto uses the interrupt pin reported by each card.', chip_irq_help1
 chip_irq_help2:
-    ui_string 'Auto avoids the active onboard ISA devices.', chip_irq_help2
+    ui_string 'Use Auto unless the card reports the wrong pin.', chip_irq_help2
+chip_irq_1_help:
+    ui_string 'INTA shares with Slot 2/3 INTB.', chip_irq_1_help
+chip_irq_2_help:
+    ui_string 'INTA shares with Slot 1/3 INTD.', chip_irq_2_help
+chip_irq_3_help:
+    ui_string 'INTA shares with Slot 1 INTC and Slot 2 INTD.', chip_irq_3_help
 chip_trigger_help1:
     ui_string 'Trigger mode for PCI IDE cards using IRQ 14 or 15.', chip_trigger_help1
 chip_trigger_help2:
     ui_string 'Edge is recommended for legacy IDE operation.', chip_trigger_help2
 chip_irq_1:
-    ui_string 'INTA Interrupt', chip_irq_1
+    ui_string 'Slot 1 Using INT#', chip_irq_1
 chip_irq_2:
-    ui_string 'INTB Interrupt', chip_irq_2
+    ui_string 'Slot 2 Using INT#', chip_irq_2
 chip_irq_3:
-    ui_string 'INTC Interrupt', chip_irq_3
-chip_irq_4:
-    ui_string 'INTD Interrupt', chip_irq_4
+    ui_string 'Slot 3 Using INT#', chip_irq_3
 chip_ide_trigger:
     ui_string 'PCI IDE IRQ Trigger', chip_ide_trigger
 chip_trigger_values dw chip_edge,chip_level
 chip_level db 'Level',0
 chip_edge db 'Edge',0
-chip_irq_values dw chip_auto,chip_irq4,chip_irq5,chip_irq7,chip_irq9,chip_irq10,chip_irq11,chip_irq12,chip_irq14,chip_irq15,chip_irq3,u_disabled
-chip_irq_choices dw chip_irq3,chip_irq4,chip_irq5,chip_irq7,chip_irq9,chip_irq10,chip_irq11,chip_irq12,chip_irq14,chip_irq15,chip_auto,u_disabled
-chip_irq3 db '3',0
-chip_irq4 db '4',0
-chip_irq5 db '5',0
-chip_irq7 db '7',0
-chip_irq9 db '9',0
-chip_irq10 db '10',0
-chip_irq11 db '11',0
-chip_irq12 db '12',0
-chip_irq14 db '14',0
-chip_irq15 db '15',0
+chip_pin_values dw chip_auto,chip_inta,chip_intb,chip_intc,chip_intd
+chip_inta db 'INTA',0
+chip_intb db 'INTB',0
+chip_intc db 'INTC',0
+chip_intd db 'INTD',0
 
 chip_posted_values dw chip_wait_1,chip_wait_0
 chip_posted_choices dw chip_wait_0,chip_wait_1

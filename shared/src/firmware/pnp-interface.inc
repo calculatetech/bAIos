@@ -31,6 +31,11 @@ PNP_VIEW equ PNP_CHIP-1
 %elifdef BOARD_PNP_NV6_LATE
 %define PNP_AUX 1
 %endif
+%ifdef BOARD_ISA_PCI_ENUMERATED
+%define PNP_HAS_PCI_BUS 1
+%elif BOARD_ATA_DEVICE_COUNT = 4
+%define PNP_HAS_PCI_BUS 1
+%endif
 times -(PNP_VIEW < -PNP_FRAME) db 0
 times -(PNP_NODE+PNP_NODE_MAX > -8) db 0
 
@@ -936,8 +941,12 @@ PNP_LPT equ 9
 PNP_LPT equ 10
 %endif
 PNP_FDC equ PNP_LPT+1
+%ifdef BOARD_IDE_PCI_ENUMERATED
+PNP_EXTRA equ PNP_LPT+2
+%else
 PNP_IDE equ PNP_LPT+2
 PNP_EXTRA equ PNP_IDE+1
+%endif
 %ifdef PB430_PORT
 PNP_MOUSE equ PNP_EXTRA+1
 PNP_NODE_COUNT equ PNP_EXTRA+2
@@ -945,9 +954,20 @@ PNP_NODE_COUNT equ PNP_EXTRA+2
 PNP_MOUSE equ PNP_EXTRA+1
 PNP_NODE_COUNT equ PNP_EXTRA+2
 %elif BOARD_ATA_DEVICE_COUNT = 4
+%ifdef BOARD_ISA_PCI_ENUMERATED
+PNP_NODE_COUNT equ PNP_EXTRA
+%else
 PNP_NODE_COUNT equ PNP_EXTRA+1
+%endif
 %else
 PNP_NODE_COUNT equ PNP_EXTRA
+%endif
+%ifdef BOARD_IDE_PCI_ENUMERATED
+; PCI owns OS enumeration; the private IDE record still protects ISA allocation.
+PNP_IDE equ PNP_NODE_COUNT
+PNP_RESOURCE_NODE_COUNT equ PNP_NODE_COUNT+1
+%else
+PNP_RESOURCE_NODE_COUNT equ PNP_NODE_COUNT
 %endif
 
 %macro pnp_io 2-3 10
@@ -966,17 +986,31 @@ PNP_NODE_COUNT equ PNP_EXTRA
     dw %1
 %endmacro
 pnp_nodes:
-    dw pnp_pic,pnp_timer,pnp_dma,pnp_keyboard,pnp_rtc,pnp_speaker,pnp_board,pnp_isa_bus,pnp_uart_a
+    dw pnp_pic,pnp_timer,pnp_dma,pnp_keyboard,pnp_rtc,pnp_speaker,pnp_board
+%ifdef BOARD_ISA_PCI_ENUMERATED
+    dw pnp_pci_bus
+%else
+    dw pnp_isa_bus
+%endif
+    dw pnp_uart_a
 %ifndef BOARD_PNP_NV6_LATE
     dw pnp_uart_a
 %endif
-    dw pnp_lpt,pnp_fdc,pnp_ide
+    dw pnp_lpt,pnp_fdc
+%ifndef BOARD_IDE_PCI_ENUMERATED
+    dw pnp_ide
+%endif
 %ifdef PB430_PORT
     dw pnp_vga,pnp_mouse
 %elifdef BOARD_PNP_NV6_LATE
     dw pnp_vga,pnp_mouse
 %elif BOARD_ATA_DEVICE_COUNT = 4
+%ifndef BOARD_ISA_PCI_ENUMERATED
     dw pnp_pci_bus
+%endif
+%endif
+%ifdef BOARD_IDE_PCI_ENUMERATED
+    dw pnp_ide
 %endif
 
 pnp_node pnp_pic,0,0x0000,"0x08,0x00,0x00",3
@@ -1070,7 +1104,8 @@ pnp_end
 pnp_node pnp_mouse,PNP_MOUSE,0x0F13,"0x09,0x02,0x00",0
     pnp_irq 0x1000
 pnp_end
-%elif BOARD_ATA_DEVICE_COUNT = 4
+%endif
+%ifdef PNP_HAS_PCI_BUS
 pnp_node pnp_pci_bus,PNP_EXTRA,0x0A03,"0x06,0x00,0x00",3
     pnp_io 0xCF8,8
 pnp_end

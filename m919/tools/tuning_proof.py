@@ -146,9 +146,24 @@ def early_bus_cases(image):
 
 
 def irq_cases(image):
+    def reserve(f,mask):
+        for irq in range(16):
+            if mask&(1<<irq):
+                for reg,value in ((x.UC_X86_REG_AX,0x0300),(x.UC_X86_REG_EDX,irq),
+                                  (x.UC_X86_REG_ECX,1),(x.UC_X86_REG_ESI,2),
+                                  (x.UC_X86_REG_BX,f[2].symbol('pnp_reserve'))):
+                    f[0].reg_write(reg,value)
+                invoke(f,'pnp_post_invoke')
+    def routed_fixture():
+        d,f,base,state=fixture(image,post=True)
+        # This component has no ISA cards; each case supplies its onboard BDA owners.
+        for owner in ('pnp_journal_begin','pnp_work_begin'):
+            f[0].reg_write(x.UC_X86_REG_BX,f[2].symbol(owner))
+            invoke(f,'pnp_post_invoke')
+        return d,f,base,state
     rows=[]
     for mode in ('auto','edge','level','disabled','conflict'):
-        d,f,base,state=fixture(image)
+        d,f,base,state=routed_fixture()
         isa=d.devices[0x90]
         isa.update({0x43:0,0x44:0,0x46:0xB0,0x47:0xF0})
         endpoints=[]
@@ -165,19 +180,18 @@ def irq_cases(image):
         d.write(base+state['C_PORTS']+state['P_FLOPPY'],1,1)
         d.ports[0x4D0]=0x20;d.ports[0x4D1]=0x20
         if mode!='auto':
-            # IRQ14, IRQ15, IRQ9, IRQ10; duplicated links share correctly.
-            d.write(base+state['C_CHIP']+16,1,0x98)
-            d.write(base+state['C_CHIP']+17,1,0x54)
+            d.write(base+state['C_PNP'],2,(1<<5)|(1<<11)|(1<<12))
             d.write(base+state['C_CHIP']+19,1,int(mode=='level'))
-        if mode=='disabled':d.write(base+state['C_CHIP']+16,2,0xBBBB)
+        if mode=='disabled':d.write(base+state['C_PNP'],2,0xDEB8)
+        reserve(f,int.from_bytes(d.read(base+state['C_PNP'],2),'little'))
         if mode=='conflict':
             d.write(base+0x1039,1,1)
             d.write(base+state['C_IDE'],1,1)
         d.write(base+state['C_CHIP']+18,1,8)
         invoke(f,'board_pci_runtime_policy',count=300000)
         links=list(d.read(base+0x10A4,4))
-        expected={'auto':[11,12,9,10],'edge':[14,15,9,10],'level':[14,15,9,10],
-                  'disabled':[255]*4,'conflict':[255,255,9,10]}[mode]
+        expected={'auto':[11,12,9,10],'edge':[9,10,14,15],'level':[9,10,14,15],
+                  'disabled':[255]*4,'conflict':[9,10,9,10]}[mode]
         assert links==expected,(mode,links)
         routes=((0,1,2,3),(3,0,1,2),(2,0,1,3))
         for bdf,pin in endpoints:
@@ -196,7 +210,7 @@ def irq_cases(image):
         assert not set(d.commands)&{0xA7,0xA8,0xA9,0xD3,0xD4}
         rows.append(dict(mode=mode,links=links,elcr=f'{elcr:04X}',all_slot_pins=True))
     for requested in (False,True):
-        d,f,base,state=fixture(image)
+        d,f,base,state=routed_fixture()
         d.devices[0x60]={0:0x34,1:0x12,4:0x23,5:1,6:0xA5,7:0x5A,0xB:3}
         d.devices[0x68]={0:0x34,1:0x12,4:0x23,5:1,6:0xA5,7:0x5A,0xB:2}
         d.write(base+state['C_CHIP']+18,1,8 if requested else 0)
@@ -206,9 +220,10 @@ def irq_cases(image):
         assert d.devices[0x68][4]==0x23 and d.devices[0x68][5]==1
         assert all((d.devices[bdf][6],d.devices[bdf][7])==(0xA5,0x5A) for bdf in (0x60,0x68))
         rows.append(dict(palette=requested,display_command=d.devices[0x60][4],non_display_unchanged=True))
-    d,f,base,state=fixture(image)
+    d,f,base,state=routed_fixture()
     d.devices[0x60]={0:0x34,1:0x12,0x3D:1,0x3C:0xFF}
-    d.write(base+state['C_CHIP']+16,1,10) # Explicit IRQ3, before UART activation.
+    d.write(base+state['C_PNP'],2,0xDEB8&~(1<<3))
+    reserve(f,0xDEB8&~(1<<3))
     d.ports[0x4D1]=0x20
     invoke(f,'board_pci_runtime_policy',count=300000)
     assert d.devices[0x60][0x3C]==3 and d.ports[0x4D0]&8
@@ -218,14 +233,32 @@ def irq_cases(image):
     assert d.ports[0x4D1]&0x20
     rows.append(dict(transition='PCI IRQ3 to active UART',edge_restored=True,unrelated_preserved=True))
     for enabled in (False,True):
-        d,f,base,state=fixture(image)
+        d,f,base,state=routed_fixture()
         d.devices[0x60]={0:0x34,1:0x12,0x3D:1,0x3C:0xFF}
         d.write(base+0x1039,1,1)
         d.write(base+state['C_IDE'],1,int(enabled))
-        d.write(base+state['C_CHIP']+16,1,8) # Explicit IRQ14.
+        d.write(base+state['C_PNP'],2,0xDEB8&~(1<<14))
+        reserve(f,0xDEB8&~(1<<14))
         invoke(f,'board_pci_runtime_policy',count=300000)
         assert d.devices[0x60][0x3C]==(255 if enabled else 14)
         rows.append(dict(ide_enabled=enabled,irq14=d.devices[0x60][0x3C]))
+    for slot in range(3):
+        for choice in range(5):
+            d,f,base,state=routed_fixture()
+            bdf=0x60+slot*8
+            for fn,pin in ((0,1),(1,2)):
+                d.devices[bdf+fn]={0:0x34,1:0x12,0xE:0x80,0x3D:pin,0x3C:0xFF}
+            at=base+state['C_CHIP']+16+slot//2
+            incoming=d.read(at,1)[0]
+            d.write(at,1,(incoming&~(15<<(4*(slot&1))))|(choice<<(4*(slot&1))))
+            invoke(f,'board_pci_runtime_policy',count=300000)
+            links=list(d.read(base+0x10A4,4));route=((0,1,2,3),(3,0,1,2),(2,0,1,3))[slot]
+            selected=choice or 1
+            active={route[selected-1],route[1]}
+            assert {i for i,q in enumerate(links) if q!=255}==active,(slot,choice,links)
+            assert d.devices[bdf][0x3C]==links[route[selected-1]]
+            assert d.devices[bdf+1][0x3C]==links[route[1]],'Override changed another function'
+            rows.append(dict(slot=slot+1,pin=choice,function1_retains_reported_pin=True,active_links=sorted(active)))
     return rows
 
 
@@ -575,6 +608,44 @@ def host_cache_cases(image):
             rows.append(dict(policy='WB' if wb else 'WT',parity=parity,parity_controls_retained=True,fast_waits=True,burst='2-1-1-1',divider='1:1',host_header_retained=True))
     return rows
 
+def pci_irq_setup_cases(image):
+    from ide_completeness_proof import Machine
+    machine=Machine(image,post=True);cpu=machine.cpu
+    draft=bytearray(24);draft[17]=0xF0
+    cpu.mem_write(machine.base+machine.state['U_CHIP'],bytes(draft))
+    machine.put('U_PAGE',5);machine.put('U_FOCUS',1);machine.put('U_CHIP_SCREEN',3)
+    machine.put('U_IDE_DEVICE',255)
+    labels=tuple(f'Slot {i} Using INT#' for i in range(1,4))
+    helps=('INTA shares with Slot 2/3 INTB.','INTA shares with Slot 1/3 INTD.',
+           'INTA shares with Slot 1 INTC and Slot 2 INTD.')
+    descriptors=machine.listing.symbol('chip_group_2')
+    route_row=next(i for i,line in enumerate(machine.listing.lines) if 'board_pci_slot_links db' in line)
+    routes=bytes(cpu.mem_read(0xF0000+machine.listing.offset(route_row-1),12))
+    saved=bytes(cpu.mem_read(machine.base+machine.state['C_CHIP'],24));rows=[]
+    for field,label in enumerate(labels):
+        machine.put('U_FIELD',field);machine.call('setup_draw',DS=0xF000,ES=0xB800)
+        machine.call('chipset_ui_help',DS=0xF000,ES=0xB800)
+        screen=bytes(cpu.mem_read(0xB8000,4000))[::2]
+        for n,expected in enumerate(labels):
+            assert len(expected)<=24 and screen[(5+n)*80+24:(5+n)*80+24+len(expected)]==expected.encode()
+            assert screen[(5+n)*80+49:(5+n)*80+53]==b'Auto'
+        offset,shift,mask=bytes(cpu.mem_read(0xF0000+descriptors+field*14+2,3))
+        assert (offset,shift,mask)==((16,0,15),(16,4,15),(17,0,15))[field]
+        help_text=screen[19*80+25:20*80].decode('ascii').rstrip()
+        assert help_text==helps[field],(field,help_text)
+        assert b'Use Auto unless' in screen[20*80:21*80]
+        # Every choice is reachable and changes only this slot's stored nibble.
+        for choice in range(5):
+            byte=16+field//2;shift=4*(field&1)
+            current=cpu.mem_read(machine.base+machine.state['U_CHIP']+byte,1)[0]
+            assert current>>shift&15==choice
+            machine.call('setup_change',AX=0x4D00)
+        assert cpu.mem_read(machine.base+machine.state['U_CHIP'],24)==bytes(draft)
+        rows.append(dict(label=label,help=help_text,saved_field=(offset,shift,mask)))
+    assert bytes(cpu.mem_read(machine.base+machine.state['C_CHIP'],24))==saved
+    return rows
+
+
 def setup_owner_cases(image,baseline=False):
     """Audit assembled views and rendered controls against their real owners."""
     from ide_completeness_proof import Machine
@@ -865,7 +936,7 @@ def t4_policy_cases(image):
     for initial in (0,1,2,3):
         for action in ('cancel','save'):
             m=Screen(image, post=True);m.initial=initial
-            original=bytes.fromhex('A0010070900000A255070F6E010F01FCA9870F01E401')+bytes((initial,0))
+            original=bytes.fromhex('A0010070900000A255070F6E010F01FC21F30F01E401')+bytes((initial,0))
             m.cpu.mem_write(m.base+0x60,original)
             m.cpu.mem_write(m.base+m.state['C_PORTS']+3,b'\x02\x02')
             devices=bytes(m.cpu.mem_read(m.base+0xA00,51));ports=bytes(m.cpu.mem_read(m.base+m.state['C_PORTS'],8))
@@ -925,12 +996,12 @@ def t4_policy_cases(image):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--image',type=Path,default=PORT/'build/baios-m919.bin')
-    parser.add_argument('--case',choices=('early-bus','ide-labels','setup-owners','game-port','ecp-dma','parity-controls','t4-policy','device-commit','device-bounds','choices','irq','cyrix','shadow','parity-fast-boot','final-state','vga-bus','vga-cache','host-header','host-cache'),action='append')
+    parser.add_argument('--case',choices=('early-bus','ide-labels','setup-owners','irq-setup','game-port','ecp-dma','parity-controls','t4-policy','device-commit','device-bounds','choices','irq','cyrix','shadow','parity-fast-boot','final-state','vga-bus','vga-cache','host-header','host-cache'),action='append')
     parser.add_argument('--baseline-image',type=Path,help='Prior candidate expected to fail the Setup owner audit.')
     parser.add_argument('--output',type=Path,help='Distinct evidence export for a focused run.')
     args=parser.parse_args()
     args.image=args.image.resolve()
-    checks={'early-bus':early_bus_cases,'ide-labels':ide_label_cases,'setup-owners':setup_owner_cases,'game-port':game_port_cases,'ecp-dma':ecp_dma_cases,'parity-controls':parity_controls_cases,'t4-policy':t4_policy_cases,'device-commit':device_commit_cases,'device-bounds':device_bounds_cases,'choices':lambda p:m.tuning_cases(p,shared=False),'irq':irq_cases,'cyrix':cyrix_cases,'shadow':shadow_cases,'parity-fast-boot':parity_fast_boot_cases,'final-state':final_state_cases,'vga-bus':vga_bus_cases,'vga-cache':lambda p:final_state_cases(p,vga_bus=True),'host-header':host_header_cases,'host-cache':host_cache_cases}
+    checks={'early-bus':early_bus_cases,'ide-labels':ide_label_cases,'setup-owners':setup_owner_cases,'irq-setup':pci_irq_setup_cases,'game-port':game_port_cases,'ecp-dma':ecp_dma_cases,'parity-controls':parity_controls_cases,'t4-policy':t4_policy_cases,'device-commit':device_commit_cases,'device-bounds':device_bounds_cases,'choices':lambda p:m.tuning_cases(p,shared=False),'irq':irq_cases,'cyrix':cyrix_cases,'shadow':shadow_cases,'parity-fast-boot':parity_fast_boot_cases,'final-state':final_state_cases,'vga-bus':vga_bus_cases,'vga-cache':lambda p:final_state_cases(p,vga_bus=True),'host-header':host_header_cases,'host-cache':host_cache_cases}
     result_dir=args.image.parent.parent if args.image.parent.name=='image' else PORT/'build/tests/manual-rebuild'
     target=args.output.resolve() if args.output else result_dir/'oem-tuning.json'
     identity=m.verify(PORT,args.image)['sha256']

@@ -39,7 +39,7 @@ No task is declined.
 
 ## Completed
 
-- **BAIOS-016: Complete BIOS ESCD compatibility.** Added shared BIOS services for persistent Plug and Play settings on ports with writable storage support. Intel ICU, WINICU, CTCM and CTCU passed hardware tests. Windows 95 testing continues.
+- **BAIOS-016: Complete BIOS ESCD compatibility.** Added shared BIOS services for persistent Plug and Play settings on ports with writable storage support. Intel ICU, WINICU, CTCM and CTCU passed hardware tests. Device enumeration corrections and operating-system results belong to the relevant port roadmap.
 
 - **BAIOS-015: Reduce and organize the shared ROM footprint.** Measure occupied ROM and temporary RAM, remove duplicated common code, separate temporary POST and Setup work from resident services, and use measured packing where it provides a net saving. Preserve supported behavior and all port layouts. Update shared build accounting, porting instructions and implementation guidance so new ports follow the same ownership and space rules. ACPI remains BAIOS-013.
 

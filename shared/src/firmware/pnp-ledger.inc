@@ -136,7 +136,7 @@ pnp_claim_add:
     stc
     ret
 
-; AH=kind, AL=I/O decode info, EDX=base/PIC IRQ/DMA, ECX=length.
+; AH=kind, AL=I/O decode info (bit7=PCI), EDX=base/PIC IRQ/DMA, ECX=length.
 ; CF=conflict (including missing/corrupt ledger). PIC2 internal cascade stays
 ; PIC2 here: only the ISA request selector maps external ISA2 into PIC9.
 pnp_claim_query:
@@ -169,7 +169,10 @@ pnp_claim_query:
     cmp byte [ss:bp+29],2
     jne .interval
     mov cl,[ss:bp+28]
-    and cl,[gs:si+2]
+    mov ch,[gs:si+2]
+    test cx,0x8080          ; PCI claims win before subtractive ISA forwarding.
+    jnz .interval
+    and cl,ch
     test cl,1
     jnz .interval
     ; A10-bit range repeats every400h. These modular distances cover every
@@ -211,17 +214,15 @@ pnp_claim_query:
     mov eax,[gs:si+24]
     jmp .next
 .free:
+    clc
+.return:
     mov sp,bp
     popad
     pop gs
-    clc
     ret
 .conflict:
-    mov sp,bp
-    popad
-    pop gs
     stc
-    ret
+    jmp .return
 
 ; ESI=owner. Rollback removes only its claims; fixed/manual/other devices and
 ; overlapping unions survive. Records remain reusable by the next candidate.

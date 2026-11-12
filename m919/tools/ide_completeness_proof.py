@@ -600,7 +600,7 @@ def persistence(image):
                struct.pack('<HBBHH', 513+i*111, 2+i, 17+i, 0xFFFA-i, 500+i) for i in range(4)]
     extra = bytes((0, 1))
     ports = bytes((1, 2, 1, 3, 2, 1, 0, 1))
-    chip = bytes.fromhex('A0010070900000A255070F6E010F01FCA9870F0100000000')
+    chip = bytes.fromhex('A0010070900000A255070F6E010F01FC21F30F0100000000')
     masks = bytes.fromhex('F0010170900301FFFF070F7F010F01FCFFFF0F01FF01031F')
 
     def packed_ide(policies):
@@ -650,7 +650,7 @@ def persistence(image):
     auto = bytes(4)+struct.pack('<HBBHH', 1024, 16, 63, 0xFFFF, 1024)
     defaults = {'C_IDE': b'\x01'+auto*4+b'\x01\x01',
                 'C_PORTS': bytes((1, 2, 1, 2, 0, 1, 0, 1)),
-                'C_CHIP': bytes.fromhex('000100400000000800000060000000000000000000000000')}
+                'C_CHIP': bytes.fromhex('0001004000000008000000600000000000F0000000000000')}
     load()
     assert read('C_IDE', 51) == active and read('C_PORTS', 8) == ports
     assert read('C_CHIP', 24) == chip and m.get('C_VALID') == 1

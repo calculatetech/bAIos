@@ -12,7 +12,7 @@ def run(image):
     normal_defaults = shared_defaults(image.resolve())
     owner, saved, base, state = fixture(image)
     defaults = owner.read(base+state['C_CHIP'], 24)
-    assert defaults == bytes.fromhex('000100400000000800000060000000000000000000000000')
+    assert defaults == bytes.fromhex('0001004000000008000000600000000000F0000000000000')
     # A real save supplies both supported CMOS layouts; startup must retain them.
     rows = []
     for packed in (False, True, None):

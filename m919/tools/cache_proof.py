@@ -466,7 +466,7 @@ class POSTHardware(SRAM):
             selected=self.read((u.reg_read(x.UC_X86_REG_FS)<<4)+self.state['C_CHIP']+1,1)[0]
             assert u.reg_read(x.UC_X86_REG_EAX)&0x60000000==(0 if selected else 0x60000000)
         if self.continuing:
-            if address==0xC0019:
+            if u.reg_read(x.UC_X86_REG_CS)==0xC000 and bytes(u.mem_read(address,1))==b'\xCB':
                 # Unicorn's segmented RETF returned to C-ROM's old IP. Model
                 # only this external ROM return using the actual call frame.
                 sp=u.reg_read(x.UC_X86_REG_SP);frame=self.read((u.reg_read(x.UC_X86_REG_SS)<<4)+sp,4)

@@ -228,6 +228,9 @@ def ui_model(port,build_directory='build/tests/pnp-settings'):
 def migration(port):
     fixture = json.loads((Path(__file__).parent/'fixtures/pnp-legacy-settings.json').read_text())['ports'][port]
     expected = {key:bytes.fromhex(value) for key,value in fixture['expected'].items()}
+    if port=='m919':
+        # Frozen legacy records predate per-slot pin selection.
+        expected['C_CHIP']=expected['C_CHIP'][:16]+b'\0\xF0'+expected['C_CHIP'][18:]
     new=ui_model(port)
     new.cmos[:]=bytes.fromhex(fixture['cmos'])
     new.nvram[0x200:0x240]=bytes.fromhex(fixture['nvram_0200_023f'])

@@ -929,7 +929,7 @@ def tuning_cases(image,shared=True):
             displayed=[label for _,label in sorted(shown)]
             assert len(set(displayed))==choices and displayed==sorted(displayed,key=natural),displayed
             field_count+=1
-    assert field_count==45
+    assert field_count==44
     # Old57 prefix and new controls both survive real save/readback/reload.
     invoke(fixture,'setup_defaults')
     invoke(fixture,'settings_save')
@@ -941,7 +941,7 @@ def tuning_cases(image,shared=True):
         invoke(fixture,'chipset_settings_save');assert not u.reg_read(x.UC_X86_REG_EFLAGS)&1
         for i in range(24):d.write(base+state['C_CHIP']+i,1,0)
         invoke(fixture,'chipset_settings_load')
-        assert d.read(base+state['C_CHIP'],24)==record
+        assert d.read(base+state['C_CHIP'],24)==record[:16]+b'\0\xF0'+record[18:]
         assert cmos[0x69]==0 and cmos[0x33:0x35]==b'N\x06'
     # The shared disk page sorts display positions without rewriting old codes.
     ide_fields=[(0,[0,1],['Disabled','Enabled']),

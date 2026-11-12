@@ -126,6 +126,7 @@
 ; Gap after the slave FDPT/native geometry (2E0..2F4) and before its model340h.
 ; Keep these owners inside the Presario's one-KiB EBDA as well as larger ports.
 %define C_PNP               0x0300
+%define S_POST_ESCD_ROW      0x030F ; Row plus one; 0 before Summary, FF after scrolling off screen.
 %define U_PNP               0x0310
 %define U_PNP_SCREEN        0x031F
 %define PNP_SIZE            15
@@ -135,7 +136,7 @@
 %define PNP_MEMORY          11 ; Twelve 16 KiB blocks at C0000h..EFFFFh.
 %define PNP_POLICY          13 ; 0 BIOS configures, 1 operating system configures.
 %define PNP_CLEAR           14 ; Pending until a real successful ESCD rebuild consumes it.
-%if C_PNP < 0x2F5 || C_PNP+PNP_SIZE > U_PNP || U_PNP+PNP_SIZE > U_PNP_SCREEN || U_PNP_SCREEN >= 0x340
+%if C_PNP < 0x2F5 || C_PNP+PNP_SIZE > S_POST_ESCD_ROW || S_POST_ESCD_ROW+1 > U_PNP || U_PNP+PNP_SIZE > U_PNP_SCREEN || U_PNP_SCREEN >= 0x340
 %error "PnP state exceeds its free gap inside the one-KiB EBDA"
 %endif
 %define S_RAM_TEST_BUFFER   0x1800 ; Excluded EBDA scratch for nondestructive RAM bursts.

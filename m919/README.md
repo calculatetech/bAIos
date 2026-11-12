@@ -16,11 +16,13 @@ This board uses serial mice and has no PS/2 mouse connector. PS/2 mouse initiali
 
 Setup > Plug and Play assigns resources to compatible expansion cards. Read the [Plug and Play guide](../docs/plug-and-play.md) for BIOS/operating-system policy and manual reservations for older cards.
 
+In Chipset > PCI Interrupts, leave each Slot Using INT# setting on Auto. Auto reads the interrupt pin reported by the card. INTA through INTD name physical pins, not IRQ numbers or a selection order. The board connects each slot's INTA to a different route. Help shows pins that share a route. Select a pin manually only when the card reports it incorrectly. Changing this setting does not change the card's wiring.
+
+The BIOS assigns free IRQs to routes used by installed devices before sharing an IRQ. Reserved IRQs and active ISA devices remain excluded. Older IRQ-number choices reset to Auto when loaded. Other saved settings remain unchanged.
+
 Intel ICU and WINICU use the ESCD database in the BIOS flash. Saving it requires a supported writable chip and the correct programming-voltage setting for that chip. This port supports the Macronix MX28F1000P and SST29EE010. The MX28F1000P requires a 12 V programming setting. Use your board revision's jumper diagram. The Intel utility may list only motherboard and ISA devices even when the startup summary detects PCI cards.
 
 ## Known limitations
-
-Intel ICU, WINICU, and Creative CTCM and CTCU passed on an M919 with version 0.26.16. Version 0.26.17 corrects how the BIOS exchanges data with DOS memory managers. Windows 95 hardware testing is in progress.
 
 Revision3.4 can fail to warm reset with Microsoft EMM386 loaded. Its recurring floppy-controller problem is also unresolved. A successful boot with different memory managers does not remove those limitations.
 
